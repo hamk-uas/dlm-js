@@ -2,6 +2,8 @@
 
 A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html).
 
+THESE INSTRUCTIONS ARE WORK IN PROGRESS
+
 # Prerequisites
 ## Octave
 Octave version 7.2.0 will work. Later versions may work.
@@ -14,6 +16,7 @@ Install npm and Node.js, [see instructions](https://docs.npmjs.com/downloading-a
 ## Generate reference outputs using Octave
 
 ```shell
+cd tests/niledemo
 octave-cli niledemo.m
 ```
 
