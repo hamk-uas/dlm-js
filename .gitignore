@@ -1,0 +1,34 @@
+# Node.js
+node_modules/
+.env
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+coverage/
+dist/
+build/
+.nyc_output/
+logs/
+*.log
+*.tsbuildinfo
+.idea/
+.vscode/
+*.tgz
+.cache/
+.eslintcache
+
+# Optional: OS and editor files
+Thumbs.db
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# Test output
+junit.xml
