@@ -69,8 +69,8 @@ node run-niledemo.js
 
 ### Copyright
 * 2013-2017 Marko Laine -- DLM and MCMCStat (Folder `dlm-m`)
-* 2026 HAMK Häme University of Applied Sciences -- Framework
-* 2026 ###### -- Refined DLM port
+* 2026 HAMK Häme University of Applied Sciences
+* 2026 ######
   
 ### License
 MIT license
