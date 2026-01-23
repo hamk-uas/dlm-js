@@ -12,20 +12,24 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | float32 computation | ✅ | ❌ | The solver from jax-js currently only supports float32 data. At the moment we favor using existing solver for ease of initial development. dlm works in float64 in Octave. |
 | float64 computation | ❌ | ✅ | We have tested that "manual" float64 solves can be implemented in jax-js and result in near-exact matches to results from Octave. We may switch to float64 for testing or accuracy reasons or when jax-js implements float64 solves. |
 
+## TODO
+
+* Convert JavaScript to TypeScript, maybe
+* Load jax-js niledemo input from the JSON file
+* Combine `niledemo.js` and `run-niledemo.js`
+* Rework initial AI-generated DLM port
+
 ## Project structure
 
-| Path | Description |
-| --- | --- |
-| `/` | Project root |
-| `/dlm-m/` | Original dlm and mcmcstat MATLAB sources including only essential dependencies for features ported to minidlm |
-| `/test/` | Tests for verifying the correctness and accuracy of results |
-| `/test/niledemo/` | Niledemo test |
-| `/test/niledemo/niledemo.m` | &nbsp;&nbsp; Octave script to generate and read (for fairness) the input JSON, and to compute Octave output |
-| `/test/niledemo/niledemo.js` | &nbsp;&nbsp; JavaScript script to read the input JSON and to compute JS output |
-| `/test/niledemo/niledemo-in.json` | &nbsp;&nbsp; Input JSON, containing input data to the computation |
-| `/test/niledemo/niledemo-out-js.json` | &nbsp;&nbsp; JS output JSON |
-| `/test/niledemo/niledemo-out-m.json` | &nbsp;&nbsp; Octave output JSON |
-| `/dlm-js.js` | dlm-js JavaScript module |
+`├── dlm-m/` : Original dlm and mcmcstat MATLAB sources including only essential dependencies for features ported to minidlm<br>
+`├── test/` : Tests for verifying the correctness and accuracy of results<br>
+`│   └── niledemo/` : Niledemo test<br>
+`│       ├── niledemo.m` : Octave script to generate and read (for fairness) the input JSON, and to compute Octave output<br>
+`│       ├── niledemo.js` : JavaScript script to read the input JSON and to compute JS output<br>
+`│       ├── niledemo-in.json` : Input JSON, containing input data to the computation<br>
+`│       ├── niledemo-out-js.json` : JS output JSON<br>
+`│       └── niledemo-out-m.json` : Octave output JSON<br>
+`├── dlm-js.js` : dlm-js JavaScript module<br>
 
 ## Usage
 
