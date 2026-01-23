@@ -1,6 +1,6 @@
-const { dlmFit } = require('../../dlm.js');
+import { dlmFit } from '../../dlm-js.js';
 
-async function demo(jax) {
+async function niledemo(jax) {
     const np = jax.numpy;
 
     // --- Data ---
@@ -21,5 +21,5 @@ async function demo(jax) {
 
 // Export for use
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { demo };
+    module.exports = { niledemo };
 }
