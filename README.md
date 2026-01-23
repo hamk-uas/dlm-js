@@ -49,6 +49,18 @@ Octave version 7.2.0 will work. Later versions may work.
 
 Install Octave and add the folder containing `octave_cli` or `octave_cli.exe` to system path.
 
+### Building
+
+On Windows command line:
+
+```shell
+git clone git@github.com:hamk-uas/dlm-js.git
+cd dlm-js
+npm install @jax-js/jax
+npm install --save-dev vite
+npm install --save-dev esbuild
+```
+
 ### Generate reference outputs using Octave
 
 ```shell
