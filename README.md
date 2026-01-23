@@ -20,11 +20,11 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | `/dlm-m/` | Original dlm and mcmcstat MATLAB sources including only essential dependencies for features ported to minidlm |
 | `/test/` | Tests for verifying the correctness and accuracy of results |
 | `/test/niledemo/` | Niledemo test |
-| `/test/niledemo/niledemo.m` | Niledemo test: Octave script to generate and read (for fairness) the input JSON, and to compute Octave output |
-| `/test/niledemo/niledemo.js` | Niledemo test: JavaScript script to read the input JSON and to compute JS output |
-| `/test/niledemo/niledemo-in.json` | Niledemo test: Input JSON, containing input data to the computation |
-| `/test/niledemo/niledemo-out-js.json` | Niledemo test: JS output JSON |
-| `/test/niledemo/niledemo-out-m.json` | Niledemo test: Octave output JSON |
+| `/test/niledemo/niledemo.m` | &nbsp;&nbsp; Octave script to generate and read (for fairness) the input JSON, and to compute Octave output |
+| `/test/niledemo/niledemo.js` | &nbsp;&nbsp; JavaScript script to read the input JSON and to compute JS output |
+| `/test/niledemo/niledemo-in.json` | &nbsp;&nbsp; Input JSON, containing input data to the computation |
+| `/test/niledemo/niledemo-out-js.json` | &nbsp;&nbsp; JS output JSON |
+| `/test/niledemo/niledemo-out-m.json` | &nbsp;&nbsp; Octave output JSON |
 | `/dlm-js.js` | dlm-js JavaScript module |
 
 ## Usage
