@@ -14,73 +14,102 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 ## TODO
 
-* Convert JavaScript to TypeScript, maybe
-* Load jax-js niledemo input from the JSON file
-* Combine `niledemo.js` and `run-niledemo.js`
+* Test the built library
+* Document the library
+* Choose the important dlm functions and output variables for implementation
 * Rework initial AI-generated DLM port
 
 ## Project structure
 
-`├── dlm-m/` : Original dlm and mcmcstat MATLAB sources including only essential dependencies for features ported to minidlm<br>
-`├── test/` : Tests for verifying the correctness and accuracy of results<br>
-`│   └── niledemo/` : Niledemo test<br>
-`│       ├── niledemo.m` : Octave script to generate and read (for fairness) the input JSON, and to compute Octave output<br>
-`│       ├── niledemo.js` : JavaScript script to read the input JSON and to compute JS output<br>
-`│       ├── niledemo-in.json` : Input JSON, containing input data to the computation<br>
-`│       ├── niledemo-out-js.json` : JS output JSON<br>
-`│       └── niledemo-out-m.json` : Octave output JSON<br>
-`├── dlm-js.js` : dlm-js JavaScript module<br>
+```
+├── dist/                # Compiled and bundled output (after build)
+├── src/                 # Library TypeScript sources
+|   └── index.ts             # Main source file
+├── tests/               # Test suite
+│   ├── octave/              # Octave reference output generators
+│   │   ├── dlm/                 # Minimal MATLAB dlm implementation
+│   │   └── niledemo.m           # Niledemo Octave script to generate reference output (and input)
+│   ├── out/                 # Test outputs
+|   |   ├── niledemo-out.json    # Niledemot test output from Node.js
+|   │   └── niledemo-out-m.json  # Niledemo reference output from Octave
+|   ├── niledemo-in.json     # Niledemo test input
+|   ├── niledemo-keys.json   # Niledemo list of tested output keys, for partial implementations
+|   └── niledemo.ts          # Niledemo test with 1 % error tolerance
+├── .gitignore           # Ignore file for git
+├── .npmignore           # Ignore file for npm
+├── LICENSE              # License (does not apply to tests/octave/dlm/)
+├── package.json         # Node.js package information
+├── README.md            # This readme          
+├── tsconfig.json        # Configuration file of the TypeScript project
+├── vite.config.ts       # Configuration file of the Vite project
+```
 
-## Usage
+## Development
 
-## Prerequisites
-### npm and Node.js
-Install npm and Node.js, [see instructions](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm).
+### Install Node.js
 
-## Basic use
+This project uses [pnpm](https://pnpm.io/) for fast, disk-efficient dependency management. Install pnpm and Node.js:
 
-...
+Install Node.js ([instructions](https://nodejs.org/en/download/)).
 
-## Testing and development
+### Install pnpm globally
 
-### Prerequisites
-#### Octave
-Octave version 7.2.0 will work. Later versions may work.
+```shell
+npm install -g pnpm
+```
+
+### Install dependencies using pnpm
+
+```shell
+pnpm install
+```
+
+### Install Octave
+
+Octave version 10.3.0 is known to work. Other versions will likely work too.
 
 Install Octave and add the folder containing `octave_cli` or `octave_cli.exe` to system path.
 
-### Building
+### Building and bundling
 
-On Windows command line:
-
-```shell
-git clone git@github.com:hamk-uas/dlm-js.git
-cd dlm-js
-npm install @jax-js/jax
-npm install --save-dev vite
-npm install --save-dev esbuild
-```
-
-### Generate reference outputs using Octave
+This project is written in TypeScript. You need to build (compile) it before use:
 
 ```shell
-cd tests/niledemo
-octave-cli niledemo.m
+npm run build
 ```
+- This does two things:
+  - Compiles TypeScript (`dlm-js.ts`) to JavaScript and type definitions (`dist/dlm-js.js`, `dist/dlm-js.d.ts`)
+  - Bundles the code with Vite for use as a library (outputs ESM and CommonJS formats in `dist/`)
 
-### Generate jax-js outputs
+**What does this mean?**
+
+- TypeScript lets you write code with types, but Node.js and browsers only run JavaScript. The build step converts your code to JavaScript.
+- Vite bundles your code so it can be used easily in other projects, in Node.js or browsers, and optimizes it for distribution.
+
+### Generate reference output using Octave
 
 ```shell
-node run-niledemo.js
+npm run test:octave
 ```
+
+This will generate `tests/out/niledemo-out-m.json`. It will also generate `tests/niledemo-in.json`, unless it already exists, and will use that as its input.
+
+### Run niledemo test
+
+After building, you can run the niledemo test with Node.js:
+
+```shell
+pnpm vitest run
+```
+This will run the niledemo test using the built library and write the output to `tests/out/niledemo-out.json`.
 
 ### Authors
-* Marko Laine -- Original DLM and MCMCStat sources
-* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial AI-assisted DLM port
+* Marko Laine -- Original dlm and mcmcstat sources
+* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial (human-assisted AI port of DLM)
 * ########### -- Refined DLM port
 
 ### Copyright
-* 2013-2017 Marko Laine -- DLM and MCMCStat (Folder `dlm-m`)
+* 2013-2017 Marko Laine -- dlm and mcmcstat
 * 2026 HAMK Häme University of Applied Sciences
 * 2026 ######
   

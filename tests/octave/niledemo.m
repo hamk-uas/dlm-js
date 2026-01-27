@@ -1,4 +1,4 @@
-addpath('../../dlm-m');
+addpath('tests/octave/dlm');
 
 %% Classical Nile data
 % Here we fit the classical Nile river flow data
@@ -20,16 +20,16 @@ if (true)
           "w", sqrt([755 755])
      );
 
-     save_json(inputs, "niledemo-in.json");
+     save_json(inputs, "tests/niledemo-in.json");
 endif
 
 % Always load inputs from json
-inputs = load_json("niledemo-in.json");
+inputs = load_json("tests/niledemo-in.json");
 
 %%
 % Fit the DLM model
 out = dlmfit(inputs.y, inputs.s, inputs.w);
-save_json(out, "niledemo-out-m.json");
+save_json(out, "tests/out/niledemo-out-m.json");
 %%
 %figure(3);
 %dlmplotfit(out, inputs.t);

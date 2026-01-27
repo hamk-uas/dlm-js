@@ -1,3 +1,6 @@
+# Ignore test outputs
+tests/out/
+
 # Node.js
 node_modules/
 .env
@@ -7,6 +10,8 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 yarn.lock
+.pnpm-debug.log
+# DO NOT ignore pnpm-lock.yaml! Commit it for reproducible installs.
 coverage/
 dist/
 build/
