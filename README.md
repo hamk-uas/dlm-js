@@ -1,6 +1,6 @@
 # dlm-js — a minimal jax-js port of dynamic linear model
 
-A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) for MATLAB.
+A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB).
 
 ## Features
 ✅ implemented, ❌ not implemented, — not planned to be implemented in dlm-js
