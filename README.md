@@ -5,9 +5,9 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 ## Features
 ✅ implemented, ❌ not implemented, — not planned to be implemented in dlm-js
 
-| Feature | dlm-js | dlm (MATLAB) | description |
+| Feature | dlm&#8209;js | dlm (MATLAB) | description |
 | --- | --- | --- | --- |
-| Feature 1 | ✅&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | ✅ | (Describe here the feature implemented or implemetation details) |
+| Feature 1 | ✅ | ✅ | (Describe here the feature implemented or implemetation details) |
 | Plotting | — | ✅ | This is a computation-only library. Plotting is not planned to be implemented. |
 | float32 computation | ✅ | — | (see below) |
 | float64 computation | ❌ | ✅ | The solver from jax-js currently only supports float32 data. At the moment we favor using the existing jax-js solver for ease of initial development. We have tested that "manual" float64 solves can be implemented in jax-js and result in near-exact matches to results from Octave. We may switch to or also provide float64 for testing or accuracy reasons or when jax-js implements float64 solves. dlm works in float64 in Octave. |
