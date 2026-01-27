@@ -39,6 +39,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 ├── .npmignore           # Ignore file for npm
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)
 ├── package.json         # Node.js package information
+├── pnpm-lock.yaml       # Locked dependencies for reproducible installs (update with "pnpm update")
 ├── README.md            # This readme          
 ├── tsconfig.json        # Configuration file of the TypeScript project
 ├── vite.config.ts       # Configuration file of the Vite project
