@@ -79,7 +79,7 @@ This project is written in TypeScript. You need to build (compile) it before use
 npm run build
 ```
 - This does two things:
-  - Compiles TypeScript (`dlm-js.ts`) to JavaScript and type definitions (`dist/dlm-js.js`, `dist/dlm-js.d.ts`)
+  - Compiles TypeScript (`src/index.ts`) to ESM and CommonJS JavaScript (`dist/dlm-js.es.js`, `dist/dlm-js.cjs.js`) and type definitions (`dist/index.d.ts`)
   - Bundles the code with Vite for use as a library (outputs ESM and CommonJS formats in `dist/`)
 
 **What does this mean?**
