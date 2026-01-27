@@ -5,7 +5,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 ## Features
 ✅ implemented, ❌ not implemented, — not planned to be implemented in dlm-js
 
-| Feature | dlm&#8209;js | dlm (MATLAB) | description |
+| Feature | dlm&#8209;js | dlm (MATLAB) | Description |
 | --- | --- | --- | --- |
 | Feature 1 | ✅ | ✅ | (Describe here the feature implemented or implemetation details) |
 | Plotting | — | ✅ | This is a computation-only library. Plotting is not planned to be implemented. |
