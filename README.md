@@ -12,7 +12,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | Feature | dlm&#8209;js | dlm | Description |
 | --- | --- | --- | --- |
 | Plotting | — | ✅ | dlm-js is a computation-only library. Plotting is not planned to be implemented. |
-| float32 computation | ✅ | ❌ | With float32, niledemo results differ by a factor less than 1 %. dlm-js dtype is configurable whereas dlm works in float64 in Octave. With dlm-js, float32 enables GPU acceleration, which however is very slow due to the serial algorithm. Using the wasm backend is recommended instead. |
+| float32 computation | ✅ | ❌ | With float32, niledemo results differ by a factor less than 1 %. dlm-js dtype is configurable whereas dlm works in float64 in Octave. GPU acceleration can be used when float32 is selected, but it is very slow due to the serial algorithm. Using the wasm backend is recommended instead. |
 | float64 computation | ✅ | ✅ | With float64, niledemo results differ by a factor less than 1e-10. |
 
 ## TODO
