@@ -30,7 +30,8 @@ const dlmSmo = async (
     G: any,
     W: any,
     C0_data: number[][],
-    sample = false
+    sample = false,
+    dtype: DType = DType.Float64
 ): Promise<any> => {
     const n = y.length;
 
@@ -42,14 +43,14 @@ const dlmSmo = async (
     const Cp_array: number[] = new Array(n); // Innovation covariances
 
     // Initial state is the initial prediction for time 0
-    const x0 = np.array(x0_data, { dtype: DType.Float32 });
-    const C0 = np.array(C0_data, { dtype: DType.Float32 });
+    const x0 = np.array(x0_data, { dtype: dtype });
+    const C0 = np.array(C0_data, { dtype: dtype });
 
     // Store initial prediction (copy the data)
     const x0_data_copy = await x0.ref.data();
     const C0_data_copy = await C0.ref.data();
-    x_pred[0] = np.array([[x0_data_copy[0]], [x0_data_copy[1]]], { dtype: DType.Float32 });
-    C_pred[0] = np.array([[C0_data_copy[0], C0_data_copy[1]], [C0_data_copy[2], C0_data_copy[3]]], { dtype: DType.Float32 });
+    x_pred[0] = np.array([[x0_data_copy[0]], [x0_data_copy[1]]], { dtype: dtype });
+    C_pred[0] = np.array([[C0_data_copy[0], C0_data_copy[1]], [C0_data_copy[2], C0_data_copy[3]]], { dtype: dtype });
 
     // Dispose initial arrays as we've copied them
     x0.dispose();
@@ -58,7 +59,7 @@ const dlmSmo = async (
     // --- Forward Kalman Filter ---
     for (let i = 0; i < n; i++) {
         // Compute innovation: v = y - F*x (where x is prediction)
-        const yt = np.array([y[i]], { dtype: DType.Float32 });
+        const yt = np.array([y[i]], { dtype: dtype });
         const Fx = np.matmul(F.ref, x_pred[i].ref);
         const v = np.subtract(yt, Fx);
         const v_data = await v.ref.data();
@@ -69,7 +70,7 @@ const dlmSmo = async (
         const Ft = np.transpose(F.ref);
         const FCFt = np.matmul(FC, Ft);
         const V_val = V_std[i] * V_std[i];
-        const V_arr = np.array([[V_val]], { dtype: DType.Float32 });
+        const V_arr = np.array([[V_val]], { dtype: dtype });
         const Cp = np.add(FCFt, V_arr);
         const Cp_data = await Cp.ref.data();
         Cp_array[i] = Cp_data[0];
@@ -79,9 +80,10 @@ const dlmSmo = async (
         const Ft2 = np.transpose(F.ref);
         const GCFt = np.matmul(GC, Ft2);
         // Use jax-js's solve for 1x1 Cp
-        const K = np.matmul(GCFt, np.linalg.inv(Cp));
+        const K = np.matmul(GCFt, np.linalg.solve(Cp, np.eye(Cp.shape[0], Cp.shape[0], { dtype: dtype })));
+        //const K = np.matmul(GCFt, np.linalg.inv(Cp));
         const K_data = await K.ref.data();
-        K_array[i] = np.array([[K_data[0]], [K_data[1]]], { dtype: DType.Float32 });
+        K_array[i] = np.array([[K_data[0]], [K_data[1]]], { dtype: dtype });
 
         // Compute next prediction if not last timestep
         if (i < n - 1) {
@@ -91,7 +93,7 @@ const dlmSmo = async (
 
             // x(i+1) = G*x(i) + K*v
             const Gx = np.matmul(G.ref, x_pred[i].ref);
-            const v_arr = np.array([[v_data[0]]], { dtype: DType.Float32 });
+            const v_arr = np.array([[v_data[0]]], { dtype: dtype });
             const Kv = np.matmul(K.ref, v_arr.ref);
             const x_next = np.add(Gx, Kv);
 
@@ -104,8 +106,8 @@ const dlmSmo = async (
             // No symmetry fix needed with 32-bit and jax-js
             const C_next_data = await C_next.ref.data();
 
-            x_pred[i + 1] = np.array([[x_next.ref.dataSync()[0]], [x_next.ref.dataSync()[1]]], { dtype: DType.Float32 });
-            C_pred[i + 1] = np.array([[C_next_data[0], C_next_data[1]], [C_next_data[2], C_next_data[3]]], { dtype: DType.Float32 });
+            x_pred[i + 1] = np.array([[x_next.ref.dataSync()[0]], [x_next.ref.dataSync()[1]]], { dtype: dtype });
+            C_pred[i + 1] = np.array([[C_next_data[0], C_next_data[1]], [C_next_data[2], C_next_data[3]]], { dtype: dtype });
 
             x_next.dispose();
             C_next.dispose();
@@ -120,8 +122,8 @@ const dlmSmo = async (
 
     // --- Backward Smoother ---
     // Initialize r and N for backward recursion
-    let r = np.array([[0.0], [0.0]], { dtype: DType.Float32 });
-    let N = np.array([[0.0, 0.0], [0.0, 0.0]], { dtype: DType.Float32 });
+    let r = np.array([[0.0], [0.0]], { dtype: dtype });
+    let N = np.array([[0.0, 0.0], [0.0, 0.0]], { dtype: dtype });
 
     const x_smooth = new Array(n);
     const C_smooth = new Array(n);
@@ -135,7 +137,7 @@ const dlmSmo = async (
         // Compute F'/Cp where F=[1,0] and Cp is scalar
         // F'/Cp = [[1/Cp], [0]]
         const FFCp_data = [[1.0 / Cp_array[i]], [0.0]];
-        const FFCp = np.array(FFCp_data, { dtype: DType.Float32 });
+        const FFCp = np.array(FFCp_data, { dtype: dtype });
 
         // r = FFCp*v + L'*r
         const FFCp_v = np.multiply(FFCp.ref, v_array[i]);
@@ -162,8 +164,8 @@ const dlmSmo = async (
         const x_s_data = await x_s.ref.data();
         const C_s_data = await C_s.ref.data();
 
-        x_smooth[i] = np.array([[x_s_data[0]], [x_s_data[1]]], { dtype: DType.Float32 });
-        C_smooth[i] = np.array([[C_s_data[0], C_s_data[1]], [C_s_data[2], C_s_data[3]]], { dtype: DType.Float32 });
+        x_smooth[i] = np.array([[x_s_data[0]], [x_s_data[1]]], { dtype: dtype });
+        C_smooth[i] = np.array([[C_s_data[0], C_s_data[1]], [C_s_data[2], C_s_data[3]]], { dtype: dtype });
 
         // Update r and N for next iteration
         r.dispose();
@@ -282,23 +284,25 @@ const dlmSmo = async (
  * @param y - Observed data array
  * @param s - Observation noise standard deviation (scalar)
  * @param w - State noise standard deviations (array of two elements)
+ * @param dtype - Data type for jax-js arrays (default: DType.Float64)
  * @returns Fitted DLM results
  */
 export const dlmFit = async (
     y: number[],
     s: number,
-    w: [number, number]
+    w: [number, number],
+    dtype: DType = DType.Float64
 ): Promise<any> => {
     const n = y.length;
 
     const G_data = [[1.0, 1.0], [0.0, 1.0]];
     const F_data = [[1.0, 0.0]];
-    const G = np.array(G_data, { dtype: DType.Float32 });
-    const F = np.array(F_data, { dtype: DType.Float32 });
+    const G = np.array(G_data, { dtype: dtype });
+    const F = np.array(F_data, { dtype: dtype });
 
     const V_std = new Array(n).fill(s);
     const W_data = [[w[0] * w[0], 0.0], [0.0, w[1] * w[1]]];
-    const W = np.array(W_data, { dtype: DType.Float32 });
+    const W = np.array(W_data, { dtype: dtype });
 
     // Initial Values (Octave dlmfit default init)
     let sum = 0;
@@ -312,7 +316,7 @@ export const dlmFit = async (
     const C0_data = [[safe_c0, 0.0], [0.0, safe_c0]];
 
     // --- Run 1 ---
-    const out1 = await dlmSmo(y, F.ref, V_std, x0_data, G.ref, W.ref, C0_data);
+    const out1 = await dlmSmo(y, F.ref, V_std, x0_data, G.ref, W.ref, C0_data, false, dtype);
 
     // --- Update Initial Values ---
     const x0_arr = out1.x[0];

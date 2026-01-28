@@ -10,20 +10,20 @@ function filterKeys(obj: any, keys: string[]): any {
   return filtered;
 }
 // Helper: deep comparison with percentage tolerance and path reporting
-function deepAlmostEqual(a: any, b: any, percentTolerance = 0.001, path: string = ''): { equal: boolean, path?: string, a?: any, b?: any } {
+function deepAlmostEqual(a: any, b: any, relativeTolerance = 0.001, path: string = ''): { equal: boolean, path?: string, a?: any, b?: any } {
   if (typeof a === 'number' && typeof b === 'number') {
     if (isNaN(a) && isNaN(b)) return { equal: true };
     if (!isFinite(a) || !isFinite(b)) return { equal: a === b, path, a, b };
     const diff = Math.abs(a - b);
     const maxAbs = Math.max(Math.abs(a), Math.abs(b), 1e-12);
-    if (diff / maxAbs > percentTolerance) {
+    if (diff / maxAbs > relativeTolerance) {
       return { equal: false, path, a, b };
     }
     return { equal: true };
   }
   if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
     for (let i = 0; i < a.length; i++) {
-      const res = deepAlmostEqual(a[i], b[i], percentTolerance, `${path}[${i}]`);
+      const res = deepAlmostEqual(a[i], b[i], relativeTolerance, `${path}[${i}]`);
       if (!res.equal) return res;
     }
     return { equal: true };
@@ -35,7 +35,7 @@ function deepAlmostEqual(a: any, b: any, percentTolerance = 0.001, path: string 
       return { equal: false, path: path + ' (key length mismatch)', a: aKeys, b: bKeys };
     }
     for (const k of aKeys) {
-      const res = deepAlmostEqual(a[k], b[k], percentTolerance, path ? `${path}.${k}` : k);
+      const res = deepAlmostEqual(a[k], b[k], relativeTolerance, path ? `${path}.${k}` : k);
       if (!res.equal) return res;
     }
     return { equal: true };
@@ -46,7 +46,7 @@ function deepAlmostEqual(a: any, b: any, percentTolerance = 0.001, path: string 
   return { equal: true };
 }
 
-import { defaultDevice, init, Device } from "@jax-js/jax";
+import { defaultDevice, init, Device, DType } from "@jax-js/jax";
 import { describe, it, expect } from 'vitest';
 import { dlmFit } from '../src/index';
 import * as fs from 'fs';
@@ -97,19 +97,19 @@ describe('niledemo output', () => {
       filteredReference = filterKeys(reference, keys);
     }
     // Compare the (possibly filtered) result and reference with percentage tolerance
-    const tolerance = 0.01; // 1% relative tolerance
-    const cmp = deepAlmostEqual(filteredResult, filteredReference, tolerance);
+    const relativeTolerance = 1e-10; // Relative tolerance
+    const cmp = deepAlmostEqual(filteredResult, filteredReference, relativeTolerance);
     if (!cmp.equal) {
       let reason = '';
       if (cmp.path && cmp.path.includes('key length mismatch')) {
         reason = 'Key length mismatch (object shape difference)';
       } else {
-        reason = `Values differ by more than ${tolerance * 100}%`;
+        reason = `Values differ by more than a factor of ${relativeTolerance}`;
       }
       throw new Error(
         `Output does not match reference.\nReason: ${reason}\n` +
         `First mismatch at: ${cmp.path}\n` +
-        `Result value: ${JSON.stringify(cmp.a)}\n` +
+        `Result value:    ${JSON.stringify(cmp.a)}\n` +
         `Reference value: ${JSON.stringify(cmp.b)}`
       );
     }

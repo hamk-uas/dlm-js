@@ -1,10 +1,10 @@
 # dlm-js — a minimal jax-js port of dynamic linear model
 
-A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB).
+A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
 
-*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave)*
+*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The resulting numbers differ by a factor less than 1e-10. The dlm-js computation lasts about 2 seconds.*
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
@@ -12,8 +12,8 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | Feature | dlm&#8209;js | dlm (MATLAB) | Description |
 | --- | --- | --- | --- |
 | Plotting | — | ✅ | This is a computation-only library. Plotting is not planned to be implemented. |
-| float32 computation | ✅ | ❌ | (see below) |
-| float64 computation | ❌ | ✅ | The solver from jax-js currently only supports float32 data. At the moment we favor using the existing jax-js solver for ease of initial development. We have tested that "manual" float64 solves can be implemented in jax-js and result in near-exact matches to results from Octave. We may switch to or also provide float64 for testing or accuracy reasons or when jax-js implements float64 solves. dlm works in float64 in Octave. |
+| float32 computation | ✅ | ❌ | dlm-js dtype is configurable whereas dlm works in float64 in Octave. With dlm-js float32 enables GPU acceleration, which however is very slow due to the serial algorithm. Using the wasm backend is recommended instead. |
+| float64 computation | ✅ | ✅ | |
 
 ## TODO
 
