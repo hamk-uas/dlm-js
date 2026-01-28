@@ -48,12 +48,11 @@ const dlmSmo = async (
     );
     Cp_array[i] = (await Cp.ref.data())[0];
 
-    // Kalman gain: K = G*C*F' / Cp (result is [2,1])
+    // Kalman gain: K = G*C*F' / Cp (result is [2, 1])
     const K = np.matmul(
       np.matmul(np.matmul(G.ref, Ci.ref), np.transpose(F.ref)),
       np.linalg.solve(Cp.ref, np.eye(1, 1, { dtype }))
     );
-    // Store K - need to keep it for backward pass, use .ref to preserve
     K_array[i] = np.reshape(K.ref, [2, 1]);
 
     // Predict next state (except last timestep)
@@ -61,13 +60,13 @@ const dlmSmo = async (
       // L = G - K*F
       const L = np.subtract(G.ref, np.matmul(K.ref, F.ref));
 
-      // x_next = G*x + K*v (result is [2,1])
+      // x_next = G*x + K*v (result is [2, 1])
       x_pred[i + 1] = np.add(
         np.matmul(G.ref, xi.ref),
         np.matmul(K.ref, np.array([[v_array[i]]], { dtype }))
       );
 
-      // C_next = G*C*L' + W (result is [2,2])
+      // C_next = G*C*L' + W (result is [2, 2])
       C_pred[i + 1] = np.add(
         np.matmul(np.matmul(G.ref, Ci.ref), np.transpose(L)),
         W.ref
@@ -107,10 +106,10 @@ const dlmSmo = async (
       np.matmul(np.matmul(Lt, N.ref), L)
     );
 
-    // x_smooth = x_pred + C * r (result is [2,1])
+    // x_smooth = x_pred + C * r (result is [2, 1])
     x_smooth[i] = np.add(xi.ref, np.matmul(Ci.ref, r_new.ref));
 
-    // C_smooth = C_pred - C * N * C (result is [2,2])
+    // C_smooth = C_pred - C * N * C (result is [2, 2])
     C_smooth[i] = np.subtract(
       Ci.ref,
       np.matmul(np.matmul(Ci.ref, N_new.ref), Ci.ref)
@@ -125,14 +124,13 @@ const dlmSmo = async (
   for (let i = 0; i < n; i++) K_array[i].dispose();
 
   // === Compute statistics ===
-  const yhat: number[] = [];
-  const ystd: number[] = [];
-  const xstd: [number, number][] = [];
-  const resid0: number[] = [];
-  const resid: number[] = [];
-  const resid2: number[] = [];
-  let ssy = 0;
-  let lik = 0;
+  const yhat = [] as number[];
+  const ystd = [] as number[];
+  const xstd = [] as [number, number][];
+  const resid0 = [] as number[];
+  const resid = [] as number[];
+  const resid2 = [] as number[];
+  let ssy = 0, lik = 0;
 
   for (let i = 0; i < n; i++) {
     const yhat_i = (await x_pred[i].ref.data())[0];
@@ -151,15 +149,14 @@ const dlmSmo = async (
     lik += (v_array[i] ** 2) / Cp_array[i] + Math.log(Cp_array[i]);
   }
 
-  const nobs = n;
-  const s2 = resid.reduce((s, r) => s + r * r, 0) / nobs;
-  const mse = resid2.reduce((s, r) => s + r * r, 0) / nobs;
-  const mape = resid2.reduce((s, r, i) => s + Math.abs(r) / Math.abs(y[i]), 0) / nobs;
+  const s2 = resid.reduce((s, r) => s + r * r, 0) / n;
+  const mse = resid2.reduce((s, r) => s + r * r, 0) / n;
+  const mape = resid2.reduce((s, r, i) => s + Math.abs(r) / Math.abs(y[i]), 0) / n;
 
   return {
     x: x_smooth, C: C_smooth, xf: x_pred, Cf: C_pred,
     yhat, ystd, xstd, resid0, resid, resid2,
-    v: v_array, Cp: Cp_array, ssy, s2, nobs, lik, mse, mape,
+    v: v_array, Cp: Cp_array, ssy, s2, nobs: n, lik, mse, mape,
   };
 };
 
@@ -183,7 +180,7 @@ export const dlmFit = async (
   const G = np.array([[1.0, 1.0], [0.0, 1.0]], { dtype });
   const F = np.array([[1.0, 0.0]], { dtype });
   const W = np.array([[w[0] ** 2, 0.0], [0.0, w[1] ** 2]], { dtype });
-  const V_std = new Array<number>(n).fill(s);
+  const V_std = Array(n).fill(s) as number[];
 
   // Initial state (mean of first 12 observations)
   const mean_y = y.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
@@ -213,11 +210,11 @@ export const dlmFit = async (
   const out2 = await dlmSmo(y, F, V_std, x0_updated, G, W, C0_scaled, dtype);
 
   // Convert to plain JS arrays
-  const xf: number[][] = [[], []];
-  const Cf: number[][][] = [[[], []], [[], []]];
-  const x: number[][] = [[], []];
-  const C: number[][][] = [[[], []], [[], []]];
-  const xstd: number[][] = [];
+  const xf = [[], []] as number[][];
+  const Cf = [[[], []], [[], []]] as number[][][];
+  const x = [[], []] as number[][];
+  const C = [[[], []], [[], []]] as number[][][];
+  const xstd = [] as number[][];
 
   for (let i = 0; i < n; i++) {
     const xfi = await out2.xf[i].ref.data();
