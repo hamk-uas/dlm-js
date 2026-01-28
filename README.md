@@ -48,17 +48,19 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 ### Install Node.js
 
-This project uses [pnpm](https://pnpm.io/) for fast, disk-efficient dependency management. Install pnpm and Node.js:
-
-Install Node.js ([instructions](https://nodejs.org/en/download/)).
+[Install Node.js](https://nodejs.org/en/download/) to be able to run JavaScript locally.
 
 ### Install pnpm globally
+
+This project uses [pnpm](https://pnpm.io/) for fast, disk-efficient dependency management. Install it:
 
 ```shell
 npm install -g pnpm
 ```
 
 ### Install dependencies using pnpm
+
+Install dlm-js dependencies automatically using pnpm:
 
 ```shell
 pnpm install
