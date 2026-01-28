@@ -19,8 +19,9 @@
   "scripts": {
     "build": "vite build",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m",
-    "test:node": "vitest run tests/niledemo.ts",
-    "test": "npm run test:octave && npm run test:node"
+    "test:node": "vitest run tests/niledemo.test.ts",
+    "test": "npm run test:octave && npm run test:node",
+    "prepublishOnly": "npm run build && npm run test"
   },
   "main": "./dist/dlm-js.cjs.js",
   "module": "./dist/dlm-js.es.js",

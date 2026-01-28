@@ -1,54 +1,7 @@
-// Helper: filter object by allowed keys (shallow)
-function filterKeys(obj: any, keys: string[]): any {
-  if (!obj || typeof obj !== 'object') return obj;
-  const filtered: any = {};
-  for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(obj, k)) {
-      filtered[k] = obj[k];
-    }
-  }
-  return filtered;
-}
-// Helper: deep comparison with percentage tolerance and path reporting
-function deepAlmostEqual(a: any, b: any, relativeTolerance = 0.001, path: string = ''): { equal: boolean, path?: string, a?: any, b?: any } {
-  if (typeof a === 'number' && typeof b === 'number') {
-    if (isNaN(a) && isNaN(b)) return { equal: true };
-    if (!isFinite(a) || !isFinite(b)) return { equal: a === b, path, a, b };
-    const diff = Math.abs(a - b);
-    const maxAbs = Math.max(Math.abs(a), Math.abs(b), 1e-12);
-    if (diff / maxAbs > relativeTolerance) {
-      return { equal: false, path, a, b };
-    }
-    return { equal: true };
-  }
-  if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
-    for (let i = 0; i < a.length; i++) {
-      const res = deepAlmostEqual(a[i], b[i], relativeTolerance, `${path}[${i}]`);
-      if (!res.equal) return res;
-    }
-    return { equal: true };
-  }
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
-    if (aKeys.length !== bKeys.length) {
-      return { equal: false, path: path + ' (key length mismatch)', a: aKeys, b: bKeys };
-    }
-    for (const k of aKeys) {
-      const res = deepAlmostEqual(a[k], b[k], relativeTolerance, path ? `${path}.${k}` : k);
-      if (!res.equal) return res;
-    }
-    return { equal: true };
-  }
-  if (a !== b) {
-    return { equal: false, path, a, b };
-  }
-  return { equal: true };
-}
-
-import { defaultDevice, init, Device, DType } from "@jax-js/jax";
-import { describe, it, expect } from 'vitest';
+import { defaultDevice, init } from "@jax-js/jax";
+import { describe, it } from 'vitest';
 import { dlmFit } from '../src/index';
+import { filterKeys, deepAlmostEqual } from './utils';
 import * as fs from 'fs';
 import * as path from 'path';
 
