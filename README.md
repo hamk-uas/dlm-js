@@ -3,7 +3,7 @@
 A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB).
 
 ## Features
-✅ implemented, ❌ not implemented, — not planned to be implemented in dlm-js
+✅ implemented, ❌ not implemented, — will not be implemented
 
 | Feature | dlm&#8209;js | dlm (MATLAB) | Description |
 | --- | --- | --- | --- |
