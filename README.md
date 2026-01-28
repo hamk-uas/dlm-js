@@ -97,12 +97,17 @@ This will generate `tests/out/niledemo-out-m.json`. It will also generate `tests
 
 ### Run niledemo test
 
-After building, you can run the niledemo test with Node.js:
+You can run the niledemo test directly (no build step needed) with:
 
 ```shell
 pnpm vitest run
 ```
-This will run the niledemo test using the built library and write the output to `tests/out/niledemo-out.json`.
+or
+```shell
+pnpm run test:node
+```
+
+This runs the test using the source code in `src/` (not the built output). Vitest compiles your TypeScript on the fly.
 
 ### Authors
 * Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/`
