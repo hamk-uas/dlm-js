@@ -111,7 +111,7 @@ This runs the test using the source code in `src/` (not the built output). Vites
 
 ### Authors
 * Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/`
-* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial (human-assisted AI port of DLM)
+* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial human-assisted AI port of DLM
 * ########### -- Refined DLM port
 
 ### Copyright

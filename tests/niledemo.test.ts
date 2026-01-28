@@ -46,7 +46,7 @@ function deepAlmostEqual(a: any, b: any, percentTolerance = 0.001, path: string 
   return { equal: true };
 }
 
-
+import { defaultDevice, init, Device } from "@jax-js/jax";
 import { describe, it, expect } from 'vitest';
 import { dlmFit } from '../src/index';
 import * as fs from 'fs';
@@ -72,7 +72,15 @@ describe('niledemo output', () => {
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
-    const jax = await import('@jax-js/jax');
+    const devices = await init();
+    // Use WASM if available, otherwise use CPU
+    let useDevice = defaultDevice();
+    if (devices.includes('wasm')) {
+        useDevice = 'wasm';
+    } else if (devices.includes('cpu')) {
+        useDevice = 'cpu';
+    }
+    defaultDevice(useDevice);
     const result = await dlmFit(nileInput.y, nileInput.s, nileInput.w);
     fs.writeFileSync(outputFileName, JSON.stringify(result, null, 2));
     if (!fs.existsSync(referenceFileName)) {
