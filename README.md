@@ -110,12 +110,12 @@ pnpm run test:node
 This runs the test using the source code in `src/` (not the built output). Vitest compiles your TypeScript on the fly.
 
 ### Authors
-* Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/`
+* Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
 * Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial human-assisted AI port of DLM
 * ########### -- Refined DLM port
 
 ### Copyright
-* 2013-2017 Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/`
+* 2013-2017 Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
 * 2026 HAMK Häme University of Applied Sciences
 * 2026 ######
   
