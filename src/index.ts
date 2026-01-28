@@ -32,6 +32,9 @@ const dlmSmo = async (
   x_pred[0] = np.array(x0_data, { dtype });
   C_pred[0] = np.array(C0_data, { dtype });
 
+  // Precompute F' (used in both loops)
+  const Ft = np.transpose(F.ref);
+
   // === Forward Kalman Filter ===
   for (let i = 0; i < n; i++) {
     const xi = x_pred[i];
@@ -43,15 +46,15 @@ const dlmSmo = async (
 
     // Innovation covariance: Cp = F*C*F' + V
     const Cp = np.add(
-      np.matmul(np.matmul(F.ref, Ci.ref), np.transpose(F.ref)),
+      np.einsum('ij,jk,lk->il', F.ref, Ci.ref, F.ref),
       np.array([[V_std[i] ** 2]], { dtype })
     );
     Cp_array[i] = (await Cp.ref.data())[0];
 
     // Kalman gain: K = G*C*F' / Cp (result is [2, 1])
-    const K = np.matmul(
-      np.matmul(np.matmul(G.ref, Ci.ref), np.transpose(F.ref)),
-      np.linalg.solve(Cp.ref, np.eye(1, 1, { dtype }))
+    const K = np.divide(
+      np.einsum('ij,jk,lk->il', G.ref, Ci.ref, F.ref),
+      Cp_array[i]
     );
     K_array[i] = np.reshape(K.ref, [2, 1]);
 
@@ -68,7 +71,7 @@ const dlmSmo = async (
 
       // C_next = G*C*L' + W (result is [2, 2])
       C_pred[i + 1] = np.add(
-        np.matmul(np.matmul(G.ref, Ci.ref), np.transpose(L)),
+        np.einsum('ij,jk,lk->il', G.ref, Ci.ref, L.ref),
         W.ref
       );
     }
@@ -87,23 +90,22 @@ const dlmSmo = async (
     const Ci = C_pred[i];
     const Ki = K_array[i];
 
-    // L = G - K*F, Lt = L'
+    // L = G - K*F
     const L = np.subtract(G.ref, np.matmul(Ki.ref, F.ref));
-    const Lt = np.transpose(L.ref);
 
-    // F'/Cp for F=[1,0]: [[1/Cp], [0]]
-    const FtCpInv = np.array([[1.0 / Cp_array[i]], [0.0]], { dtype });
+    // F'/Cp - divide precomputed Ft by scalar Cp
+    const FtCpInv = np.divide(Ft.ref, Cp_array[i]);
 
     // r_new = F'/Cp * v + L' * r
     const r_new = np.add(
       np.multiply(FtCpInv.ref, v_array[i]),
-      np.matmul(Lt.ref, r.ref)
+      np.matmul(np.transpose(L.ref), r.ref)
     );
 
-    // N_new = F'/Cp * F + L' * N * L
+    // N_new = F'/Cp * F + L' * N * L (using einsum with implicit transpose)
     const N_new = np.add(
       np.matmul(FtCpInv, F.ref),
-      np.matmul(np.matmul(Lt, N.ref), L)
+      np.einsum('ji,jk,kl->il', L.ref, N.ref, L.ref)
     );
 
     // x_smooth = x_pred + C * r (result is [2, 1])
@@ -112,7 +114,7 @@ const dlmSmo = async (
     // C_smooth = C_pred - C * N * C (result is [2, 2])
     C_smooth[i] = np.subtract(
       Ci.ref,
-      np.matmul(np.matmul(Ci.ref, N_new.ref), Ci.ref)
+      np.einsum('ij,jk,kl->il', Ci.ref, N_new.ref, Ci.ref)
     );
 
     disposeAll(r, N);
@@ -120,7 +122,7 @@ const dlmSmo = async (
     N = N_new;
   }
 
-  disposeAll(r, N);
+  disposeAll(r, N, Ft);
   for (let i = 0; i < n; i++) K_array[i].dispose();
 
   // === Compute statistics ===
