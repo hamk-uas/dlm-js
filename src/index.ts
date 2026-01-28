@@ -1,18 +1,18 @@
 import { DType, numpy as np } from "@jax-js/jax";
-import type { DlmSmoResult, DlmFitResult } from "./types";
-import { disposeAll } from "./types";
+import type { DlmSmoResult, DlmFitResult, FloatArray } from "./types";
+import { disposeAll, getFloatArrayType } from "./types";
 
 // Public type exports
-export type { DlmFitResult } from "./types";
+export type { DlmFitResult, FloatArray } from "./types";
 
 /**
  * DLM Smoother - Kalman filter (forward) + RTS smoother (backward).
  * @internal
  */
 const dlmSmo = async (
-  y: number[],
+  y: FloatArray,
   F: np.Array,
-  V_std: number[],
+  V_std: FloatArray,
   x0_data: number[][],
   G: np.Array,
   W: np.Array,
@@ -20,13 +20,14 @@ const dlmSmo = async (
   dtype: DType = DType.Float64
 ): Promise<DlmSmoResult> => {
   const n = y.length;
+  const FA = getFloatArrayType(dtype);
 
   // Storage for filter outputs
   const x_pred: np.Array[] = new Array(n);
   const C_pred: np.Array[] = new Array(n);
   const K_array: np.Array[] = new Array(n);
-  const v_array: number[] = new Array(n);
-  const Cp_array: number[] = new Array(n);
+  const v_array = new FA(n);
+  const Cp_array = new FA(n);
 
   // Initialize from input data (already correct shapes from nested arrays)
   x_pred[0] = np.array(x0_data, { dtype });
@@ -126,34 +127,38 @@ const dlmSmo = async (
   for (let i = 0; i < n; i++) K_array[i].dispose();
 
   // === Compute statistics ===
-  const yhat = [] as number[];
-  const ystd = [] as number[];
-  const xstd = [] as [number, number][];
-  const resid0 = [] as number[];
-  const resid = [] as number[];
-  const resid2 = [] as number[];
+  const yhat = new FA(n);
+  const ystd = new FA(n);
+  const xstd: [number, number][] = new Array(n);
+  const resid0 = new FA(n);
+  const resid = new FA(n);
+  const resid2 = new FA(n);
   let ssy = 0, lik = 0;
 
   for (let i = 0; i < n; i++) {
     const yhat_i = (await x_pred[i].ref.data())[0];
     const C_s = await C_smooth[i].ref.data();
 
-    yhat.push(yhat_i);
-    xstd.push([Math.sqrt(Math.abs(C_s[0])), Math.sqrt(Math.abs(C_s[3]))]);
-    ystd.push(Math.sqrt(C_s[0] + V_std[i] ** 2));
+    yhat[i] = yhat_i;
+    xstd[i] = [Math.sqrt(Math.abs(C_s[0])), Math.sqrt(Math.abs(C_s[3]))];
+    ystd[i] = Math.sqrt(C_s[0] + V_std[i] ** 2);
 
     const r0 = y[i] - yhat_i;
-    resid0.push(r0);
-    resid.push(r0 / V_std[i]);
-    resid2.push(v_array[i] / Math.sqrt(Cp_array[i]));
+    resid0[i] = r0;
+    resid[i] = r0 / V_std[i];
+    resid2[i] = v_array[i] / Math.sqrt(Cp_array[i]);
 
     ssy += r0 * r0;
     lik += (v_array[i] ** 2) / Cp_array[i] + Math.log(Cp_array[i]);
   }
 
-  const s2 = resid.reduce((s, r) => s + r * r, 0) / n;
-  const mse = resid2.reduce((s, r) => s + r * r, 0) / n;
-  const mape = resid2.reduce((s, r, i) => s + Math.abs(r) / Math.abs(y[i]), 0) / n;
+  let s2 = 0, mse = 0, mape = 0;
+  for (let i = 0; i < n; i++) {
+    s2 += resid[i] ** 2;
+    mse += resid2[i] ** 2;
+    mape += Math.abs(resid2[i]) / Math.abs(y[i]);
+  }
+  s2 /= n; mse /= n; mape /= n;
 
   return {
     x: x_smooth, C: C_smooth, xf: x_pred, Cf: C_pred,
@@ -165,34 +170,41 @@ const dlmSmo = async (
 /**
  * Fit a local linear trend DLM model.
  *
- * @param y - Observations
+ * @param y - Observations (number[] or TypedArray)
  * @param s - Observation noise std dev
  * @param w - State noise std devs [level, slope]
  * @param dtype - Computation dtype (default: Float64)
  */
 export const dlmFit = async (
-  y: number[],
+  y: ArrayLike<number>,
   s: number,
   w: [number, number],
   dtype: DType = DType.Float64
 ): Promise<DlmFitResult> => {
   const n = y.length;
+  const FA = getFloatArrayType(dtype);
+
+  // Convert input to TypedArray if needed
+  const yArr = y instanceof FA ? y : FA.from(y);
+  const V_std = new FA(n).fill(s);
 
   // System matrices
   const G = np.array([[1.0, 1.0], [0.0, 1.0]], { dtype });
   const F = np.array([[1.0, 0.0]], { dtype });
   const W = np.array([[w[0] ** 2, 0.0], [0.0, w[1] ** 2]], { dtype });
-  const V_std = Array(n).fill(s) as number[];
 
   // Initial state (mean of first 12 observations)
-  const mean_y = y.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
+  let sum = 0;
+  const count = Math.min(12, n);
+  for (let i = 0; i < count; i++) sum += yArr[i];
+  const mean_y = sum / count;
   const c0_val = (Math.abs(mean_y) * 0.5) ** 2;
   const c0 = c0_val === 0 ? 1e7 : c0_val;
   const x0_data = [[mean_y], [0.0]];
   const C0_data = [[c0, 0.0], [0.0, c0]];
 
   // Run 1: Initial smoother pass (use .ref to preserve matrices)
-  const out1 = await dlmSmo(y, F.ref, V_std, x0_data, G.ref, W.ref, C0_data, dtype);
+  const out1 = await dlmSmo(yArr, F.ref, V_std, x0_data, G.ref, W.ref, C0_data, dtype);
 
   // Update initial values from smoothed estimates
   const x0_new = await out1.x[0].ref.data();
@@ -209,35 +221,35 @@ export const dlmFit = async (
   }
 
   // Run 2: Final pass (matrices consumed here)
-  const out2 = await dlmSmo(y, F, V_std, x0_updated, G, W, C0_scaled, dtype);
+  const out2 = await dlmSmo(yArr, F, V_std, x0_updated, G, W, C0_scaled, dtype);
 
-  // Convert to plain JS arrays
-  const xf = [[], []] as number[][];
-  const Cf = [[[], []], [[], []]] as number[][][];
-  const x = [[], []] as number[][];
-  const C = [[[], []], [[], []]] as number[][][];
-  const xstd = [] as number[][];
+  // Convert to TypedArrays
+  const xf = [new FA(n), new FA(n)];
+  const Cf = [[new FA(n), new FA(n)], [new FA(n), new FA(n)]];
+  const x = [new FA(n), new FA(n)];
+  const C = [[new FA(n), new FA(n)], [new FA(n), new FA(n)]];
+  const xstd: FloatArray[] = new Array(n);
 
   for (let i = 0; i < n; i++) {
     const xfi = await out2.xf[i].ref.data();
-    xf[0].push(xfi[0]); xf[1].push(xfi[1]);
+    xf[0][i] = xfi[0]; xf[1][i] = xfi[1];
     out2.xf[i].dispose();
 
     const Cfi = await out2.Cf[i].ref.data();
-    Cf[0][0].push(Cfi[0]); Cf[0][1].push(Cfi[1]);
-    Cf[1][0].push(Cfi[2]); Cf[1][1].push(Cfi[3]);
+    Cf[0][0][i] = Cfi[0]; Cf[0][1][i] = Cfi[1];
+    Cf[1][0][i] = Cfi[2]; Cf[1][1][i] = Cfi[3];
     out2.Cf[i].dispose();
 
     const xi = await out2.x[i].ref.data();
-    x[0].push(xi[0]); x[1].push(xi[1]);
+    x[0][i] = xi[0]; x[1][i] = xi[1];
     out2.x[i].dispose();
 
     const Ci = await out2.C[i].ref.data();
-    C[0][0].push(Ci[0]); C[0][1].push(Ci[1]);
-    C[1][0].push(Ci[2]); C[1][1].push(Ci[3]);
+    C[0][0][i] = Ci[0]; C[0][1][i] = Ci[1];
+    C[1][0][i] = Ci[2]; C[1][1][i] = Ci[3];
     out2.C[i].dispose();
 
-    xstd.push([out2.xstd[i][0], out2.xstd[i][1]]);
+    xstd[i] = new FA([out2.xstd[i][0], out2.xstd[i][1]]);
   }
 
   return {
@@ -245,7 +257,7 @@ export const dlmFit = async (
     G: [[1.0, 1.0], [0.0, 1.0]],
     F: [1.0, 0.0],
     W: [[w[0] ** 2, 0.0], [0.0, w[1] ** 2]],
-    y, V: V_std,
+    y: yArr, V: V_std,
     x0: [x0_updated[0][0], x0_updated[1][0]],
     C0: C0_scaled,
     XX: [],

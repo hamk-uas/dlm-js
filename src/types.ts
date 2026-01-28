@@ -1,5 +1,10 @@
-import { numpy as np } from "@jax-js/jax";
-import type { DType } from "@jax-js/jax";
+import { numpy as np, DType } from "@jax-js/jax";
+
+/** TypedArray type for float data - either Float32Array or Float64Array based on dtype */
+export type FloatArray = Float32Array | Float64Array;
+
+/** TypedArray constructor type */
+export type FloatArrayConstructor = typeof Float32Array | typeof Float64Array;
 
 /**
  * Result from the DLM smoother function (dlmSmo).
@@ -16,21 +21,21 @@ export interface DlmSmoResult {
   /** Filtered (one-step-ahead prediction) state covariances - array of 2x2 np.Arrays */
   Cf: np.Array[];
   /** Filter predictions (F * x_pred) */
-  yhat: number[];
+  yhat: FloatArray;
   /** Prediction standard deviations */
-  ystd: number[];
-  /** Smoothed state standard deviations [sqrt(C[0,0]), sqrt(C[1,1])] per timestep */
+  ystd: FloatArray;
+  /** Smoothed state standard deviations [time][state_dim] */
   xstd: [number, number][];
   /** Raw residuals (y - yhat) */
-  resid0: number[];
+  resid0: FloatArray;
   /** Scaled residuals (resid0 / V) */
-  resid: number[];
+  resid: FloatArray;
   /** Standardized prediction residuals (v / sqrt(Cp)) */
-  resid2: number[];
+  resid2: FloatArray;
   /** Innovations (prediction errors) */
-  v: number[];
+  v: FloatArray;
   /** Innovation covariances */
-  Cp: number[];
+  Cp: FloatArray;
   /** Sum of squared raw residuals */
   ssy: number;
   /** Residual variance */
@@ -47,19 +52,19 @@ export interface DlmSmoResult {
 
 /**
  * Result from the DLM fit function (dlmFit).
- * All arrays are plain JavaScript arrays (no np.Arrays).
+ * Numeric arrays use TypedArrays (Float32Array or Float64Array based on dtype).
  */
 export interface DlmFitResult {
   /** Filtered state means [state_dim][time] */
-  xf: number[][];
+  xf: FloatArray[];
   /** Filtered covariances [row][col][time] */
-  Cf: number[][][];
+  Cf: FloatArray[][];
   /** Smoothed state means [state_dim][time] */
-  x: number[][];
+  x: FloatArray[];
   /** Smoothed covariances [row][col][time] */
-  C: number[][][];
+  C: FloatArray[][];
   /** Smoothed state standard deviations [time][state_dim] */
-  xstd: number[][];
+  xstd: FloatArray[];
   /** State transition matrix G (2x2) */
   G: number[][];
   /** Observation matrix F (1x2 flattened) */
@@ -67,9 +72,9 @@ export interface DlmFitResult {
   /** State noise covariance W (2x2) */
   W: number[][];
   /** Observations */
-  y: number[];
+  y: FloatArray;
   /** Observation noise standard deviations */
-  V: number[];
+  V: FloatArray;
   /** Initial state mean (after first smoother pass) */
   x0: number[];
   /** Initial state covariance (scaled) */
@@ -77,19 +82,19 @@ export interface DlmFitResult {
   /** Covariates (empty for basic model) */
   XX: number[];
   /** Filter predictions */
-  yhat: number[];
+  yhat: FloatArray;
   /** Prediction standard deviations */
-  ystd: number[];
+  ystd: FloatArray;
   /** Raw residuals */
-  resid0: number[];
+  resid0: FloatArray;
   /** Scaled residuals */
-  resid: number[];
+  resid: FloatArray;
   /** Sum of squared residuals */
   ssy: number;
   /** Innovations */
-  v: number[];
+  v: FloatArray;
   /** Innovation covariances */
-  Cp: number[];
+  Cp: FloatArray;
   /** Residual variance */
   s2: number;
   /** Number of observations */
@@ -101,7 +106,7 @@ export interface DlmFitResult {
   /** Mean absolute percentage error */
   mape: number;
   /** Standardized residuals */
-  resid2: number[];
+  resid2: FloatArray;
   /** Class identifier */
   class: 'dlmfit';
 }
@@ -115,4 +120,11 @@ export function disposeAll(...arrays: (np.Array | undefined | null)[]): void {
       arr.dispose();
     }
   }
+}
+
+/**
+ * Get the appropriate TypedArray constructor based on DType.
+ */
+export function getFloatArrayType(dtype: DType): FloatArrayConstructor {
+  return dtype === DType.Float32 ? Float32Array : Float64Array;
 }
