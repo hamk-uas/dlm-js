@@ -105,7 +105,7 @@ pnpm vitest run
 This will run the niledemo test using the built library and write the output to `tests/out/niledemo-out.json`.
 
 ### Authors
-* Marko Laine -- Original dlm and mcmcstat sources
+* Marko Laine -- Original dlm and mcmcstat sources (`tests/octave/dlm`)
 * Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial (human-assisted AI port of DLM)
 * ########### -- Refined DLM port
 
