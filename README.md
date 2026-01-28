@@ -4,7 +4,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
 
-*Niledemo main output from dlm-js (which uses jax-js) and the MATLAB dlm implementation (using Octave)*
+*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave)*
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
