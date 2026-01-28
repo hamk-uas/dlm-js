@@ -79,14 +79,9 @@ This project is written in TypeScript. You need to build (compile) it before use
 ```shell
 npm run build
 ```
-- This does two things:
-  - Compiles TypeScript (`src/index.ts`) to ESM and CommonJS JavaScript (`dist/dlm-js.es.js`, `dist/dlm-js.cjs.js`) and type definitions (`dist/index.d.ts`)
-  - Bundles the code with Vite for use as a library (outputs ESM and CommonJS formats in `dist/`)
-
-**What does this mean?**
-
-- TypeScript lets you write code with types, but Node.js and browsers only run JavaScript. The build step converts your code to JavaScript.
-- Vite bundles your code so it can be used easily in other projects, in Node.js or browsers, and optimizes it for distribution.
+This does two things:
+  - **Compiles TypeScript (`src/index.ts`) to ESM and CommonJS JavaScript (`dist/dlm-js.es.js`, `dist/dlm-js.cjs.js`) and type definitions (`dist/index.d.ts`).** TypeScript lets you write code with types, but Node.js and browsers only run JavaScript. The build step converts your code to JavaScript.
+  - **Bundles the code with Vite for use as a library (outputs ESM and CommonJS formats in `dist/`).** Vite bundles your code so it can be used easily in other projects, in Node.js or browsers, and optimizes it for distribution.
 
 ### Generate reference output using Octave
 
