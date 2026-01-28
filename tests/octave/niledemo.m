@@ -1,4 +1,4 @@
-addpath('tests/octave/dlm');
+addpath('tests/octave', 'tests/octave/dlm');
 
 %% Classical Nile data
 % Here we fit the classical Nile river flow data
