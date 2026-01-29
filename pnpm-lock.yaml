@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@jax-js/jax':
-        specifier: ^0.1.0
-        version: 0.1.7
+        specifier: link:../jax-js
+        version: link:../jax-js
     devDependencies:
       '@types/node':
         specifier: ^25.0.10
@@ -348,10 +348,6 @@ packages:
   '@isaacs/brace-expansion@5.0.0':
     resolution: {integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==}
     engines: {node: 20 || >=22}
-
-  '@jax-js/jax@0.1.7':
-    resolution: {integrity: sha512-ZxIgUgUIO26KqWg2VE3W1UQsYFawZSuxxZtA84tI3M6sw/+0qzZG8ElWLtPi5DPixuUi1MtPE1jEA8FbU1ph+A==}
-    engines: {pnpm: '>=10.0.0'}
 
   '@jest/schemas@29.6.3':
     resolution: {integrity: sha512-mo5j5X+jIZmJQveBKeS/clAueipV7KgiX1vMgCxam1RNYiqE1w62n0/tJJnHtjW8ZHcQco5gY85jA3mi0L+nSA==}
@@ -1340,8 +1336,6 @@ snapshots:
   '@isaacs/brace-expansion@5.0.0':
     dependencies:
       '@isaacs/balanced-match': 4.0.1
-
-  '@jax-js/jax@0.1.7': {}
 
   '@jest/schemas@29.6.3':
     dependencies:

@@ -71,3 +71,20 @@ export function deepAlmostEqual(
   }
   return { equal: true };
 }
+
+/**
+ * Check if an array is close to expected values
+ */
+export async function arrayClose(
+  arr: any,
+  expected: number[],
+  tolerance = 1e-6
+): Promise<void> {
+  const { expect } = await import('vitest');
+  // Use data() method to get the underlying data array
+  const data = await arr.data();
+  expect(data.length).toBe(expected.length);
+  for (let i = 0; i < expected.length; i++) {
+    expect(data[i]).toBeCloseTo(expected[i], -Math.log10(tolerance));
+  }
+}
