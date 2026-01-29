@@ -18,7 +18,7 @@ const w: [number, number] = nileInput.w;
 
 const outputDir = path.join(__dirname, 'out');
 const outputFileName = path.join(outputDir, 'niledemo-out.json');
-const referenceFileName = path.join(outputDir, 'niledemo-out-m.json');
+const referenceFileName = path.join(__dirname, 'niledemo-out-m.json');
 
 describe('niledemo output', () => {
   it('should match the reference output (niledemo-out-m.json)', async () => {

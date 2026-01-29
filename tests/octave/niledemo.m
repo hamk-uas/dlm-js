@@ -29,7 +29,7 @@ inputs = load_json("tests/niledemo-in.json");
 %%
 % Fit the DLM model
 out = dlmfit(inputs.y, inputs.s, inputs.w);
-save_json(out, "tests/out/niledemo-out-m.json");
+save_json(out, "tests/niledemo-out-m.json");
 %%
 %figure(3);
 %dlmplotfit(out, inputs.t);

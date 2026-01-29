@@ -33,10 +33,10 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 │   │   ├── dlm/                 # Minimal MATLAB dlm implementation
 │   │   └── niledemo.m           # Niledemo Octave script to generate reference output (and input)
 │   ├── out/                 # Test outputs
-|   |   ├── niledemo-out.json    # Niledemot test output from Node.js
-|   │   └── niledemo-out-m.json  # Niledemo reference output from Octave
+|   │   └── niledemo-out.json    # Niledemot test output from Node.js
 |   ├── niledemo-in.json     # Niledemo test input
 |   ├── niledemo-keys.json   # Niledemo list of output keys to test, for partial implementations
+|   ├── niledemo-out-m.json  # Niledemo reference output from Octave
 |   ├── niledemo.test.ts     # Niledemo test
 |   └── utils.ts             # Test utility functions
 ├── .gitignore           # Ignore file for git
