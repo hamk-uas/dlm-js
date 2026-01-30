@@ -19,7 +19,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 * Test the built library (in `dist/`)
 * Choose the important dlm functions and non-default input variables and output variables for implementation
-* Rework initial AI-generated DLM port. It seems to move data between JS and jax-js arrays a lot. Switch the API to use jax-js arrays for input and output
+* Human review the AI-generated DLM port. It does pass niledemo test, but has not been properly reviewed.
 * Document the library
 
 ## Project structure
