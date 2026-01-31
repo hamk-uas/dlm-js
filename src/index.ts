@@ -7,12 +7,13 @@ export type { DlmFitResult, FloatArray } from "./types";
 
 /**
  * Execution mode for the DLM smoother.
- * - 'for': Use explicit for-loops (faster with interpreter, ~1.4s for n=100)
+ * - 'for-js': Pure JavaScript with TypedArrays (fastest for small matrices, no jax-js overhead)
+ * - 'for': Use explicit for-loops with jax-js operations
  * - 'scan': Use lax.scan primitive (slower with interpreter fallback, ~2.8s for n=100)
  *           but enables future JIT compilation and automatic differentiation
  * - 'jit': Use jit-compiled lax.scan (fastest when body is compiled)
  */
-export type DlmMode = 'for' | 'scan' | 'jit';
+export type DlmMode = 'for-js' | 'for' | 'scan' | 'jit';
 
 /**
  * DLM Smoother - Kalman filter (forward) + Rauch-Tung-Striebel smoother (backward).
@@ -55,6 +56,9 @@ const dlmSmo = async (
   dtype: DType = DType.Float64,
   mode: DlmMode = 'for'
 ): Promise<DlmSmoResult> => {
+  if (mode === 'for-js') {
+    return dlmSmoForJs(y, F, V_std, x0_data, G, W, C0_data, dtype);
+  }
   if (mode === 'scan') {
     return dlmSmoScan(y, F, V_std, x0_data, G, W, C0_data, dtype);
   }
@@ -62,6 +66,261 @@ const dlmSmo = async (
     return dlmSmoJit(y, F, V_std, x0_data, G, W, C0_data, dtype);
   }
   return dlmSmoFor(y, F, V_std, x0_data, G, W, C0_data, dtype);
+};
+
+/**
+ * DLM Smoother implementation using pure JavaScript with TypedArrays.
+ * Fastest for small matrices (2×2) by eliminating all jax-js overhead.
+ * @internal
+ */
+const dlmSmoForJs = async (
+  y: FloatArray,
+  F: np.Array,
+  V_std: FloatArray,
+  x0_data: number[][],
+  G: np.Array,
+  W: np.Array,
+  C0_data: number[][],
+  dtype: DType = DType.Float64
+): Promise<DlmSmoResult> => {
+  const n = y.length;
+  const FA = getFloatArrayType(dtype);
+  
+  // Extract system matrices to plain arrays (once, not per iteration)
+  const F_data = await F.ref.data();
+  const G_data = await G.ref.data();
+  const W_data = await W.ref.data();
+  
+  // System matrices as scalars (2×2 layout: row-major)
+  // F is 1×2: F = [f0, f1]
+  const f0 = F_data[0], f1 = F_data[1];
+  // G is 2×2: G = [[g00, g01], [g10, g11]]
+  const g00 = G_data[0], g01 = G_data[1], g10 = G_data[2], g11 = G_data[3];
+  // W is 2×2: W = [[w00, w01], [w10, w11]]
+  const w00 = W_data[0], w01 = W_data[1], w10 = W_data[2], w11 = W_data[3];
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Storage using TypedArrays for cache efficiency
+  // State vectors stored as pairs: [x0, x1] per timestep
+  // Covariance matrices stored as 4-tuples: [C00, C01, C10, C11] per timestep
+  // ─────────────────────────────────────────────────────────────────────────
+  const x_pred_0 = new FA(n);    // x_pred[i][0]
+  const x_pred_1 = new FA(n);    // x_pred[i][1]
+  const C_pred_00 = new FA(n);   // C_pred[i][0,0]
+  const C_pred_01 = new FA(n);   // C_pred[i][0,1]
+  const C_pred_10 = new FA(n);   // C_pred[i][1,0]
+  const C_pred_11 = new FA(n);   // C_pred[i][1,1]
+  const K_0 = new FA(n);         // Kalman gain K[0]
+  const K_1 = new FA(n);         // Kalman gain K[1]
+  const v_array = new FA(n);     // Innovations
+  const Cp_array = new FA(n);    // Innovation covariances
+  
+  // Initialize from prior
+  x_pred_0[0] = x0_data[0][0];
+  x_pred_1[0] = x0_data[1][0];
+  C_pred_00[0] = C0_data[0][0];
+  C_pred_01[0] = C0_data[0][1];
+  C_pred_10[0] = C0_data[1][0];
+  C_pred_11[0] = C0_data[1][1];
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Forward Kalman Filter (pure JS)
+  // ─────────────────────────────────────────────────────────────────────────
+  for (let i = 0; i < n; i++) {
+    const xi0 = x_pred_0[i], xi1 = x_pred_1[i];
+    const Ci00 = C_pred_00[i], Ci01 = C_pred_01[i];
+    const Ci10 = C_pred_10[i], Ci11 = C_pred_11[i];
+    
+    // v = y - F·x  (scalar: F is 1×2, x is 2×1)
+    const Fx = f0 * xi0 + f1 * xi1;
+    const v = y[i] - Fx;
+    v_array[i] = v;
+    
+    // Cp = F·C·F' + V²  (scalar: 1×1)
+    // F·C = [f0*C00 + f1*C10, f0*C01 + f1*C11] (1×2)
+    // F·C·F' = (f0*C00 + f1*C10)*f0 + (f0*C01 + f1*C11)*f1
+    const FCFt = (f0 * Ci00 + f1 * Ci10) * f0 + (f0 * Ci01 + f1 * Ci11) * f1;
+    const Cp = FCFt + V_std[i] * V_std[i];
+    Cp_array[i] = Cp;
+    
+    // K = G·C·F' / Cp  (2×1: result of 2×2 · 2×2 · 2×1 / scalar)
+    // G·C = [[g00*C00 + g01*C10, g00*C01 + g01*C11],
+    //        [g10*C00 + g11*C10, g10*C01 + g11*C11]]
+    // (G·C)·F' = [row0·F', row1·F'] where each row·F' = row0*f0 + row1*f1
+    const GC00 = g00 * Ci00 + g01 * Ci10;
+    const GC01 = g00 * Ci01 + g01 * Ci11;
+    const GC10 = g10 * Ci00 + g11 * Ci10;
+    const GC11 = g10 * Ci01 + g11 * Ci11;
+    const GCFt0 = GC00 * f0 + GC01 * f1;
+    const GCFt1 = GC10 * f0 + GC11 * f1;
+    const k0 = GCFt0 / Cp;
+    const k1 = GCFt1 / Cp;
+    K_0[i] = k0;
+    K_1[i] = k1;
+    
+    if (i < n - 1) {
+      // L = G - K·F  (2×2 = 2×2 - 2×1 · 1×2)
+      // K·F = [[k0*f0, k0*f1], [k1*f0, k1*f1]]
+      const L00 = g00 - k0 * f0;
+      const L01 = g01 - k0 * f1;
+      const L10 = g10 - k1 * f0;
+      const L11 = g11 - k1 * f1;
+      
+      // x_next = G·x + K·v  (2×1)
+      x_pred_0[i + 1] = g00 * xi0 + g01 * xi1 + k0 * v;
+      x_pred_1[i + 1] = g10 * xi0 + g11 * xi1 + k1 * v;
+      
+      // C_next = G·C·L' + W  (2×2)
+      // We already have G·C, now compute (G·C)·L'
+      // L' = [[L00, L10], [L01, L11]]
+      // (G·C)·L' row 0: [GC00*L00 + GC01*L01, GC00*L10 + GC01*L11]
+      // (G·C)·L' row 1: [GC10*L00 + GC11*L01, GC10*L10 + GC11*L11]
+      C_pred_00[i + 1] = GC00 * L00 + GC01 * L01 + w00;
+      C_pred_01[i + 1] = GC00 * L10 + GC01 * L11 + w01;
+      C_pred_10[i + 1] = GC10 * L00 + GC11 * L01 + w10;
+      C_pred_11[i + 1] = GC10 * L10 + GC11 * L11 + w11;
+    }
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Backward RTS Smoother (pure JS)
+  // ─────────────────────────────────────────────────────────────────────────
+  const x_smooth_0 = new FA(n);
+  const x_smooth_1 = new FA(n);
+  const C_smooth_00 = new FA(n);
+  const C_smooth_01 = new FA(n);
+  const C_smooth_10 = new FA(n);
+  const C_smooth_11 = new FA(n);
+  
+  // Initialize smoother: r = [0, 0], N = [[0,0],[0,0]]
+  let r0 = 0, r1 = 0;
+  let N00 = 0, N01 = 0, N10 = 0, N11 = 0;
+  
+  for (let i = n - 1; i >= 0; i--) {
+    const xi0 = x_pred_0[i], xi1 = x_pred_1[i];
+    const Ci00 = C_pred_00[i], Ci01 = C_pred_01[i];
+    const Ci10 = C_pred_10[i], Ci11 = C_pred_11[i];
+    const k0 = K_0[i], k1 = K_1[i];
+    const vi = v_array[i];
+    const Cpi = Cp_array[i];
+    
+    // L = G - K·F
+    const L00 = g00 - k0 * f0;
+    const L01 = g01 - k0 * f1;
+    const L10 = g10 - k1 * f0;
+    const L11 = g11 - k1 * f1;
+    
+    // F'·Cp⁻¹ = [f0/Cp, f1/Cp] (2×1)
+    const FtCpInv0 = f0 / Cpi;
+    const FtCpInv1 = f1 / Cpi;
+    
+    // r_new = F'·Cp⁻¹·v + L'·r
+    // L' = [[L00, L10], [L01, L11]]
+    // L'·r = [L00*r0 + L10*r1, L01*r0 + L11*r1]
+    const r0_new = FtCpInv0 * vi + L00 * r0 + L10 * r1;
+    const r1_new = FtCpInv1 * vi + L01 * r0 + L11 * r1;
+    
+    // N_new = F'·Cp⁻¹·F + L'·N·L
+    // F'·Cp⁻¹·F = [[f0*f0/Cp, f0*f1/Cp], [f1*f0/Cp, f1*f1/Cp]]
+    const FtCpInvF00 = FtCpInv0 * f0;
+    const FtCpInvF01 = FtCpInv0 * f1;
+    const FtCpInvF10 = FtCpInv1 * f0;
+    const FtCpInvF11 = FtCpInv1 * f1;
+    
+    // L'·N = [[L00*N00 + L10*N10, L00*N01 + L10*N11],
+    //         [L01*N00 + L11*N10, L01*N01 + L11*N11]]
+    const LtN00 = L00 * N00 + L10 * N10;
+    const LtN01 = L00 * N01 + L10 * N11;
+    const LtN10 = L01 * N00 + L11 * N10;
+    const LtN11 = L01 * N01 + L11 * N11;
+    
+    // (L'·N)·L: matrix multiply (L'·N) by L
+    // [i,j] = sum_k LtN[i,k] * L[k,j]
+    const N00_new = FtCpInvF00 + LtN00 * L00 + LtN01 * L10;
+    const N01_new = FtCpInvF01 + LtN00 * L01 + LtN01 * L11;
+    const N10_new = FtCpInvF10 + LtN10 * L00 + LtN11 * L10;
+    const N11_new = FtCpInvF11 + LtN10 * L01 + LtN11 * L11;
+    
+    // x_smooth = x_pred + C_pred·r_new
+    x_smooth_0[i] = xi0 + Ci00 * r0_new + Ci01 * r1_new;
+    x_smooth_1[i] = xi1 + Ci10 * r0_new + Ci11 * r1_new;
+    
+    // C_smooth = C_pred - C_pred·N_new·C_pred
+    // C·N = [[Ci00*N00_new + Ci01*N10_new, Ci00*N01_new + Ci01*N11_new],
+    //        [Ci10*N00_new + Ci11*N10_new, Ci10*N01_new + Ci11*N11_new]]
+    const CN00 = Ci00 * N00_new + Ci01 * N10_new;
+    const CN01 = Ci00 * N01_new + Ci01 * N11_new;
+    const CN10 = Ci10 * N00_new + Ci11 * N10_new;
+    const CN11 = Ci10 * N01_new + Ci11 * N11_new;
+    
+    // (C·N)·C
+    C_smooth_00[i] = Ci00 - (CN00 * Ci00 + CN01 * Ci10);
+    C_smooth_01[i] = Ci01 - (CN00 * Ci01 + CN01 * Ci11);
+    C_smooth_10[i] = Ci10 - (CN10 * Ci00 + CN11 * Ci10);
+    C_smooth_11[i] = Ci11 - (CN10 * Ci01 + CN11 * Ci11);
+    
+    // Update for next iteration
+    r0 = r0_new; r1 = r1_new;
+    N00 = N00_new; N01 = N01_new; N10 = N10_new; N11 = N11_new;
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Compute output statistics
+  // ─────────────────────────────────────────────────────────────────────────
+  const yhat = new FA(n);
+  const ystd = new FA(n);
+  const xstd: [number, number][] = new Array(n);
+  const resid0 = new FA(n);
+  const resid = new FA(n);
+  const resid2 = new FA(n);
+  let ssy = 0;
+  let lik = 0;
+  
+  for (let i = 0; i < n; i++) {
+    yhat[i] = x_pred_0[i];  // F·x = [1,0]·x = x[0]
+    xstd[i] = [Math.sqrt(Math.abs(C_smooth_00[i])), Math.sqrt(Math.abs(C_smooth_11[i]))];
+    ystd[i] = Math.sqrt(C_smooth_00[i] + V_std[i] * V_std[i]);
+    
+    const r0_val = y[i] - yhat[i];
+    resid0[i] = r0_val;
+    resid[i] = r0_val / V_std[i];
+    resid2[i] = v_array[i] / Math.sqrt(Cp_array[i]);
+    
+    ssy += r0_val * r0_val;
+    lik += (v_array[i] ** 2) / Cp_array[i] + Math.log(Cp_array[i]);
+  }
+  
+  let s2 = 0, mse = 0, mape = 0;
+  for (let i = 0; i < n; i++) {
+    s2 += resid[i] ** 2;
+    mse += resid2[i] ** 2;
+    mape += Math.abs(resid2[i]) / Math.abs(y[i]);
+  }
+  s2 /= n;
+  mse /= n;
+  mape /= n;
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Convert to np.Array outputs (required by DlmSmoResult interface)
+  // This is the only jax-js usage - just for output format compatibility
+  // ─────────────────────────────────────────────────────────────────────────
+  const x_smooth: np.Array[] = new Array(n);
+  const C_smooth: np.Array[] = new Array(n);
+  const x_pred: np.Array[] = new Array(n);
+  const C_pred: np.Array[] = new Array(n);
+  
+  for (let i = 0; i < n; i++) {
+    x_smooth[i] = np.array([[x_smooth_0[i]], [x_smooth_1[i]]], { dtype });
+    C_smooth[i] = np.array([[C_smooth_00[i], C_smooth_01[i]], [C_smooth_10[i], C_smooth_11[i]]], { dtype });
+    x_pred[i] = np.array([[x_pred_0[i]], [x_pred_1[i]]], { dtype });
+    C_pred[i] = np.array([[C_pred_00[i], C_pred_01[i]], [C_pred_10[i], C_pred_11[i]]], { dtype });
+  }
+  
+  return {
+    x: x_smooth, C: C_smooth, xf: x_pred, Cf: C_pred,
+    yhat, ystd, xstd, resid0, resid, resid2,
+    v: v_array, Cp: Cp_array, ssy, s2, nobs: n, lik, mse, mape,
+  };
 };
 
 /**
