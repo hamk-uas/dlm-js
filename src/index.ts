@@ -744,9 +744,18 @@ const dlmSmoScan = async (
 };
 
 /**
- * DLM Smoother implementation using JIT-compiled lax.scan.
- * Currently aliases to dlmSmoScan since lax.scan already compiles the body.
- * Future: Wrap entire computation in jit() for potential additional optimization.
+ * DLM Smoother implementation using lax.scan (jit mode).
+ * 
+ * NOTE: True jit() wrapping of scan is not yet fully supported in jax-js
+ * due to reference counting issues when scan outputs are accessed outside
+ * the jit context. For now, this aliases to scan mode.
+ * 
+ * Future improvements needed in jax-js:
+ * - Fix buffer lifetime when jit-compiled scan outputs are accessed
+ * - Native scan support for dot/einsum bodies (matrix routines)
+ * 
+ * For 2×2 matrices, 'for-js' mode is optimal (190× faster than scan).
+ * 
  * @internal
  */
 const dlmSmoJit = dlmSmoScan;
