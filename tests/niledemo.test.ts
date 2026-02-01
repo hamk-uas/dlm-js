@@ -61,18 +61,19 @@ describe('niledemo output', () => {
     }
   };
 
-  it(`should match reference using for-loops`, async () => {
-    await runTest('for', 'for-loop');
+  it(`should match reference using pure JS for-loops`, async () => {
+    await runTest('for-js', 'pure JS for-loops');
   });
 
-  it(`should match reference using lax.scan`, async () => {
-    await runTest('scan', 'lax.scan');
+  it(`should match reference using JS for-loops with jax-js body ops`, async () => {
+    await runTest('for', 'JS for-loops with jax-js body ops');
+  });
+
+  it(`should match reference using scan`, async () => {
+    await runTest('scan', 'scan');
   });
 
   it(`should match reference using jit(scan)`, async () => {
-    // First run includes JIT compilation overhead
-    await runTest('jit', 'jit(scan) warmup');
-    // Second run uses cached compiled code
-    await runTest('jit', 'jit(scan) cached');
+    await runTest('jit', 'jit(scan)');
   });
 });
