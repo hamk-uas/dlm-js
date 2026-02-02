@@ -61,19 +61,11 @@ describe('niledemo output', () => {
     }
   };
 
-  it(`should match reference using pure JS for-loops`, async () => {
-    await runTest('for-js', 'pure JS for-loops');
-  });
-
-  it(`should match reference using JS for-loops with jax-js body ops`, async () => {
-    await runTest('for', 'JS for-loops with jax-js body ops');
-  });
-
-  it(`should match reference using scan`, async () => {
+  it(`should match reference (using scan)`, async () => {
     await runTest('scan', 'scan');
   });
 
-  it(`should match reference using jit(scan)`, async () => {
+  it(`should match reference (using jit(scan))`, async () => {
     await runTest('jit', 'jit(scan)');
   });
 });

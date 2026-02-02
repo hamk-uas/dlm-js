@@ -13,7 +13,7 @@ yarn.lock
 .pnpm-debug.log
 # DO NOT ignore pnpm-lock.yaml! Commit it for reproducible installs.
 coverage/
-dist/
+/dist/
 build/
 .nyc_output/
 logs/

@@ -39,6 +39,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 |   ├── niledemo-out-m.json  # Niledemo reference output from Octave
 |   ├── niledemo.test.ts     # Niledemo test
 |   └── utils.ts             # Test utility functions
+├── vendor/jax-js/       # Vendored jax-js with lax.scan (https://github.com/olli4/jax-js/tree/feat/scan)
 ├── .gitignore           # Ignore file for git
 ├── .npmignore           # Ignore file for npm
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)
