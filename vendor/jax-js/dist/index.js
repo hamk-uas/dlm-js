@@ -1,5 +1,5 @@
 import { __export } from "./chunk-Cl8Af3a2.js";
-import { AluExp, AluGroup, AluOp, AluVar, DEBUG, DType, FpHash, Kernel, PPrint, Reduction, Routine, Routines, ShapeTracker, accessorAluExp, accessorGlobal, assertNonNull, byteWidth, checkAxis, checkInts, deepEqual, defaultDevice, devices, dtypedArray, dtypedJsArray, generalBroadcast, getBackend, init, invertPermutation, isFloatDtype, isNumberPair, isPermutation, normalizeAxis, partitionList, prod, promoteTypes, range, recursiveFlatten, rep, reportScanPath, runWithCache, setDebug, setScanPathCallback, toposort, unravelAlu, unzip2, zip, zipn } from "./backend-BWzehS6l.js";
+import { AluExp, AluGroup, AluOp, AluVar, DEBUG, DType, FpHash, Kernel, PPrint, Reduction, Routine, Routines, ShapeTracker, accessorAluExp, accessorGlobal, assertNonNull, byteWidth, checkAxis, checkInts, deepEqual, defaultDevice, devices, dtypedArray, dtypedJsArray, generalBroadcast, getBackend, init, invertPermutation, isFloatDtype, isNumberPair, isPermutation, normalizeAxis, partitionList, prod, promoteTypes, range, recursiveFlatten, rep, reportScanPath, runWithCache, setDebug, setScanPathCallback, toposort, unravelAlu, unzip2, zip, zipn } from "./backend-CK9ZgIdl.js";
 
 //#region src/frontend/convolution.ts
 /**
@@ -1956,10 +1956,9 @@ var JitProgram = class {
 				const outputSlots = step.outputs.map((id) => scope.get(id));
 				const carryOutSlots = outputSlots.slice(0, step.numCarry);
 				const ysStackedSlots = outputSlots.slice(step.numCarry);
-				const backend = this.backend;
-				if (step.generalParams) if (typeof backend.dispatchNativeScanGeneral === "function") backend.dispatchNativeScanGeneral(step.executable, step.generalParams, constSlots, initCarrySlots, xsSlots, carryOutSlots, ysStackedSlots);
+				if (step.generalParams) if (this.backend.dispatchNativeScanGeneral) this.backend.dispatchNativeScanGeneral(step.executable, step.generalParams, constSlots, initCarrySlots, xsSlots, carryOutSlots, ysStackedSlots);
 				else throw new Error("internal: general native-scan requires backend.dispatchNativeScanGeneral");
-				else if (typeof backend.dispatchNativeScan === "function") backend.dispatchNativeScan(step.executable, constSlots, initCarrySlots, xsSlots, carryOutSlots, ysStackedSlots);
+				else if (this.backend.dispatchNativeScan) this.backend.dispatchNativeScan(step.executable, constSlots, initCarrySlots, xsSlots, carryOutSlots, ysStackedSlots);
 				else throw new Error("internal: native-scan requires backend.dispatchNativeScan");
 				break;
 			}
@@ -1975,8 +1974,7 @@ var JitProgram = class {
 				const outputSlots = step.outputs.map((id) => scope.get(id));
 				const carryOutSlots = outputSlots.slice(0, step.numCarry);
 				const ysStackedSlots = outputSlots.slice(step.numCarry);
-				const backend = this.backend;
-				if (typeof backend.dispatchBatchedScan === "function") backend.dispatchBatchedScan(step.batchedParams, constSlots, initCarrySlots, xsSlots, carryOutSlots, ysStackedSlots);
+				if (this.backend.dispatchBatchedScan) this.backend.dispatchBatchedScan(step.batchedParams, constSlots, initCarrySlots, xsSlots, carryOutSlots, ysStackedSlots);
 				else throw new Error("internal: batched-scan requires backend.dispatchBatchedScan");
 				break;
 			}
@@ -2124,17 +2122,8 @@ function jitCompile(backend, jaxpr) {
 				});
 			}
 			const bodyProgram = jitCompile(backend, bodyJaxpr);
-			let nativeScanExe = tryPrepareNativeScan(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, eqn, reverse);
-			if (!nativeScanExe) {
-				if (DEBUG >= 2) console.log(`[scan] Single-kernel native scan failed, trying multi-kernel...`);
-				nativeScanExe = tryPrepareNativeScanMulti(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, reverse);
-			}
-			let generalScanResult = null;
-			if (!nativeScanExe) {
-				if (DEBUG >= 2) console.log(`[scan] Multi-kernel native scan failed, trying general native scan...`);
-				generalScanResult = tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, reverse);
-				if (generalScanResult) nativeScanExe = generalScanResult.executable;
-			}
+			const generalScanResult = tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, reverse);
+			const nativeScanExe = generalScanResult?.executable ?? null;
 			if (nativeScanExe) {
 				const pathError$1 = checkRequiredPath("fused", requirePath);
 				if (pathError$1) throw new Error(pathError$1);
@@ -2675,19 +2664,18 @@ function tryPrepareBatchedScan(backend, bodyProgram, bodyJaxpr, length, numCarry
 	const carrySizes = carryAvals.map((a) => a.size * byteWidth(a.dtype));
 	const xsElemStrides = xAvals.map((a) => a.size);
 	const ysElemStrides = carryAvals.map((a) => a.size);
-	const webgpuBackend = backend;
-	if (typeof webgpuBackend.prepareRoutineSync !== "function") {
+	if (!backend.prepareRoutineSync) {
 		if (DEBUG >= 2) console.log("Batched scan: skipped, backend has no prepareRoutineSync");
 		return null;
 	}
 	let bodyRoutineExe;
 	try {
-		bodyRoutineExe = webgpuBackend.prepareRoutineSync(bodyRoutine);
+		bodyRoutineExe = backend.prepareRoutineSync(bodyRoutine);
 	} catch (e$1) {
 		if (DEBUG >= 2) console.warn("Batched scan: prepareRoutineSync failed:", e$1);
 		return null;
 	}
-	if (typeof webgpuBackend.prepareBatchedScan !== "function") {
+	if (!backend.prepareBatchedScan) {
 		if (DEBUG >= 2) console.log("Batched scan: skipped, backend has no prepareBatchedScan");
 		return null;
 	}
@@ -2704,7 +2692,7 @@ function tryPrepareBatchedScan(backend, bodyProgram, bodyJaxpr, length, numCarry
 		reverse
 	};
 	try {
-		const prepared = webgpuBackend.prepareBatchedScan(batchedScanParams);
+		const prepared = backend.prepareBatchedScan(batchedScanParams);
 		if (prepared) {
 			if (DEBUG >= 1) console.log(`Batched scan: SUCCESS! Using WebGPU batched scan for ${bodyRoutine.name}`);
 		}
@@ -2714,154 +2702,14 @@ function tryPrepareBatchedScan(backend, bodyProgram, bodyJaxpr, length, numCarry
 		return null;
 	}
 }
-function tryPrepareNativeScan(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, eqn, reverse) {
-	const executeSteps = bodyProgram.steps.filter((s) => s.type === "execute");
-	if (executeSteps.length !== 1) {
-		if (DEBUG >= 2) console.log(`Native scan: skipped, ${executeSteps.length} execute steps`);
-		return null;
-	}
-	const execStep = executeSteps[0];
-	if (!(execStep.source instanceof Kernel)) {
-		if (DEBUG >= 2) console.log("Native scan: skipped, not a Kernel");
-		return null;
-	}
-	const reindexMap = execStep.inputs;
-	const reindexedExp = execStep.source.exp.reindexGids(reindexMap);
-	const bodyKernel = new Kernel(bodyJaxpr.inBinders.length, execStep.source.size, reindexedExp, execStep.source.reduction);
-	if (numCarry !== numY) {
-		if (DEBUG >= 2) console.log(`Native scan: skipped, numCarry=${numCarry} !== numY=${numY}`);
-		return null;
-	}
-	const carryOutSlots = bodyProgram.outputs.slice(0, numCarry);
-	const yOutSlots = bodyProgram.outputs.slice(numCarry);
-	for (let i = 0; i < numCarry; i++) if (carryOutSlots[i] !== yOutSlots[i]) {
-		if (DEBUG >= 2) console.log(`Native scan: skipped, carry[${i}] slot ${carryOutSlots[i]} !== Y[${i}] slot ${yOutSlots[i]}`);
-		return null;
-	}
-	const constAvals = bodyJaxpr.inBinders.slice(0, numConsts).map((v) => v.aval);
-	const carryAvals = bodyJaxpr.inBinders.slice(numConsts, numConsts + numCarry).map((v) => v.aval);
-	const xAvals = bodyJaxpr.inBinders.slice(numConsts + numCarry, numConsts + numCarry + numX).map((v) => v.aval);
-	const constSizes = constAvals.map((a) => a.size * byteWidth(a.dtype));
-	const carrySizes = carryAvals.map((a) => a.size * byteWidth(a.dtype));
-	const xsStrides = xAvals.map((a) => a.size * byteWidth(a.dtype));
-	const ysStrides = carrySizes.slice();
-	const nativeBackend = backend;
-	if (typeof nativeBackend.prepareNativeScan !== "function") {
-		if (DEBUG >= 2) console.log("Native scan: skipped, backend has no prepareNativeScan");
-		return null;
-	}
-	const nativeScanParams = {
-		length,
-		numConsts,
-		constSizes,
-		carrySizes,
-		xsStrides,
-		ysStrides,
-		bodyKernel,
-		numCarry,
-		reverse
-	};
-	try {
-		const exe = nativeBackend.prepareNativeScan(nativeScanParams);
-		if (exe) {
-			if (DEBUG >= 1) console.log(`Native scan: SUCCESS! Using ${backend.type.toUpperCase()} native scan loop`);
-		}
-		return exe;
-	} catch (e$1) {
-		if (DEBUG >= 2) console.warn("Native scan preparation failed:", e$1);
-		return null;
-	}
-}
 /**
-* Try to prepare a multi-kernel native scan for WASM.
-* This handles scan bodies with multiple independent kernels (e.g., 2 matmuls).
-*/
-function tryPrepareNativeScanMulti(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, reverse) {
-	if (backend.type !== "wasm" && backend.type !== "webgpu") {
-		if (DEBUG >= 1) console.log(`[multi-scan] skipped, backend=${backend.type} (need wasm or webgpu)`);
-		return null;
-	}
-	const executeSteps = bodyProgram.steps.filter((s) => s.type === "execute");
-	if (DEBUG >= 1) console.log(`[multi-scan] executeSteps.length=${executeSteps.length}, numCarry=${numCarry}`);
-	if (!executeSteps.every((s) => s.source instanceof Kernel)) {
-		if (DEBUG >= 1) console.log("[multi-scan] skipped, has non-Kernel execute steps");
-		return null;
-	}
-	if (numCarry !== numY) {
-		if (DEBUG >= 1) console.log(`[multi-scan] skipped, numCarry=${numCarry} !== numY=${numY}`);
-		return null;
-	}
-	const carryOutSlotsPre = bodyProgram.outputs.slice(0, numCarry);
-	const yOutSlots = bodyProgram.outputs.slice(numCarry);
-	for (let i = 0; i < numCarry; i++) if (carryOutSlotsPre[i] !== yOutSlots[i]) {
-		if (DEBUG >= 1) console.log(`[multi-scan] skipped, carry[${i}] slot ${carryOutSlotsPre[i]} !== Y[${i}] slot ${yOutSlots[i]}`);
-		return null;
-	}
-	if (executeSteps.length !== numCarry) {
-		if (DEBUG >= 2) console.log(`Multi-kernel native scan: skipped, ${executeSteps.length} kernels != ${numCarry} carries`);
-		return null;
-	}
-	const carryOutSlots = bodyProgram.outputs.slice(0, numCarry);
-	const constAvals = bodyJaxpr.inBinders.slice(0, numConsts).map((v) => v.aval);
-	const carryAvals = bodyJaxpr.inBinders.slice(numConsts, numConsts + numCarry).map((v) => v.aval);
-	const xAvals = bodyJaxpr.inBinders.slice(numConsts + numCarry, numConsts + numCarry + numX).map((v) => v.aval);
-	const constSizes = constAvals.map((a) => a.size * byteWidth(a.dtype));
-	const carrySizes = carryAvals.map((a) => a.size * byteWidth(a.dtype));
-	const xsStrides = xAvals.map((a) => a.size * byteWidth(a.dtype));
-	const ysStrides = carrySizes.slice();
-	const steps = [];
-	for (const execStep of executeSteps) {
-		const kernel = execStep.source;
-		const outSlot = execStep.outputs[0];
-		const carryIdx = carryOutSlots.indexOf(outSlot);
-		if (carryIdx === -1) {
-			if (DEBUG >= 2) console.log("Multi-kernel native scan: output slot not in carry outputs");
-			return null;
-		}
-		const reindexMap = execStep.inputs;
-		const reindexedExp = kernel.exp.reindexGids(reindexMap);
-		const reindexedKernel = new Kernel(bodyJaxpr.inBinders.length, kernel.size, reindexedExp, kernel.reduction);
-		steps.push({
-			kernel: reindexedKernel,
-			inputs: execStep.inputs,
-			outputCarryIdx: carryIdx,
-			outputSize: carrySizes[carryIdx]
-		});
-	}
-	const nativeBackend = backend;
-	if (typeof nativeBackend.prepareNativeScanMulti !== "function") {
-		if (DEBUG >= 2) console.log("Multi-kernel native scan: backend has no prepareNativeScanMulti");
-		return null;
-	}
-	const params = {
-		length,
-		numConsts,
-		constSizes,
-		numCarry,
-		carrySizes,
-		numX,
-		xsStrides,
-		numY,
-		ysStrides,
-		steps,
-		reverse
-	};
-	try {
-		const exe = nativeBackend.prepareNativeScanMulti(params);
-		if (exe) {
-			if (DEBUG >= 1) console.log(`Multi-kernel native scan: SUCCESS! Using ${backend.type.toUpperCase()} native scan with ${steps.length} kernels`);
-		}
-		return exe;
-	} catch (e$1) {
-		if (DEBUG >= 2) console.warn("Multi-kernel native scan preparation failed:", e$1);
-		return null;
-	}
-}
-/**
-* Try to prepare a general native scan for bodies with data dependencies and numCarry !== numY.
-* This handles complex scan bodies like the Kalman filter where there are multiple interdependent
-* kernel steps and the number of carry values differs from the number of Y outputs.
-* Also handles Routine steps (Cholesky, Sort) embedded in the scan loop.
+* Try to prepare a native scan for WASM/WebGPU backends.
+* This is the unified implementation that handles all scan body types:
+* - Single kernel bodies (like cumsum)
+* - Multiple independent kernels (like Kalman filter with 2 matmuls)
+* - Bodies with data dependencies between steps
+* - Bodies where numCarry !== numY
+* - Routine steps (Cholesky, Sort) embedded in the scan loop
 */
 function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, numCarry, numConsts, numX, numY, reverse) {
 	if (backend.type !== "wasm") {
@@ -2875,10 +2723,17 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 		return null;
 	}
 	const usedRoutines = /* @__PURE__ */ new Set();
+	const supportedRoutines = new Set([
+		Routines.Cholesky,
+		Routines.Sort,
+		Routines.TriangularSolve,
+		Routines.LU,
+		Routines.Argsort
+	]);
 	for (const step of executeSteps) if (step.source instanceof Routine) {
 		const routineName = step.source.name;
-		if (routineName !== Routines.Cholesky && routineName !== Routines.Sort) {
-			if (DEBUG >= 1) console.log(`[general-scan] skipped, unsupported routine: ${step.source.name}`);
+		if (!supportedRoutines.has(routineName)) {
+			if (DEBUG >= 1) console.log(`[general-scan] skipped, unsupported routine in scan body: ${Routines[routineName]}`);
 			return null;
 		}
 		usedRoutines.add(routineName);
@@ -2888,7 +2743,6 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 		console.log(`[general-scan] Analyzing body: ${executeSteps.length} execute steps, numCarry=${numCarry}, numY=${numY}` + (routineNames.length > 0 ? `, routines: ${routineNames.join(", ")}` : ""));
 	}
 	const numInputs = numConsts + numCarry + numX;
-	const numInternal = executeSteps.length;
 	const constAvals = bodyJaxpr.inBinders.slice(0, numConsts).map((v) => v.aval);
 	const carryAvals = bodyJaxpr.inBinders.slice(numConsts, numConsts + numCarry).map((v) => v.aval);
 	const xAvals = bodyJaxpr.inBinders.slice(numConsts + numCarry, numConsts + numCarry + numX).map((v) => v.aval);
@@ -2898,19 +2752,25 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 	const xsStrides = xAvals.map((a) => a.size * byteWidth(a.dtype));
 	const ysStrides = yAvals.map((a) => a.size * byteWidth(a.dtype));
 	const slotToInternal = /* @__PURE__ */ new Map();
-	for (let i = 0; i < executeSteps.length; i++) {
-		const step = executeSteps[i];
-		for (const outSlot of step.outputs) slotToInternal.set(outSlot, i);
-	}
+	const stepToInternalBase = /* @__PURE__ */ new Map();
 	const internalSizes = [];
 	for (let i = 0; i < executeSteps.length; i++) {
-		const source = executeSteps[i].source;
-		if (source instanceof Kernel) internalSizes.push(source.size * byteWidth(source.dtype));
-		else {
+		const step = executeSteps[i];
+		const source = step.source;
+		stepToInternalBase.set(i, internalSizes.length);
+		if (source instanceof Kernel) {
+			const internalIdx = internalSizes.length;
+			slotToInternal.set(step.outputs[0], internalIdx);
+			internalSizes.push(source.size * byteWidth(source.dtype));
+		} else {
 			const routine = source;
-			const outShape = routine.type.outputShapes[0];
-			const outDtype = routine.type.outputDtypes[0];
-			internalSizes.push(prod(outShape) * byteWidth(outDtype));
+			for (let outIdx = 0; outIdx < step.outputs.length; outIdx++) {
+				const internalIdx = internalSizes.length;
+				slotToInternal.set(step.outputs[outIdx], internalIdx);
+				const outShape = routine.type.outputShapes[outIdx];
+				const outDtype = routine.type.outputDtypes[outIdx];
+				internalSizes.push(prod(outShape) * byteWidth(outDtype));
+			}
 		}
 	}
 	let auxBufferSize = 0;
@@ -2923,7 +2783,45 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 			const inputShape = routine.type.inputShapes[0];
 			const sortDim = inputShape[inputShape.length - 1];
 			auxBufferSize = Math.max(auxBufferSize, sortDim * elementSize);
+		} else if (routine.name === Routines.Argsort) {
+			const inputShape = routine.type.inputShapes[0];
+			const sortDim = inputShape[inputShape.length - 1];
+			auxBufferSize = Math.max(auxBufferSize, sortDim * 4);
 		}
+	}
+	const routineInfos = [];
+	const routineToInfoIdx = /* @__PURE__ */ new Map();
+	for (const r of usedRoutines) {
+		const idx = routineInfos.length;
+		routineToInfoIdx.set(r, idx);
+		const dtype = executeSteps.find((s) => s.source instanceof Routine && s.source.name === r)?.source;
+		const isF64 = dtype instanceof Routine && dtype.type.inputDtypes[0] === DType.Float64;
+		const suffix = isF64 ? "f64" : "f32";
+		if (r === Routines.Cholesky) routineInfos.push({
+			routine: r,
+			exportName: `cholesky_${suffix}`,
+			numParams: 3
+		});
+		else if (r === Routines.Sort) routineInfos.push({
+			routine: r,
+			exportName: `sort_${suffix}`,
+			numParams: 3
+		});
+		else if (r === Routines.TriangularSolve) routineInfos.push({
+			routine: r,
+			exportName: `triangular_solve_batched_${suffix}`,
+			numParams: 8
+		});
+		else if (r === Routines.LU) routineInfos.push({
+			routine: r,
+			exportName: `lu_${suffix}`,
+			numParams: 6
+		});
+		else if (r === Routines.Argsort) routineInfos.push({
+			routine: r,
+			exportName: `argsort_${suffix}`,
+			numParams: 5
+		});
 	}
 	const steps = [];
 	for (let i = 0; i < executeSteps.length; i++) {
@@ -2943,17 +2841,66 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 			const reindexMap = inputSlots;
 			const reindexedExp = source.exp.reindexGids(reindexMap);
 			const reindexedReduction = source.reduction?.reindexGids(reindexMap);
-			const reindexedKernel = new Kernel(numInputs + numInternal, source.size, reindexedExp, reindexedReduction);
+			const reindexedKernel = new Kernel(numInputs + internalSizes.length, source.size, reindexedExp, reindexedReduction);
+			const internalBase = stepToInternalBase.get(i);
 			steps.push({
 				source: reindexedKernel,
 				inputSlots,
-				outputInternalIdx: i
+				outputInternalIdx: internalBase
 			});
-		} else steps.push({
-			source,
-			inputSlots,
-			outputInternalIdx: i
-		});
+		} else {
+			const routine = source;
+			const routineName = routine.name;
+			const routineInfoIdx = routineToInfoIdx.get(routineName);
+			const internalBase = stepToInternalBase.get(i);
+			const numOutputs = routine.type.outputShapes.length;
+			const outputInternalIndices = [];
+			for (let outIdx = 0; outIdx < numOutputs; outIdx++) outputInternalIndices.push(internalBase + outIdx);
+			let staticParams = [];
+			if (routineName === Routines.Cholesky) {
+				const inputShape = routine.type.inputShapes[0];
+				const n = inputShape[inputShape.length - 1];
+				staticParams = [n];
+			} else if (routineName === Routines.Sort) {
+				const inputShape = routine.type.inputShapes[0];
+				const n = inputShape[inputShape.length - 1];
+				staticParams = [n];
+			} else if (routineName === Routines.TriangularSolve) {
+				const aShape = routine.type.inputShapes[0];
+				const bShape = routine.type.inputShapes[1];
+				const n = aShape[aShape.length - 1];
+				const batchRows = bShape[bShape.length - 2];
+				const numBatches = 1;
+				const unitDiagonal = routine.params?.unitDiagonal ? 1 : 0;
+				const lower = routine.params?.lower ? 1 : 0;
+				staticParams = [
+					n,
+					batchRows,
+					numBatches,
+					unitDiagonal,
+					lower
+				];
+			} else if (routineName === Routines.LU) {
+				const inputShape = routine.type.inputShapes[0];
+				const m = inputShape[inputShape.length - 2];
+				const n = inputShape[inputShape.length - 1];
+				staticParams = [m, n];
+			} else if (routineName === Routines.Argsort) {
+				const inputShape = routine.type.inputShapes[0];
+				const n = inputShape[inputShape.length - 1];
+				staticParams = [n];
+			}
+			steps.push({
+				source,
+				inputSlots,
+				outputInternalIdx: internalBase,
+				outputInternalIndices,
+				routineCallInfo: {
+					routineInfoIdx,
+					staticParams
+				}
+			});
+		}
 	}
 	const carryOutSlots = bodyProgram.outputs.slice(0, numCarry);
 	const carryInputSlots = bodyProgram.inputs.slice(numConsts, numConsts + numCarry);
@@ -2998,8 +2945,7 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 			internalIdx
 		});
 	}
-	const nativeBackend = backend;
-	if (typeof nativeBackend.prepareNativeScanGeneral !== "function") {
+	if (!backend.prepareNativeScanGeneral) {
 		if (DEBUG >= 2) console.log("[general-scan] backend has no prepareNativeScanGeneral");
 		return null;
 	}
@@ -3019,10 +2965,11 @@ function tryPrepareNativeScanGeneral(backend, bodyProgram, bodyJaxpr, length, nu
 		yOutputSources,
 		reverse,
 		auxBufferSize,
-		elementSize
+		elementSize,
+		routineInfos: routineInfos.length > 0 ? routineInfos : void 0
 	};
 	try {
-		const exe = nativeBackend.prepareNativeScanGeneral(params);
+		const exe = backend.prepareNativeScanGeneral(params);
 		if (exe) {
 			if (DEBUG >= 1) {
 				const hasRoutines = steps.some((s) => s.source instanceof Routine);
@@ -5367,7 +5314,7 @@ var PartialEvalTrace = class extends Trace {
 	* - Otherwise, mark all outputs as unknown
 	*/
 	#partialEvalScan(params, tracers) {
-		const { jaxpr: _jaxpr, numConsts, numCarry, length: _length, reverse: _reverse } = params;
+		const { numConsts: _numConsts, numCarry } = params;
 		const isKnown = tracers.map((t) => t.pval.isKnown);
 		const hasUnknown = isKnown.some((k) => !k);
 		if (!hasUnknown) {
@@ -5397,8 +5344,6 @@ var PartialEvalTrace = class extends Trace {
 		}
 		const numPrimalCarry = numCarry / 2;
 		const numPrimalY = numY / 2;
-		const numX = tracers.length - numConsts - numCarry;
-		numX / 2;
 		const fullInputs = tracers.map((t) => {
 			if (t.pval.isKnown) return t.pval.val.ref;
 			else return zeros(t.pval.aval.shape, { dtype: t.pval.aval.dtype });
@@ -6496,6 +6441,7 @@ function lstsq(a, b) {
 		});
 		const llb = triangularSolve(l, lb, {
 			leftSide: true,
+			lower: true,
 			transposeA: true
 		});
 		return matmul(at, llb.ref);
@@ -6509,6 +6455,7 @@ function lstsq(a, b) {
 		});
 		const llb = triangularSolve(l, lb, {
 			leftSide: true,
+			lower: true,
 			transposeA: true
 		});
 		return llb;
@@ -8170,7 +8117,10 @@ function triangularSolve(a, b, { leftSide = false, lower = false, transposeA = f
 	b = fudgeArray(b);
 	if (!leftSide) transposeA = !transposeA;
 	else b = moveaxis$1(b, -2, -1);
-	if (transposeA) a = moveaxis$1(a, -2, -1);
+	if (transposeA) {
+		a = moveaxis$1(a, -2, -1);
+		lower = !lower;
+	}
 	let x = triangularSolve$1(a, b, {
 		lower,
 		unitDiagonal
@@ -8181,6 +8131,191 @@ function triangularSolve(a, b, { leftSide = false, lower = false, transposeA = f
 
 //#endregion
 //#region src/library/lax-scan.ts
+/**
+* Scan a function over leading array axes while carrying along state.
+*
+* Think of `scan` as a functional `reduce` that also returns all intermediate
+* results. It iterates over the leading axis of `xs`, threading a "carry" value
+* through each step and collecting outputs.
+*
+* ## Type Signature
+*
+* ```ts
+* scan(f, init, xs) → [finalCarry, ys]
+*
+* // Where:
+* // f: (carry: C, x: X) => [C, Y]  -- step function
+* // init: C                        -- initial carry
+* // xs: X[]                        -- input array (leading axis = iterations)
+* // finalCarry: C                  -- carry after last iteration
+* // ys: Y[]                        -- stacked outputs from each iteration
+* ```
+*
+* ## Semantics
+*
+* The semantics are roughly equivalent to this JavaScript:
+* ```ts
+* function scan(f, init, xs) {
+*   let carry = init;
+*   const ys = [];
+*   for (const x of xs) {
+*     const [newCarry, y] = f(carry, x);
+*     carry = newCarry;
+*     ys.push(y);
+*   }
+*   return [carry, np.stack(ys)];
+* }
+* ```
+*
+* Unlike a plain JavaScript loop:
+* - Both `xs` and `ys` can be arbitrary pytrees (nested objects/arrays)
+* - The scan is compiled to efficient native code (WASM/WebGPU)
+* - Supports autodiff: `grad(f)` works through scan
+* - The carry shape/dtype must be fixed across all iterations
+*
+* ## Reference Counting Contract
+*
+* **Inputs (consumed):**
+* - `init` and `xs` are consumed by scan (refcount decremented)
+* - Use `.ref` if you need to keep inputs alive: `scan(f, init.ref, xs.ref)`
+*
+* **Body function:**
+* - `carry` and `x` are **borrowed** — do NOT dispose them
+* - Return **new** arrays for `newCarry` and `y`
+* - For passthrough (same array in both), use `.ref`: `[result.ref, result]`
+*
+* **Outputs (caller owns):**
+* - `finalCarry` and `ys` are owned by caller — dispose when done
+*
+* @param f - Step function `(carry, x) => [newCarry, y]` where:
+*   - `carry` is the current state (same structure as `init`)
+*   - `x` is a slice of `xs` along axis 0 (shape = `xs.shape.slice(1)`)
+*   - `newCarry` is the updated state (same structure/shape as `carry`)
+*   - `y` is the output for this iteration
+* @param init - Initial carry value. Can be a single array or a pytree of arrays.
+* @param xs - Input sequence to scan over. The leading axis is the scan dimension.
+*   Can be a single array or a pytree of arrays (all with same leading axis size).
+* @param options - Scan options or legacy `length` number
+* @returns `[finalCarry, ys]` where:
+*   - `finalCarry` has the same structure as `init`
+*   - `ys` has the same structure as `y` from `f`, with each leaf having
+*     an additional leading axis of size `length`
+*
+* @example Cumulative sum
+* ```ts
+* import { lax, numpy as np } from '@jax-js/jax';
+*
+* const step = (carry, x) => {
+*   const sum = np.add(carry, x);
+*   return [sum, sum.ref];  // .ref: sum used in both outputs
+* };
+*
+* const init = np.array([0.0]);
+* const xs = np.array([[1], [2], [3], [4], [5]]);
+* const [final, sums] = await lax.scan(step, init, xs);
+*
+* console.log(await final.data());  // [15]
+* console.log(await sums.data());   // [[1], [3], [6], [10], [15]]
+*
+* final.dispose();
+* sums.dispose();
+* ```
+*
+* @example Factorial via scan
+* ```ts
+* // Compute n! for n = 1..5
+* const step = (carry, x) => {
+*   const next = np.multiply(carry, x);
+*   return [next, next.ref];
+* };
+*
+* const init = np.array([1]);
+* const xs = np.array([[1], [2], [3], [4], [5]]);
+* const [final, factorials] = await lax.scan(step, init, xs);
+* // factorials = [[1], [2], [6], [24], [120]]
+* ```
+*
+* @example Pytree carry (multiple state variables)
+* ```ts
+* // Track both sum and count
+* const step = (carry, x) => {
+*   const newSum = np.add(carry.sum, x);
+*   const newCount = np.add(carry.count, np.array([1]));
+*   return [
+*     { sum: newSum.ref, count: newCount.ref },
+*     { sum: newSum, count: newCount }
+*   ];
+* };
+*
+* const init = { sum: np.array([0]), count: np.array([0]) };
+* const xs = np.array([[10], [20], [30]]);
+* const [final, history] = await lax.scan(step, init, xs);
+* // final.sum = [60], final.count = [3]
+* ```
+*
+* @example Reverse scan
+* ```ts
+* // Process sequence from end to beginning
+* const [final, ys] = await lax.scan(step, init, xs, { reverse: true });
+* ```
+*
+* @example jit(scan) - Compile the entire scan loop
+* ```ts
+* import { jit, lax, numpy as np } from '@jax-js/jax';
+*
+* // Wrap scan in jit to compile the entire loop into optimized native code.
+* // This is the most common and efficient pattern for production use.
+* const step = (carry, x) => {
+*   const newCarry = np.add(carry, x);
+*   return [newCarry, newCarry.ref];
+* };
+*
+* const scanFn = jit((init, xs) => lax.scan(step, init, xs));
+*
+* const init = np.array([0.0]);
+* const xs = np.array([[1.0], [2.0], [3.0]]);
+* const [final, ys] = await scanFn(init, xs);
+*
+* console.log(await final.data());  // [6]
+* scanFn.dispose();  // Free compiled program
+* ```
+*
+* @example scan(jit(body)) - JIT-compile only the step function
+* ```ts
+* import { jit, lax, numpy as np } from '@jax-js/jax';
+*
+* // JIT-compile just the step function. Each iteration calls compiled code,
+* // but the loop itself runs in JavaScript. Useful when step is expensive
+* // but you want to inspect intermediate values or the scan body is dynamic.
+* const step = jit((carry, x) => {
+*   const newCarry = np.add(carry, x);
+*   return [newCarry, newCarry.ref];
+* });
+*
+* const init = np.array([0.0]);
+* const xs = np.array([[1.0], [2.0], [3.0]]);
+* const [final, ys] = await lax.scan(step, init, xs);
+*
+* console.log(await final.data());  // [6]
+* step.dispose();  // Free compiled step function
+* ```
+*
+* @example With grad for differentiation
+* ```ts
+* import { grad, lax, numpy as np } from '@jax-js/jax';
+*
+* const loss = (init, xs) => {
+*   const [final, ys] = lax.scan(step, init, xs);
+*   final.dispose();
+*   return np.sum(ys);
+* };
+*
+* const gradLoss = grad(loss);
+* const [dInit, dXs] = await gradLoss(init, xs);
+* ```
+*
+* @see {@link https://docs.jax.dev/en/latest/_autosummary/jax.lax.scan.html | JAX lax.scan}
+*/
 function scan(f, init$1, xs, options) {
 	const opts = typeof options === "number" ? { length: options } : options ?? {};
 	const { length: lengthOpt, reverse = false, requirePath } = opts;
@@ -8240,7 +8375,36 @@ function scan(f, init$1, xs, options) {
 }
 /**
 * Stack a list of pytrees along a new leading axis.
-* Each pytree in the list must have the same structure.
+*
+* Each pytree in the list must have the same structure (same keys, same nesting).
+* The corresponding leaves are stacked using {@link numpy.stack}.
+*
+* This is useful for manually accumulating scan-like results when you need
+* more control than {@link scan} provides.
+*
+* @param trees - Array of pytrees to stack. All must have identical structure.
+* @returns A single pytree with the same structure, where each leaf is the
+*   stack of corresponding leaves from input trees (new axis at position 0).
+* @throws If `trees` is empty or pytrees have mismatched structures.
+*
+* @example Single arrays
+* ```ts
+* const a = np.array([1, 2]);
+* const b = np.array([3, 4]);
+* const c = np.array([5, 6]);
+* const stacked = stackPyTree([a, b, c]);
+* // stacked.shape = [3, 2], values = [[1,2], [3,4], [5,6]]
+* ```
+*
+* @example Pytrees (objects)
+* ```ts
+* const trees = [
+*   { x: np.array([1]), y: np.array([2]) },
+*   { x: np.array([3]), y: np.array([4]) },
+* ];
+* const stacked = stackPyTree(trees);
+* // stacked.x.shape = [2, 1], stacked.y.shape = [2, 1]
+* ```
 */
 function stackPyTree(trees) {
 	if (trees.length === 0) throw new Error("stackPyTree: empty list");
