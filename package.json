@@ -6,11 +6,8 @@
   "files": [
     "dist"
   ],
-  "peerDependencies": {
-    "@jax-js/jax": "^0.1.0"
-  },
   "dependencies": {
-    "@jax-js/jax": "file:./vendor/jax-js"
+    "@jax-js/jax": "git+https://github.com/olli4/jax-js.git#feat/scan"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

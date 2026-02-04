@@ -4,7 +4,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
 
-*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The dlm-js computation lasts about 60 ms using `lax.scan` of [a jax-js fork feature branch](https://github.com/olli4/jax-js/tree/feat/scan).*
+*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The dlm-js computation lasts about 60 ms using `lax.scan` implementation in [a jax-js fork](https://github.com/olli4/jax-js/tree/feat/scan).*
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
@@ -39,7 +39,6 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 |   ├── niledemo-out-m.json  # Niledemo reference output from Octave
 |   ├── niledemo.test.ts     # Niledemo test
 |   └── utils.ts             # Test utility functions
-├── vendor/jax-js/       # Vendored jax-js with lax.scan (https://github.com/olli4/jax-js/tree/feat/scan)
 ├── .gitignore           # Ignore file for git
 ├── .npmignore           # Ignore file for npm
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)

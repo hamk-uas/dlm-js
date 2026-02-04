@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@jax-js/jax':
-        specifier: file:./vendor/jax-js
-        version: file:vendor/jax-js
+        specifier: git+https://github.com/olli4/jax-js.git#feat/scan
+        version: https://codeload.github.com/olli4/jax-js/tar.gz/acbf5745918bff9b80841230b38556ec9b987886
     devDependencies:
       '@types/node':
         specifier: ^25.0.10
@@ -349,8 +349,9 @@ packages:
     resolution: {integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==}
     engines: {node: 20 || >=22}
 
-  '@jax-js/jax@file:vendor/jax-js':
-    resolution: {directory: vendor/jax-js, type: directory}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/acbf5745918bff9b80841230b38556ec9b987886':
+    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/acbf5745918bff9b80841230b38556ec9b987886}
+    version: 0.1.7
     engines: {pnpm: '>=10.0.0'}
 
   '@jest/schemas@29.6.3':
@@ -1341,7 +1342,7 @@ snapshots:
     dependencies:
       '@isaacs/balanced-match': 4.0.1
 
-  '@jax-js/jax@file:vendor/jax-js': {}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/acbf5745918bff9b80841230b38556ec9b987886': {}
 
   '@jest/schemas@29.6.3':
     dependencies:
