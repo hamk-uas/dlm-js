@@ -4,7 +4,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
 
-*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The dlm-js computation lasts about 60 ms (or 24 ms on successive runs) using JIT-compiled `lax.scan` from [a jax-js fork](https://github.com/olli4/jax-js/tree/feat/scan-v2).*
+*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The JIT-compiled dlm-js computation lasts about 60 ms (or 24 ms on successive runs with cached compilation) using `lax.scan` from [a jax-js fork](https://github.com/olli4/jax-js/tree/feat/scan-v2).*
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
