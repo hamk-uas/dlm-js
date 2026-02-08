@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@jax-js/jax':
-        specifier: git+https://github.com/olli4/jax-js.git#feat/autoref
-        version: https://codeload.github.com/olli4/jax-js/tar.gz/96295a480606c608b1483f17aeb48cbfa3a96ed5
+        specifier: git+https://github.com/olli4/jax-js.git#feat/scan-v2
+        version: https://codeload.github.com/olli4/jax-js/tar.gz/e11a9b9f5136d5e205503c23771b66819e26189a
     devDependencies:
       '@types/node':
         specifier: ^25.0.10
@@ -349,8 +349,8 @@ packages:
     resolution: {integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==}
     engines: {node: 20 || >=22}
 
-  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/96295a480606c608b1483f17aeb48cbfa3a96ed5':
-    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/96295a480606c608b1483f17aeb48cbfa3a96ed5}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/e11a9b9f5136d5e205503c23771b66819e26189a':
+    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/e11a9b9f5136d5e205503c23771b66819e26189a}
     version: 0.1.8
     engines: {pnpm: '>=10.0.0'}
 
@@ -1342,7 +1342,7 @@ snapshots:
     dependencies:
       '@isaacs/balanced-match': 4.0.1
 
-  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/96295a480606c608b1483f17aeb48cbfa3a96ed5': {}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/e11a9b9f5136d5e205503c23771b66819e26189a': {}
 
   '@jest/schemas@29.6.3':
     dependencies:

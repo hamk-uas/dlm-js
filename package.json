@@ -7,7 +7,7 @@
     "dist"
   ],
   "dependencies": {
-    "@jax-js/jax": "git+https://github.com/olli4/jax-js.git#feat/autoref"
+    "@jax-js/jax": "git+https://github.com/olli4/jax-js.git#feat/scan-v2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

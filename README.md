@@ -4,7 +4,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
 
-*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The dlm-js computation lasts about 60 ms using `lax.scan` implementation in [a jax-js fork](https://github.com/olli4/jax-js/tree/feat/scan).*
+*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The dlm-js computation lasts about 60 ms (or 24 ms on successive runs) using JIT-compiled `lax.scan` from [a jax-js fork](https://github.com/olli4/jax-js/tree/feat/scan-v2).*
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
@@ -13,7 +13,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | --- | --- | --- | --- |
 | Plotting | — | ✅ | dlm-js is a computation-only library. Plotting is not planned to be implemented. |
 | float32 computation | ✅ | ❌ | With float32, niledemo results differ by a factor less than 1 %. dlm-js dtype is configurable whereas dlm works in float64 in Octave. GPU acceleration can be used when float32 is selected, but it is very slow due to the serial algorithm. Using the wasm backend is recommended instead. |
-| float64 computation | ✅ | ✅ | With float64, niledemo results differ by a factor less than 1e-10. |
+| float64 computation | ✅ | ✅ | With float64, niledemo results differ by a factor less than 1e-6 (was 1e-10 before swiching to jax-js unknown-order reductions). |
 
 ## TODO
 
