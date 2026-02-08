@@ -8,46 +8,51 @@ export type FloatArrayConstructor = typeof Float32Array | typeof Float64Array;
 
 /**
  * Result from the DLM smoother function (dlmSmo).
- * Contains both filtered and smoothed estimates.
+ * All tensor outputs are np.Arrays returned directly from the JIT core.
+ * Caller is responsible for reading (.data()) and disposing these arrays.
  * @internal - Used only within the library implementation.
  */
 export interface DlmSmoResult {
-  /** Smoothed state means - array of 2x1 np.Arrays */
-  x: np.Array[];
-  /** Smoothed state covariances - array of 2x2 np.Arrays */
-  C: np.Array[];
-  /** Filtered (one-step-ahead prediction) state means - array of 2x1 np.Arrays */
-  xf: np.Array[];
-  /** Filtered (one-step-ahead prediction) state covariances - array of 2x2 np.Arrays */
-  Cf: np.Array[];
-  /** Filter predictions (F * x_pred) */
-  yhat: FloatArray;
-  /** Prediction standard deviations */
-  ystd: FloatArray;
-  /** Smoothed state standard deviations [time][state_dim] */
-  xstd: [number, number][];
-  /** Raw residuals (y - yhat) */
-  resid0: FloatArray;
-  /** Scaled residuals (resid0 / V) */
-  resid: FloatArray;
-  /** Standardized prediction residuals (v / sqrt(Cp)) */
-  resid2: FloatArray;
-  /** Innovations (prediction errors) */
-  v: FloatArray;
-  /** Innovation covariances */
-  Cp: FloatArray;
-  /** Sum of squared raw residuals */
-  ssy: number;
-  /** Residual variance */
-  s2: number;
+  /** Smoothed state: level component [n] */
+  x_0: np.Array;
+  /** Smoothed state: slope component [n] */
+  x_1: np.Array;
+  /** Smoothed covariance components [n] */
+  C_00: np.Array; C_01: np.Array; C_10: np.Array; C_11: np.Array;
+  /** Filtered state: level component [n] */
+  xf_0: np.Array;
+  /** Filtered state: slope component [n] */
+  xf_1: np.Array;
+  /** Filtered covariance components [n] */
+  Cf_00: np.Array; Cf_01: np.Array; Cf_10: np.Array; Cf_11: np.Array;
+  /** Filter predictions [n] */
+  yhat: np.Array;
+  /** Prediction standard deviations [n] */
+  ystd: np.Array;
+  /** Smoothed state std devs [n] */
+  xstd_0: np.Array; xstd_1: np.Array;
+  /** Innovations [n] */
+  v: np.Array;
+  /** Innovation covariances [n] */
+  Cp: np.Array;
+  /** Raw residuals [n] */
+  resid0: np.Array;
+  /** Scaled residuals [n] */
+  resid: np.Array;
+  /** Standardized residuals [n] */
+  resid2: np.Array;
+  /** Sum of squared raw residuals (scalar) */
+  ssy: np.Array;
+  /** -2 * log likelihood (scalar) */
+  lik: np.Array;
+  /** Residual variance (scalar) */
+  s2: np.Array;
+  /** Mean squared error (scalar) */
+  mse: np.Array;
+  /** Mean absolute percentage error (scalar) */
+  mape: np.Array;
   /** Number of observations */
   nobs: number;
-  /** -2 * log likelihood */
-  lik: number;
-  /** Mean squared error of standardized residuals */
-  mse: number;
-  /** Mean absolute percentage error */
-  mape: number;
 }
 
 /**
