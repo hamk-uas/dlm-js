@@ -180,6 +180,8 @@ const dlmSmo = async (
       { x: x0, C: C0 },
       { y: y_arr, V2: V2_arr }
     );
+    fwdCarry.x.dispose();
+    fwdCarry.C.dispose();
     
     // ─── Backward RTS Smoother (reversed forward outputs) ───
     const [bwdCarry, bwd] = lax.scan(
@@ -193,6 +195,8 @@ const dlmSmo = async (
         Cp: np.flip(fwd.Cp.ref, 0),
       }
     );
+    bwdCarry.r.dispose();
+    bwdCarry.N.dispose();
     
     const x_smooth = np.flip(bwd.x_smooth, 0);
     const C_smooth = np.flip(bwd.C_smooth, 0);

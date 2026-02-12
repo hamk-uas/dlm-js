@@ -10,11 +10,11 @@ importers:
     dependencies:
       '@jax-js/jax':
         specifier: github:olli4/jax-js#feat/scan-v2
-        version: https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f
+        version: https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c
     devDependencies:
       '@hamk-uas/eslint-plugin-jax-js':
         specifier: github:hamk-uas/eslint-plugin-jax-js#v0.1.1
-        version: https://codeload.github.com/hamk-uas/eslint-plugin-jax-js/tar.gz/7805b1c6c15239b9901c181b41e46a5e47f53372(@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f)(eslint@9.39.2(jiti@2.6.1))
+        version: https://codeload.github.com/hamk-uas/eslint-plugin-jax-js/tar.gz/7805b1c6c15239b9901c181b41e46a5e47f53372(@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c)(eslint@9.39.2(jiti@2.6.1))
       '@types/node':
         specifier: ^25.0.10
         version: 25.2.3
@@ -425,8 +425,8 @@ packages:
     resolution: {integrity: sha512-WMz71T1JS624nWj2n2fnYAuPovhv7EUhk69R6i9dsVyzxt5eM3bjwvgk9L+APE1TRscGysAVMANkB0jh0LQZrQ==}
     engines: {node: 20 || >=22}
 
-  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f':
-    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c':
+    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c}
     version: 0.1.9
     engines: {pnpm: '>=10.0.0'}
 
@@ -1724,11 +1724,11 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@hamk-uas/eslint-plugin-jax-js@https://codeload.github.com/hamk-uas/eslint-plugin-jax-js/tar.gz/7805b1c6c15239b9901c181b41e46a5e47f53372(@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f)(eslint@9.39.2(jiti@2.6.1))':
+  '@hamk-uas/eslint-plugin-jax-js@https://codeload.github.com/hamk-uas/eslint-plugin-jax-js/tar.gz/7805b1c6c15239b9901c181b41e46a5e47f53372(@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c)(eslint@9.39.2(jiti@2.6.1))':
     dependencies:
       eslint: 9.39.2(jiti@2.6.1)
     optionalDependencies:
-      '@jax-js/jax': https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f
+      '@jax-js/jax': https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c
 
   '@humanfs/core@0.19.1': {}
 
@@ -1747,7 +1747,7 @@ snapshots:
     dependencies:
       '@isaacs/balanced-match': 4.0.1
 
-  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/b06126e0303514db359d3bfe88dc11c3894dc15f': {}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/c65fc52c466ce3487bee0921add15c9549aa416c': {}
 
   '@jest/schemas@29.6.3':
     dependencies:
