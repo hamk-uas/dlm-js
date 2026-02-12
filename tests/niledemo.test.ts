@@ -1,5 +1,5 @@
-import { defaultDevice, init, DType, Device } from "@jax-js/jax";
-import { describe, it } from 'vitest';
+import { defaultDevice, init, DType, Device, checkLeaks } from "@jax-js/jax";
+import { describe, it, expect } from 'vitest';
 import { dlmFit } from '../src/index';
 import { filterKeys, deepAlmostEqual } from './utils';
 import * as fs from 'fs';
@@ -62,10 +62,16 @@ describe('niledemo output', () => {
   };
 
   it(`should match reference`, async () => {
+    checkLeaks.start();
     await runTest();
+    const report = checkLeaks.stop();
+    expect(report.leaked, report.summary).toBe(0);
   });
 
   it(`should match reference`, async () => {
+    checkLeaks.start();
     await runTest();
+    const report = checkLeaks.stop();
+    expect(report.leaked, report.summary).toBe(0);
   });
 });

@@ -260,6 +260,9 @@ const dlmSmo = async (
   // Run core — one jit wrapping both scans + all diagnostics
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, r0, N0);
   
+  // Dispose captured constant
+  Ft.dispose();
+
   return { ...coreResult, nobs: n };
 };
 
@@ -338,6 +341,28 @@ export const dlmFit = async (
   const [c10] = await out1.C_10.data();
   const [c11] = await out1.C_11.data();
 
+  // Dispose remaining Pass 1 arrays not read via .data() above
+  out1.xf_0.dispose();
+  out1.xf_1.dispose();
+  out1.Cf_00.dispose();
+  out1.Cf_01.dispose();
+  out1.Cf_10.dispose();
+  out1.Cf_11.dispose();
+  out1.yhat.dispose();
+  out1.ystd.dispose();
+  out1.xstd_0.dispose();
+  out1.xstd_1.dispose();
+  out1.v.dispose();
+  out1.Cp.dispose();
+  out1.resid0.dispose();
+  out1.resid.dispose();
+  out1.resid2.dispose();
+  out1.ssy.dispose();
+  out1.lik.dispose();
+  out1.s2.dispose();
+  out1.mse.dispose();
+  out1.mape.dispose();
+
   const x0_updated = [[x0_0], [x0_1]];
   // Scale initial covariance by 100 for second pass (following MATLAB dlmfit)
   const C0_scaled = [
@@ -349,6 +374,15 @@ export const dlmFit = async (
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
   const out2 = await dlmSmo(yArr, F, V_std, x0_updated, G, W, C0_scaled, dtype);
+
+  // Dispose system matrices (Pass 1 used .ref, Pass 2 consumed the originals,
+  // but JIT tracing .ref'd them internally — dispose twice to match)
+  // eslint-disable-next-line @jax-js/no-use-after-consume -- disposing JIT-added refs
+  F.dispose(); F.dispose();
+  // eslint-disable-next-line @jax-js/no-use-after-consume -- disposing JIT-added refs
+  G.dispose(); G.dispose();
+  // eslint-disable-next-line @jax-js/no-use-after-consume -- disposing JIT-added refs
+  W.dispose(); W.dispose();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Convert np.Array results to TypedArrays (.data() auto-disposes each)
