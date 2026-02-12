@@ -1,6 +1,6 @@
 import { DType, numpy as np, lax, jit } from "@jax-js/jax";
 import type { DlmSmoResult, DlmFitResult, FloatArray } from "./types";
-import { disposeAll, getFloatArrayType } from "./types";
+import { getFloatArrayType } from "./types";
 
 // Public type exports
 export type { DlmFitResult, FloatArray } from "./types";
@@ -61,7 +61,7 @@ const dlmSmo = async (
   const N0 = np.array([[0.0, 0.0], [0.0, 0.0]], { dtype });
 
   // Precompute F' for reuse in backward step
-  const Ft = np.transpose(F.ref);
+  const Ft = np.transpose(F.ref);  
 
   // ─────────────────────────────────────────────────────────────────────────
   // Step functions (close over F, G, W, Ft as constants for JIT)
@@ -79,44 +79,40 @@ const dlmSmo = async (
     const { y: yi, V2: V2i } = inp;
     
     // Innovation: v = y - F·x
-    const v = np.subtract(yi.ref, np.matmul(F.ref, xi.ref));
+    const v = np.subtract(yi, np.matmul(F.ref, xi.ref));  
     
     // Innovation covariance: Cp = F·C·F' + V²
     const Cp = np.add(
-      np.einsum('ij,jk,lk->il', F.ref, Ci.ref, F.ref),
-      V2i.ref
+      np.einsum('ij,jk,lk->il', F.ref, Ci.ref, F.ref),  
+      V2i
     );
     
     // Kalman gain: K = G·C·F' / Cp
-    const GCFt = np.einsum('ij,jk,lk->il', G.ref, Ci.ref, F.ref);
-    const K = np.divide(GCFt.ref, Cp.ref);
+    const GCFt = np.einsum('ij,jk,lk->il', G.ref, Ci.ref, F.ref);  
+    const K = np.divide(GCFt, Cp.ref);  
     
     // L = G - K·F
-    const L = np.subtract(G.ref, np.matmul(K.ref, F.ref));
+    const L = np.subtract(G.ref, np.matmul(K.ref, F.ref));  
     
     // Next state prediction: x_next = G·x + K·v
     const x_next = np.add(
-      np.matmul(G.ref, xi.ref),
-      np.matmul(K.ref, v.ref)
+      np.matmul(G.ref, xi.ref),  
+      np.matmul(K.ref, v.ref)  
     );
     
     // Next covariance: C_next = G·C·L' + W
     const C_next = np.add(
-      np.einsum('ij,jk,lk->il', G.ref, Ci.ref, L.ref),
-      W.ref
+      np.einsum('ij,jk,lk->il', G.ref, Ci.ref, L),  
+      W.ref  
     );
     
     const output: ForwardY = {
-      x_pred: xi.ref,
-      C_pred: Ci.ref,
-      K: K.ref,
-      v: v.ref,
-      Cp: Cp.ref,
+      x_pred: xi,
+      C_pred: Ci,
+      K: K,
+      v: v,
+      Cp: Cp,
     };
-    
-    // Note: Don't dispose K, v, Cp - they are returned via .ref in output
-    // The scan will manage their lifecycle through the output pytree
-    disposeAll(GCFt, L);
     
     return [{ x: x_next, C: C_next }, output];
   };
@@ -133,33 +129,31 @@ const dlmSmo = async (
     const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi } = inp;
     
     // L = G - K·F
-    const L = np.subtract(G.ref, np.matmul(Ki.ref, F.ref));
+    const L = np.subtract(G.ref, np.matmul(Ki, F.ref));  
     
     // F'·Cp⁻¹
-    const FtCpInv = np.divide(Ft.ref, Cpi.ref);
+    const FtCpInv = np.divide(Ft.ref, Cpi);  
     
     // r_new = F'·Cp⁻¹·v + L'·r
     const r_new = np.add(
-      np.multiply(FtCpInv.ref, vi.ref),
-      np.matmul(np.transpose(L.ref), r.ref)
+      np.multiply(FtCpInv.ref, vi),  
+      np.matmul(np.transpose(L.ref), r)  
     );
     
     // N_new = F'·Cp⁻¹·F + L'·N·L
     const N_new = np.add(
-      np.matmul(FtCpInv.ref, F.ref),
-      np.einsum('ji,jk,kl->il', L.ref, N.ref, L.ref)
+      np.matmul(FtCpInv, F.ref),  
+      np.einsum('ji,jk,kl->il', L.ref, N, L)  
     );
     
     // x_smooth = x_pred + C_pred·r_new
-    const x_smooth = np.add(xi.ref, np.matmul(Ci.ref, r_new.ref));
+    const x_smooth = np.add(xi, np.matmul(Ci.ref, r_new.ref));  
     
     // C_smooth = C_pred - C_pred·N_new·C_pred
     const C_smooth = np.subtract(
-      Ci.ref,
-      np.einsum('ij,jk,kl->il', Ci.ref, N_new.ref, Ci.ref)
+      Ci.ref,  
+      np.einsum('ij,jk,kl->il', Ci.ref, N_new.ref, Ci)  
     );
-    
-    disposeAll(L, FtCpInv);
     
     return [{ r: r_new, N: N_new }, { x_smooth, C_smooth }];
   };
@@ -176,8 +170,8 @@ const dlmSmo = async (
     r0: np.Array, N0: np.Array
   ) => {
     // Derive flat [n] inputs for diagnostics (before scan consumes them)
-    const y_1d = np.squeeze(y_arr.ref);      // [n] from [n,1,1]
-    const V2_flat = np.squeeze(V2_arr.ref);  // [n]
+    const y_1d = np.squeeze(y_arr.ref);      // [n] from [n,1,1] — .ref: y_arr reused in scan
+    const V2_flat = np.squeeze(V2_arr.ref);  // [n] — .ref: V2_arr reused in scan
     const V_flat = np.sqrt(V2_flat.ref);     // [n] observation noise std dev
 
     // ─── Forward Kalman Filter ───
@@ -186,7 +180,6 @@ const dlmSmo = async (
       { x: x0, C: C0 },
       { y: y_arr, V2: V2_arr }
     );
-    disposeAll(fwdCarry.x, fwdCarry.C);
     
     // ─── Backward RTS Smoother (reversed forward outputs) ───
     const [bwdCarry, bwd] = lax.scan(
@@ -200,11 +193,9 @@ const dlmSmo = async (
         Cp: np.flip(fwd.Cp.ref, 0),
       }
     );
-    disposeAll(bwdCarry.r, bwdCarry.N);
     
-    const x_smooth = np.flip(bwd.x_smooth.ref, 0);
-    const C_smooth = np.flip(bwd.C_smooth.ref, 0);
-    disposeAll(bwd.x_smooth, bwd.C_smooth);
+    const x_smooth = np.flip(bwd.x_smooth, 0);
+    const C_smooth = np.flip(bwd.C_smooth, 0);
 
     // ─── Extract per-component 1D arrays from stacked tensors ───
 
@@ -212,7 +203,7 @@ const dlmSmo = async (
     // yhat = F·x_pred = [1,0]·[level,slope]' = level = xf_0
     const xf_0 = fwd.x_pred.ref.slice([], 0, 0);
     const xf_1 = fwd.x_pred.slice([], 1, 0);
-    const yhat = xf_0.ref;
+    const yhat = xf_0.ref; // .ref: both xf_0 and yhat are returned
 
     // Filtered covariance [n,2,2] → [n] per element
     const Cf_00 = fwd.C_pred.ref.slice([], 0, 0);
@@ -269,9 +260,6 @@ const dlmSmo = async (
   // Run core — one jit wrapping both scans + all diagnostics
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, r0, N0);
   
-  // Cleanup captured constants
-  disposeAll(Ft);
-
   return { ...coreResult, nobs: n };
 };
 
@@ -349,14 +337,6 @@ export const dlmFit = async (
   const [c01] = await out1.C_01.data();
   const [c10] = await out1.C_10.data();
   const [c11] = await out1.C_11.data();
-
-  // Dispose remaining Pass 1 arrays (not read via .data() above)
-  disposeAll(
-    out1.xf_0, out1.xf_1, out1.Cf_00, out1.Cf_01, out1.Cf_10, out1.Cf_11,
-    out1.yhat, out1.ystd, out1.xstd_0, out1.xstd_1,
-    out1.v, out1.Cp, out1.resid0, out1.resid, out1.resid2,
-    out1.ssy, out1.lik, out1.s2, out1.mse, out1.mape
-  );
 
   const x0_updated = [[x0_0], [x0_1]];
   // Scale initial covariance by 100 for second pass (following MATLAB dlmfit)

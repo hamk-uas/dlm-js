@@ -15,7 +15,11 @@
     ]
   },
   "devDependencies": {
+    "@hamk-uas/eslint-plugin-jax-js": "github:hamk-uas/eslint-plugin-jax-js#v0.1.1",
     "@types/node": "^25.0.10",
+    "@typescript-eslint/parser": "^8.55.0",
+    "eslint": "^9.39.2",
+    "jiti": "^2.6.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-dts": "^4.5.4",
@@ -23,6 +27,8 @@
   },
   "scripts": {
     "build": "vite build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m",
     "test:node": "vitest run tests/niledemo.test.ts",
     "test": "npm run test:octave && npm run test:node",

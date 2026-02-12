@@ -16,7 +16,7 @@ Quick start — commands you will need (copy/paste) ▶️
 
 Files & places to inspect first 📁
 - Implementation: `src/index.ts` (modes, memory/dispose patterns, API signatures).
-- Types & helpers: `src/types.ts` (TypedArray usage, `disposeAll`, `getFloatArrayType`).
+- Types & helpers: `src/types.ts` (TypedArray usage, `getFloatArrayType`).
 - Tests (golden + harness): `tests/niledemo.test.ts`, `tests/niledemo-in.json`, `tests/niledemo-out-m.json`, `tests/niledemo-keys.json`, `tests/out/`.
 - Reference generator: `tests/octave/niledemo.m` (MATLAB/Octave ground truth).
 - Design notes: `scan-implementation.md` (important for `lax.scan`/JIT nuances).
@@ -27,7 +27,7 @@ Project-specific conventions & gotchas ⚠️
 - Device/dtype behavior: tests pick backend automatically; `webgpu` → float32 (more numeric drift), `wasm`/`cpu` → float64 preferred for bit-for-bit checks. When debugging flakiness, force CPU + Float64.
 - Reference-first testing: Octave output is the source of truth. If you change numerics intentionally, regenerate Octave output and update tests with justification.
 - Partial-output testing: use `tests/niledemo-keys.json` to limit comparisons for partial implementations.
-- Memory management: `np.Array` wrappers must be disposed — follow the `disposeAll(...)` helper and use `.ref` when a value is reused (see `src/index.ts` patterns).
+- Memory management: `np.Array` wrappers must be disposed. Use `.ref` when a value is reused (see `src/index.ts` patterns).
 - Local dependency: `@jax-js/jax` is linked locally during development (`link:../jax-js`). Ensure the sibling repo is present or update dependency for isolated debugging.
 
 Testing & tolerance details (important for PRs) ✅
@@ -37,7 +37,6 @@ Testing & tolerance details (important for PRs) ✅
 
 Troubleshooting checklist (fast) 🩺
 - Deterministic mismatch? Re-run with CPU+Float64: tests set device via `defaultDevice('cpu')` and `DType.Float64` in the harness.
-- Strange memory / nondeterminism? Ensure `disposeAll` usage mirrors nearby code (temporary arrays must be disposed).
 - CI failure on Octave step? Install `octave-cli` locally and run `npm run test:octave` to reproduce.
 - Want to inspect intermediate arrays? Look at `tests/out/*.json` produced by the test harness.
 
@@ -45,13 +44,12 @@ PR checklist (what an AI should do before opening a PR) 📋
 1. Add/modify unit tests covering all modes: `for`, `scan`, `jit` (see `tests/niledemo.test.ts`).
 2. If numeric behavior intentionally changes, update or regenerate Octave reference and explain reasoning in the PR description.
 3. Update `tests/niledemo-keys.json` when exposing only a subset of outputs.
-4. Ensure no new `np.Array` leaks — add `disposeAll(...)` where appropriate.
+4. Ensure no new `np.Array` leaks.
 5. Run: `pnpm install && pnpm vitest run && npm run test:octave` (if applicable).
 6. If public API changes, update `README.md` and TypeScript types in `src/types.ts`.
 
 Example prompts for agents (use these exact templates) ✍️
 - "Add `mode: 'vectorized'` to `dlmFit` implemented via a new helper in `src/index.ts`; add unit tests exercising the new mode and ensure existing `for`/`scan`/`jit` tests still pass. Update README and add entries to `tests/niledemo-keys.json` if output keys change."  
-- "Fix a memory leak: find np.Array objects in `src/index.ts` not disposed in all branches and add `disposeAll` with a focused unit test that runs a long input and checks heap behavior."  
 - "Investigate `jit` mismatch on WASM: run the `jit` test twice, capture `tests/out/niledemo-out-jit.json`, and produce a minimal reproducer that highlights the first differing tensor and its path." 
 
 Where agents should open files first (order matters) ▶️
