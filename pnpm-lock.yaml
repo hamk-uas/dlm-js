@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@jax-js/jax':
         specifier: github:olli4/jax-js#feat/non-consuming-ops
-        version: https://codeload.github.com/olli4/jax-js/tar.gz/44b65ea982f5f555f49b183e3f9926ff721f62cd
+        version: https://codeload.github.com/olli4/jax-js/tar.gz/58958e094a8628050be5a4e12fe6b62db48509b4
     devDependencies:
       '@jax-js/eslint-plugin':
         specifier: link:../jax-js/packages/eslint-plugin
@@ -418,8 +418,8 @@ packages:
     resolution: {integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==}
     engines: {node: 20 || >=22}
 
-  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/44b65ea982f5f555f49b183e3f9926ff721f62cd':
-    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/44b65ea982f5f555f49b183e3f9926ff721f62cd}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/58958e094a8628050be5a4e12fe6b62db48509b4':
+    resolution: {tarball: https://codeload.github.com/olli4/jax-js/tar.gz/58958e094a8628050be5a4e12fe6b62db48509b4}
     version: 0.1.9
     engines: {pnpm: '>=10.0.0'}
 
@@ -1767,7 +1767,7 @@ snapshots:
     dependencies:
       '@isaacs/balanced-match': 4.0.1
 
-  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/44b65ea982f5f555f49b183e3f9926ff721f62cd': {}
+  '@jax-js/jax@https://codeload.github.com/olli4/jax-js/tar.gz/58958e094a8628050be5a4e12fe6b62db48509b4': {}
 
   '@jest/schemas@29.6.3':
     dependencies:
