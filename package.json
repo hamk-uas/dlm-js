@@ -7,7 +7,7 @@
     "dist"
   ],
   "dependencies": {
-    "@jax-js/jax": "git+https://github.com/olli4/jax-js.git#feat/scan-v2"
+    "@jax-js/jax": "github:olli4/jax-js#feat/non-consuming-ops"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -15,14 +15,20 @@
     ]
   },
   "devDependencies": {
+    "@jax-js/eslint-plugin": "link:../jax-js/packages/eslint-plugin",
     "@types/node": "^25.0.10",
+    "@typescript-eslint/parser": "^8.46.4",
+    "eslint": "^9.31.0",
+    "jiti": "^2.6.1",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
     "vite": "^7.3.1",
     "vite-plugin-dts": "^4.5.4",
     "vitest": "^1.6.1"
   },
   "scripts": {
     "build": "vite build",
+    "lint": "eslint src/",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m",
     "test:node": "vitest run tests/niledemo.test.ts",
     "test": "npm run test:octave && npm run test:node",

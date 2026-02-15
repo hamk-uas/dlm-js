@@ -117,17 +117,6 @@ export interface DlmFitResult {
 }
 
 /**
- * Helper to dispose multiple np.Arrays at once.
- */
-export function disposeAll(...arrays: (np.Array | undefined | null)[]): void {
-  for (const arr of arrays) {
-    if (arr) {
-      arr.dispose();
-    }
-  }
-}
-
-/**
  * Get the appropriate TypedArray constructor based on DType.
  */
 export function getFloatArrayType(dtype: DType): FloatArrayConstructor {
