@@ -206,6 +206,7 @@ const dlmSmo = async (
     // Filtered state [n,2,1] → [n] per component
     // yhat = F·x_pred = [1,0]·[level,slope]' = level = xf_0
     const xf_0 = fwd.x_pred.slice([], 0, 0);
+    const yhat = fwd.x_pred.slice([], 0, 0);
     const xf_1 = fwd.x_pred.slice([], 1, 0);
 
     // Filtered covariance [n,2,2] → [n] per element
@@ -256,7 +257,7 @@ const dlmSmo = async (
     return {
       xf_0, xf_1, Cf_00, Cf_01, Cf_10, Cf_11,
       x_0, x_1, C_00, C_01, C_10, C_11,
-      yhat: xf_0, ystd, xstd_0, xstd_1,
+      yhat, ystd, xstd_0, xstd_1,
       v: v_flat, Cp: Cp_flat,
       resid0, resid, resid2,
       ssy, lik, s2, mse, mape,
