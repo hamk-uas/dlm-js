@@ -7,15 +7,15 @@
     "dist"
   ],
   "dependencies": {
-    "@jax-js/jax": "github:olli4/jax-js#feat/non-consuming-ops"
+    "@jax-js-nonconsuming/jax": "github:hamk-uas/jax-js-nonconsuming"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@jax-js/jax"
+      "@jax-js-nonconsuming/jax"
     ]
   },
   "devDependencies": {
-    "@jax-js/eslint-plugin": "link:../jax-js/packages/eslint-plugin",
+    "@jax-js-nonconsuming/eslint-plugin-jax-js": "link:../jax-js-nonconsuming/packages/eslint-plugin",
     "@types/node": "^25.0.10",
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.31.0",

@@ -17,7 +17,7 @@ export default defineConfig({
     },
     rollupOptions: {
       // Externalize deps you don't want bundled
-      external: ['@jax-js/jax'],
+      external: ['@jax-js-nonconsuming/jax'],
       output: {},
     },
   },

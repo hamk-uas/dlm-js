@@ -1,4 +1,4 @@
-import { numpy as np, DType } from "@jax-js/jax";
+import { numpy as np, DType } from "@jax-js-nonconsuming/jax";
 
 /** TypedArray type for float data - either Float32Array or Float64Array based on dtype */
 export type FloatArray = Float32Array | Float64Array;

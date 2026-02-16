@@ -1,4 +1,4 @@
-import { DType, numpy as np, lax, jit, tree } from "@jax-js/jax";
+import { DType, numpy as np, lax, jit, tree } from "@jax-js-nonconsuming/jax";
 import type { DlmSmoResult, DlmFitResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
 

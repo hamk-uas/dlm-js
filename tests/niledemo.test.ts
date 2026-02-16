@@ -1,4 +1,4 @@
-import { defaultDevice, init, DType, Device } from "@jax-js/jax";
+import { defaultDevice, init, DType, Device } from "@jax-js-nonconsuming/jax";
 import { describe, it } from 'vitest';
 import { dlmFit } from '../src/index';
 import { filterKeys, deepAlmostEqual } from './utils';

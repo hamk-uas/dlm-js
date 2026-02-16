@@ -1,4 +1,4 @@
-import jaxJs from "@jax-js/eslint-plugin";
+import jaxJs from "@jax-js-nonconsuming/eslint-plugin-jax-js";
 import tsParser from "@typescript-eslint/parser";
 
 export default [
