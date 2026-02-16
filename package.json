@@ -15,7 +15,7 @@
     ]
   },
   "devDependencies": {
-    "@jax-js-nonconsuming/eslint-plugin-jax-js": "link:../jax-js-nonconsuming/packages/eslint-plugin",
+    "@jax-js-nonconsuming/eslint-plugin-jax-js": "github:hamk-uas/jax-js-nonconsuming#path:packages/eslint-plugin&eslint-plugin-v0.1.0",
     "@types/node": "^25.0.10",
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.31.0",

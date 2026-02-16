@@ -13,8 +13,8 @@ importers:
         version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a
     devDependencies:
       '@jax-js-nonconsuming/eslint-plugin-jax-js':
-        specifier: link:../jax-js-nonconsuming/packages/eslint-plugin
-        version: link:../jax-js-nonconsuming/packages/eslint-plugin
+        specifier: github:hamk-uas/jax-js-nonconsuming#path:packages/eslint-plugin&eslint-plugin-v0.1.0
+        version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a#path:packages/eslint-plugin(eslint@9.39.2(jiti@2.6.1))
       '@types/node':
         specifier: ^25.0.10
         version: 25.2.0
@@ -417,6 +417,12 @@ packages:
   '@isaacs/brace-expansion@5.0.0':
     resolution: {integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==}
     engines: {node: 20 || >=22}
+
+  '@jax-js-nonconsuming/eslint-plugin-jax-js@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a#path:packages/eslint-plugin':
+    resolution: {path: packages/eslint-plugin, tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a}
+    version: 0.1.0
+    peerDependencies:
+      eslint: '>=9.0.0'
 
   '@jax-js-nonconsuming/jax@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a':
     resolution: {tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a}
@@ -1766,6 +1772,10 @@ snapshots:
   '@isaacs/brace-expansion@5.0.0':
     dependencies:
       '@isaacs/balanced-match': 4.0.1
+
+  '@jax-js-nonconsuming/eslint-plugin-jax-js@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a#path:packages/eslint-plugin(eslint@9.39.2(jiti@2.6.1))':
+    dependencies:
+      eslint: 9.39.2(jiti@2.6.1)
 
   '@jax-js-nonconsuming/jax@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/9607f81ab900659edc2280fd935c63e2711b362a': {}
 
