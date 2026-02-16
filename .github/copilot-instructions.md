@@ -36,6 +36,8 @@ Testing & tolerance details (important for PRs) ✅
 - Tests compare JSON outputs with a **relative tolerance** of ~1e-10 (see `tests/niledemo.test.ts` and `tests/utils.ts`). Small dtype/device changes can trigger failures.
 - Test artifacts: failing runs write `tests/out/niledemo-out-<mode>.json` — inspect these alongside `tests/niledemo-out-m.json`.
 - When adding features: include tests that run in all three modes (`for`, `scan`, `jit`) and add keys to `niledemo-keys.json` if the change is a partial implementation.
+- **Leak detection**: Wrap jax-js code in tests with `checkLeaks.start()` before and `checkLeaks.stop()` after to verify no `np.Array` objects are leaked. This catches missing `using`/`dispose` calls at runtime.
+- **Eager-first development**: When writing new jax-js code, always get it working in eager mode first (no `jit()` wrapper). Only wrap with `jit()` after the eager version is correct and leak-free. JIT adds tracing complexity that makes debugging harder.
 
 Troubleshooting checklist (fast) 🩺
 - Deterministic mismatch? Re-run with CPU+Float64: tests set device via `defaultDevice('cpu')` and `DType.Float64` in the harness.
@@ -54,7 +56,7 @@ PR checklist (what an AI should do before opening a PR) 📋
 
 Example prompts for agents (use these exact templates) ✍️
 - "Add `mode: 'vectorized'` to `dlmFit` implemented via a new helper in `src/index.ts`; add unit tests exercising the new mode and ensure existing `for`/`scan`/`jit` tests still pass. Update README and add entries to `tests/niledemo-keys.json` if output keys change."  
-- "Fix a memory leak: find np.Array objects in `src/index.ts` not disposed in all branches and add `disposeAll` with a focused unit test that runs a long input and checks heap behavior."  
+- "Fix a memory leak: find np.Array objects in `src/index.ts` not disposed in all branches and add `using`/`tree.dispose()` with a focused unit test using `checkLeaks.start()`/`.stop()` to verify."  
 - "Investigate `jit` mismatch on WASM: run the `jit` test twice, capture `tests/out/niledemo-out-jit.json`, and produce a minimal reproducer that highlights the first differing tensor and its path." 
 
 Where agents should open files first (order matters) ▶️
