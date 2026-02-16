@@ -31,8 +31,8 @@
     "lint": "eslint src/",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m",
     "test:node": "vitest run tests/niledemo.test.ts",
-    "test": "npm run test:octave && npm run test:node",
-    "prepublishOnly": "npm run build && npm run test"
+    "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",
+    "prepublishOnly": "pnpm run build && pnpm run test"
   },
   "main": "./dist/dlm-js.cjs.js",
   "module": "./dist/dlm-js.es.js",
