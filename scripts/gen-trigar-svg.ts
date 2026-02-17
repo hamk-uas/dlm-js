@@ -29,7 +29,7 @@ const y: number[] = input.y;
 const s: number = input.s;
 const w: number[] = input.w;
 const n = y.length;
-const options = { order: 1, trig: 1, ns: 12, arphi: [0.425] };
+const options = { order: 1, trig: 1, ns: 12, arphi: [0.85] };
 
 // Time axis: months 1..n (synthetic monthly data)
 const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
@@ -210,7 +210,7 @@ const panels: PanelSpec[] = [
     yLabel: "Seasonal",
   },
   {
-    title: "AR(1) state x[4] ± 2σ  (φ = 0.425)",
+    title: "AR(1) state x[4] ± 2σ  (φ = 0.85)",
     jsMean: jsAR as number[],
     jsStd: jsARStd as number[],
     octMean: octAR,

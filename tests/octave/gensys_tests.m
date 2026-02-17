@@ -110,25 +110,27 @@ out_trigar = dlmfit(y_seas, s_seas, w_trigar, [], [], [], options_trigar);
 save_json(out_trigar, "tests/trigar-out-m.json");
 disp('  done');
 
-%% Test 7: Synthetic energy demand — trend + seasonal + AR(1)
+%% Test 7: Synthetic energy demand — trend + seasonal + strong AR(1)
 % Simulates monthly energy consumption with:
 %   - Linear growth trend (rising demand)
-%   - Seasonal cycle (1 trig harmonic, ns=12)
-%   - AR(1) with phi=0.425 (moderate weather/economic deviations)
+%   - Seasonal cycle (1 trig harmonic, ns=12, amplitude ~5)
+%   - Strong AR(1) with phi=0.85 (persistent weather/economic deviations)
 %   - Observation noise
 % Data generated from the DLM state-space model itself using a fixed seed.
 % State dimension m = 2 + 2 + 1 = 5
 
-disp('Test 7: synthetic energy demand (trend + seasonal + AR)');
+disp('Test 7: synthetic energy demand (trend + seasonal + strong AR)');
 
 % Generate system matrices
-options_energy = struct("order", 1, "trig", 1, "ns", 12, "arphi", 0.425);
+options_energy = struct("order", 1, "trig", 1, "ns", 12, "arphi", 0.85);
 [G_e, F_e] = dlmgensys(options_energy);
 m_e = size(G_e, 1);  % should be 5
 
 % Noise parameters (standard deviations)
 % w: [level, slope, trig_cos, trig_sin, ar_state]
-w_energy = [0.3, 0.02, 0.15, 0.15, 2.5];
+% Trig noise kept small (0.02) so the rotation maintains coherent phase;
+% large trig noise would destroy the periodic structure.
+w_energy = [0.3, 0.02, 0.02, 0.02, 2.5];
 s_energy = 1.5;
 
 % Build W (process noise covariance) and V (obs noise variance)
@@ -142,10 +144,11 @@ V_e = s_energy^2;
 rng(42, 'twister');
 n_e = 120;  % 10 years monthly
 
-% Initial state: [level=100, slope=0.2, cos=0, sin=0, ar=0]
+% Initial state: [level=100, slope=0.2, cos=5, sin=0, ar=0]
+% Nonzero trig amplitude so the seasonal oscillation is present from t=1.
 x_true = zeros(m_e, n_e);
 y_energy = zeros(n_e, 1);
-x_prev = [100; 0.2; 0; 0; 0];
+x_prev = [100; 0.2; 5; 0; 0];
 
 for t_i = 1:n_e
   % State transition + process noise
