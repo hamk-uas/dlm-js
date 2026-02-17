@@ -14,14 +14,13 @@ This causes downstream consumers to get TS7016 errors from TypeDoc, `tsc`, or ID
 
 Separate from #4 (Node 22 type stripping). This issue can occur on any Node version.
 
-## Our workarounds
+## Our workarounds (all working)
 
 - `"skipErrorChecking": true` in `typedoc.json` (TypeDoc still generates docs)
 - `"skipLibCheck": true` in `tsconfig.json` (already standard)
 - `"moduleResolution": "Bundler"` in `tsconfig.json` (modern ESM resolution)
 
-## Suggested upstream fixes
+## Suggested upstream fix
 
-1. Ship pre-built `dist/` in the repo (most reliable)
-2. Add a `prepare` script check that verifies `dist/index.d.ts` exists after build
-3. Publish to npm (eliminates `prepare` entirely)
+The core issue is that tsdown DTS generation fails silently. The `prepare` script should verify
+that `dist/index.d.ts` was actually produced and fail loudly if not.
