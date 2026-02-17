@@ -11,6 +11,45 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Niledemo main output from dlm-js (which uses jax-js-nonconsuming) and from the MATLAB dlm implementation (using Octave). The JIT-compiled dlm-js computation lasts about 60 ms (or 24 ms on successive runs with cached compilation) using `lax.scan` from [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming).*
 
+## Usage
+
+dlm-js works in **both Node.js and the browser** — the library has no platform-specific code. It ships ESM, CommonJS, and TypeScript declarations.
+
+### ESM (Node.js / browser bundler)
+
+```js
+import { dlmFit, dlmgensys } from "dlm-js";
+import { DType } from "@jax-js-nonconsuming/jax";
+
+// Nile river annual flow data (excerpt)
+const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
+
+// Fit a local linear trend model (order=1, state dim m=2)
+const result = await dlmFit(y, 120, [40, 10], DType.Float64, { order: 1 });
+
+console.log(result.yhat);  // smoothed predictions
+console.log(result.x);     // smoothed states [m][n]
+console.log(result.lik);   // -2·log-likelihood
+```
+
+### CommonJS (Node.js)
+
+```js
+const { dlmFit } = require("dlm-js");
+const { DType } = require("@jax-js-nonconsuming/jax");
+```
+
+### Generate system matrices only
+
+```js
+import { dlmgensys } from "dlm-js";
+
+const sys = dlmgensys({ order: 1, trig: 2, ns: 12 });
+console.log(sys.G);  // state transition matrix (m×m)
+console.log(sys.F);  // observation vector (1×m)
+console.log(sys.m);  // state dimension
+```
+
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
 
