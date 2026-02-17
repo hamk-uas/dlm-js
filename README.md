@@ -23,7 +23,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, before (initial guess, orange dashed) vs after (MLE optimum, blue solid)" src="assets/nile-mle.svg" />
 
-*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. Pure-array Adam optimizer with `jit(valueAndGrad(...))` wrapping the entire Kalman filter. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
@@ -114,7 +114,7 @@ console.log(mle.elapsed);     // wall-clock ms
 console.log(mle.fit);         // full DlmFitResult with optimized parameters
 ```
 
-The optimizer uses `jit(valueAndGrad(loss))` with a pure-array Adam (no external optimizer dependency). The Kalman filter forward pass inside the loss function uses `lax.scan` for autodiff compatibility. Parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`.
+The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and pure-array Adam parameter update (no external optimizer dependency). The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`.
 
 **Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2, 300 iterations) takes ~5 s. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 

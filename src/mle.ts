@@ -165,10 +165,9 @@ interface AdamState {
 /**
  * Estimate DLM parameters (s, w) by maximum likelihood via autodiff.
  *
- * Uses `jit(valueAndGrad(...))` + pure-array Adam to differentiate the Kalman
- * filter log-likelihood and optimize in one compiled step. The entire loop body
- * — forward filter, backward AD pass, moment updates, parameter update — is a
- * single `jit()` call.
+ * The entire optimization step — `valueAndGrad(loss)` (Kalman filter forward
+ * pass + AD backward pass) and pure-array Adam moment/parameter updates — is
+ * wrapped in a single `jit()` call, so every iteration runs from compiled code.
  *
  * The parameterization maps unconstrained reals → positive values:
  *   s = exp(θ_s),  w[i] = exp(θ_{w,i})
