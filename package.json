@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "JavaScript re-implementation of the MATLAB dlm library using jax-js-nonconsuming",
   "type": "module",
+  "packageManager": "pnpm@10.28.2",
   "files": [
     "dist"
   ],
