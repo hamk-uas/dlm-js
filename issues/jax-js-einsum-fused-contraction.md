@@ -65,3 +65,11 @@ With the current naive-summation pairwise decomposition (Float64):
 | `L'·N·L` (backward N update) | 13 | contributes to above via N accumulation |
 
 These are acceptable for most applications. The issue is primarily relevant if jax-js wants to compete with LAPACK-backed libraries on numerical accuracy for Float64 scientific computing.
+
+## Synthetic ground-truth perspective
+
+Testing the DLM against known true hidden states (rather than Octave reference) shows that the ~1e-4 relative errors reported above are **implementation disagreements** between jax-js and LAPACK rounding pathways. They do not affect the DLM's ability to recover hidden states from noisy observations.
+
+The smoothed state RMSE is ~1–3 (dominated by statistical estimation uncertainty), while the entire v0.2.0 vs v0.2.1 rounding difference is ~2e-10 — ten orders of magnitude smaller. Even the full naive-summation rounding (without Kahan) is negligible at the precision that matters for DLM end users.
+
+This further supports option 3 ("Don't bother") for the einsum fusion request. The benefit would only be visible in implementation-vs-implementation comparisons, not in actual model accuracy.
