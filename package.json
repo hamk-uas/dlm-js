@@ -43,6 +43,7 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/dlm-js.es.js",
       "require": "./dist/dlm-js.cjs.js"
     }
