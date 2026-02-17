@@ -9,7 +9,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile river annual flow — Kalman smoother ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Nile demo: dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red) with ± 2σ confidence bands. Regenerate with `pnpm run gen:svg`.*
+*Nile demo: smoothed level from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red) with ± 2σ bands. Regenerate with `pnpm run gen:svg`.*
 
 ## Installation
 
