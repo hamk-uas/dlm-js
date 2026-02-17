@@ -83,6 +83,22 @@ describe('dlmGenSys', () => {
     expect(sys.G[3][2]).toBeCloseTo(0.3);
     expect(sys.G[3][3]).toBeCloseTo(0);
   });
+
+  it('trig=1 + AR(1): seasonal and autoregression combined (m=5)', () => {
+    const sys = dlmGenSys({ order: 1, trig: 1, ns: 12, arphi: [0.7] });
+    expect(sys.m).toBe(5);
+    // Trend block: [0..1]
+    expect(sys.G[0][0]).toBe(1);
+    expect(sys.G[0][1]).toBe(1);
+    expect(sys.G[1][1]).toBe(1);
+    // Trig block: [2..3]
+    expect(sys.G[2][2]).toBeCloseTo(Math.cos(2 * Math.PI / 12), 10);
+    expect(sys.G[2][3]).toBeCloseTo(Math.sin(2 * Math.PI / 12), 10);
+    // AR block: [4]
+    expect(sys.G[4][4]).toBeCloseTo(0.7);
+    // F: trend, trig, AR all observed
+    expect(sys.F).toEqual([1, 0, 1, 0, 1]);
+  });
 });
 
 // ─── Helper: normalize MATLAB output for comparison ─────────────────────────
@@ -181,6 +197,18 @@ const modelCases: ModelCase[] = [
     inputFile: 'kaisaniemi-in.json',
     referenceFile: 'kaisaniemi-out-m.json',
     options: { order: 1, trig: 1 },
+  },
+  {
+    name: 'trig=1, ns=12, arphi=0.7 (seasonal + AR)',
+    inputFile: 'trigar-in.json',
+    referenceFile: 'trigar-out-m.json',
+    options: { order: 1, trig: 1, ns: 12, arphi: [0.7] },
+  },
+  {
+    name: 'synthetic energy demand (trend + seasonal + strong AR)',
+    inputFile: 'energy-in.json',
+    referenceFile: 'energy-out-m.json',
+    options: { order: 1, trig: 1, ns: 12, arphi: [0.85] },
   },
 ];
 

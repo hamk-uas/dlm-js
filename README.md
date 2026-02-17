@@ -17,6 +17,10 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 63.74 ms, warm run 22.95 ms. Regenerate with `pnpm run gen:svg`.*
 
+<img alt="Synthetic monthly data with seasonal + AR model: smoothed level, combined signal, and AR state from dlm-js and MATLAB/Octave" src="assets/trigar.svg" />
+
+*Seasonal + AR demo (synthetic energy demand, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.15,0.15,2.5]`, m=5. Regenerate with `pnpm run gen:svg`.*
+
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
 For background on these demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/).
@@ -128,13 +132,15 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
 ├── assets/              # Generated images (committed to repo)
 │   ├── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
-│   └── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
+│   ├── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
+│   └── trigar.svg           # Seasonal + AR demo plot (regenerate with `pnpm run gen:svg`)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
 ├── scripts/             # SVG plot generators
 │   ├── gen-niledemo-svg.ts      # Nile demo SVG generator
-│   └── gen-kaisaniemi-svg.ts    # Kaisaniemi seasonal demo SVG generator
+│   ├── gen-kaisaniemi-svg.ts    # Kaisaniemi seasonal demo SVG generator
+│   └── gen-trigar-svg.ts        # Seasonal + AR demo SVG generator
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -155,7 +161,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── gensys.test.ts       # dlmGenSys unit tests + multi-model integration tests
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
-│   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
+│   ├── {order0,order2,seasonal,trig,trigar,level,energy}-{in,out-m}.json  # Test data (see below)
 │   └── utils.ts             # Test utility functions
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)
 ├── eslint.config.ts     # ESLint configuration (jax-js-nonconsuming memory rules)
@@ -193,8 +199,10 @@ The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mj
 | `seasonal` | Generated for this project (`gensys_tests.m`) | Synthetic monthly data (10 years) with trend + 3 harmonics, fullseas=1, ns=12, m=13. Tests full seasonal decomposition. |
 | `trig` | Generated for this project (`gensys_tests.m`) | Same synthetic monthly data, trig=2, ns=12, m=6. Tests trigonometric seasonal with fewer states. |
 | `kaisaniemi` | `mjlaine/dlm` example data (`kaisaniemi_demo.m`) | Helsinki Kaisaniemi monthly temperatures (117 obs), order=1, trig=1, ns=12, m=4. Tests seasonal cycle with real-world data. |
+| `trigar` | Generated for this project (`gensys_tests.m`) | Same synthetic monthly data, trig=1, ns=12, arphi=[0.7], m=5. Tests trigonometric seasonal combined with autoregression. |
+| `energy` | Generated for this project (`gensys_tests.m`) | Synthetic energy demand (120 obs, seeded RNG), trig=1, ns=12, arphi=[0.85], m=5. Data generated from the DLM model itself — tests recovery of strong AR dynamics alongside trend and seasonal. |
 
-All generated test data uses deterministic signals (no random noise) so reference outputs are exactly reproducible across platforms.
+Most generated test data uses deterministic signals (no random noise). The `energy` test uses seeded random noise (`rng(42,'twister')` in Octave) so it is still exactly reproducible across platforms.
 
 ### Synthetic ground-truth tests
 
@@ -254,7 +262,7 @@ pnpm run test:octave
 
 This generates Octave reference outputs:
 - `tests/niledemo-out-m.json` (from `niledemo.m` — pre-existing MATLAB DLM demo)
-- `tests/{order0,order2,seasonal,trig,level}-out-m.json` (from `gensys_tests.m` — generated for this project)
+- `tests/{order0,order2,seasonal,trig,trigar,level,energy}-out-m.json` (from `gensys_tests.m` — generated for this project)
 - `tests/kaisaniemi-out-m.json` (from `kaisaniemi_demo.m` — Kaisaniemi seasonal demo)
 
 It will also generate test input files unless they already exist.

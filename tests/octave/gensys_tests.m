@@ -94,4 +94,80 @@ out_mini = dlmfit(y_mini, s_mini, w_mini, [], [], [], options_mini);
 save_json(out_mini, "tests/level-out-m.json");
 disp('  done');
 
+%% Test 6: trig=1 with ns=12 + AR(1) on same seasonal data
+% Local level+slope + 1 trigonometric harmonic (2 seasonal states) + AR(1)
+% State dimension m = 2 + 2 + 1 = 5
+% This is the first test combining seasonal and autoregression.
+
+disp('Test 6: trig=1, ns=12, arphi=0.7 (seasonal + AR)');
+options_trigar = struct("order", 1, "trig", 1, "ns", 12, "arphi", 0.7);
+% w: [level, slope, trig_cos, trig_sin, ar]
+w_trigar = [3, 0.5, 0.4, 0.4, 1.0];
+inputs_trigar = struct("y", y_seas, "s", s_seas, "w", w_trigar);
+save_json(inputs_trigar, "tests/trigar-in.json");
+
+out_trigar = dlmfit(y_seas, s_seas, w_trigar, [], [], [], options_trigar);
+save_json(out_trigar, "tests/trigar-out-m.json");
+disp('  done');
+
+%% Test 7: Synthetic energy demand — trend + seasonal + strong AR(1)
+% Simulates monthly energy consumption with:
+%   - Linear growth trend (rising demand)
+%   - Seasonal cycle (1 trig harmonic, ns=12)
+%   - Strong AR(1) with phi=0.85 (persistent weather/economic deviations)
+%   - Observation noise
+% Data generated from the DLM state-space model itself using a fixed seed.
+% State dimension m = 2 + 2 + 1 = 5
+
+disp('Test 7: synthetic energy demand (trend + seasonal + strong AR)');
+
+% Generate system matrices
+options_energy = struct("order", 1, "trig", 1, "ns", 12, "arphi", 0.85);
+[G_e, F_e] = dlmgensys(options_energy);
+m_e = size(G_e, 1);  % should be 5
+
+% Noise parameters (standard deviations)
+% w: [level, slope, trig_cos, trig_sin, ar_state]
+w_energy = [0.3, 0.02, 0.15, 0.15, 2.5];
+s_energy = 1.5;
+
+% Build W (process noise covariance) and V (obs noise variance)
+W_e = zeros(m_e, m_e);
+for i = 1:length(w_energy)
+  W_e(i,i) = w_energy(i)^2;
+end
+V_e = s_energy^2;
+
+% Generate data from the model with fixed seed
+rng(42, 'twister');
+n_e = 120;  % 10 years monthly
+
+% Initial state: [level=100, slope=0.2, cos=0, sin=0, ar=0]
+x_true = zeros(m_e, n_e);
+y_energy = zeros(n_e, 1);
+x_prev = [100; 0.2; 0; 0; 0];
+
+for t_i = 1:n_e
+  % State transition + process noise
+  w_noise = zeros(m_e, 1);
+  for j = 1:m_e
+    w_noise(j) = w_energy(min(j, length(w_energy))) * randn();
+  end
+  x_t = G_e * x_prev + w_noise;
+  x_true(:, t_i) = x_t;
+
+  % Observation + observation noise
+  y_energy(t_i) = F_e * x_t + s_energy * randn();
+  x_prev = x_t;
+end
+
+inputs_energy = struct("y", y_energy, "s", s_energy, "w", w_energy);
+save_json(inputs_energy, "tests/energy-in.json");
+
+out_energy = dlmfit(y_energy, s_energy, w_energy, [], [], [], options_energy);
+% Also save the true states for reference
+out_energy.x_true = x_true;
+save_json(out_energy, "tests/energy-out-m.json");
+disp('  done');
+
 disp('All gensys test references generated.');
