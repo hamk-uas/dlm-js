@@ -2,7 +2,9 @@
 
 <strong>
   <a href="https://hamk-uas.github.io/dlm-js/">API Reference</a> |
-  <a href="https://github.com/hamk-uas/dlm-js">GitHub</a>
+  <a href="https://github.com/hamk-uas/dlm-js">GitHub</a> |
+  <a href="https://mjlaine.github.io/dlm/">Original DLM Docs</a> |
+  <a href="https://github.com/mjlaine/dlm">Original DLM GitHub</a>
 </strong>
 
 A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
@@ -14,6 +16,8 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 <img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave" src="assets/kaisaniemi.svg" />
 
 *Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Regenerate with `pnpm run gen:svg`.*
+
+For background on these demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/).
 
 ## Installation
 
