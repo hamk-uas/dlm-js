@@ -36,6 +36,23 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it trivial to implement and robust to non-smooth objectives. But it scales poorly with dimension — $O(d^2)$ simplex operations per iteration for $d$ parameters. Adam with autodiff has higher per-iteration cost (2× due to backward pass) but exploits gradient information, converging in far fewer iterations for smooth objectives like the DLM log-likelihood.
 
+## Benchmark: same machine, same data
+
+All timings measured on the same machine. MATLAB DLM uses Octave `fminsearch` (Nelder-Mead, `maxfuneval=400`). dlm-js uses `dlmMLE` (Adam + autodiff, `maxIter=300`, `wasm` backend). Octave timings are median of 5 runs after 1 warmup; dlm-js timings are median of 3 runs after 1 warmup.
+
+| Model | n | m | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | -2logL (Octave) | -2logL (dlm-js) |
+|-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
+| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 3668 ms | 1104.6 | 1105.0 |
+| Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1445 ms | 1095.8 | 1095.9 |
+| Kaisaniemi, trig, fit w | 117 | 4 | 4 | **failed** (NaN/Inf) | 6317 ms | — | 341.6 |
+
+**Key observations:**
+- On the Nile data, Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.
+- Both converge to essentially the same -2logL (within 0.4), confirming equivalent objective functions.
+- On the Kaisaniemi model (m=4, 4 parameters), **Octave's Nelder-Mead fails entirely** — the simplex diverges and produces NaN/Inf. dlm-js converges in 300 iterations (6.3 s) thanks to gradient information guiding the optimizer in the 4-dimensional parameter space. This demonstrates the practical advantage of gradient-based optimization for higher-dimensional models.
+- dlm-js `dlmMLE` always fits both `s` and `w` jointly, while MATLAB DLM can fit `w` only (`fitv=0`), which is faster when `s` is known.
+
 ## MCMC (MATLAB-only feature)
 
 The MATLAB DLM has a second estimation mode (`options.mcmc=1`) that uses Adaptive Metropolis (AM) MCMC via Marko Laine's `mcmcrun` toolbox:
@@ -67,13 +84,14 @@ The MATLAB DLM has a second estimation mode (`options.mcmc=1`) that uses Adaptiv
 | Posterior uncertainty | ✅ (full chain) | ❌ (point estimate only) |
 | Convergence diagnostic | ✅ (`chain`, `sschain`) | ✅ (`likHistory`) |
 | Runs in browser | ❌ | ✅ |
-| MEX/WASM acceleration | ✅ (`dlmmex` optional) | ✅ (`wasm` backend, ~5 s for Nile) |
+| MEX/WASM acceleration | ✅ (`dlmmex` optional) | ✅ (`wasm` backend; see [benchmark](#benchmark-same-machine-same-data)) |
 
 ## What dlm-js does differently (and arguably better)
 
-1. **Exact gradients** vs finite-difference-free simplex — Adam converges more reliably on smooth likelihoods.
-2. **Full JIT compilation** — the entire optimization step (forward filter + AD + parameter update) compiles to a single fused kernel.
-3. **WASM backend** — 29× faster than CPU interpreter, making MLE feasible for interactive use (~5 s for Nile).
+1. **Exact gradients** vs finite-difference-free simplex — Adam converges more reliably on smooth likelihoods, especially in higher dimensions where Nelder-Mead may fail entirely (see Kaisaniemi benchmark above).
+2. **Full JIT compilation** — the entire optimization step (forward filter + AD + parameter update) compiles to a single fused kernel. JIT overhead currently dominates for small datasets (n=100); the advantage grows with larger n or more complex models.
+3. **WASM backend** — runs in Node.js and the browser without native dependencies.
+4. **Robust in higher dimensions** — gradient-based optimization handles 4+ parameters where Nelder-Mead diverges.
 
 ## What MATLAB DLM does that dlm-js doesn't (yet)
 
