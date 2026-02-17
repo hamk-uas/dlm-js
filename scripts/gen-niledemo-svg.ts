@@ -106,9 +106,8 @@ for (const v of yTicks) {
   push(`<line x1="${margin.left}" y1="${sy(v).toFixed(1)}" x2="${W - margin.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
 }
 
-// Confidence bands (dlm-js first / behind)
+// Confidence band (dlm-js only)
 push(`<path d="${bandPath(t, jsUpper, jsLower)}" fill="${jsBandColor}" stroke="none"/>`);
-push(`<path d="${bandPath(t, octUpper, octLower)}" fill="${octBandColor}" stroke="none"/>`);
 
 // Smoothed level lines (Octave dashed on top)
 push(`<polyline points="${polyline(t, jsYhat)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
@@ -157,8 +156,7 @@ push(`<rect x="${legX + 8}" y="${legY + 25}" width="12" height="10" fill="${jsBa
 push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#333" font-size="11">dlm-js smoothed level ± 2σ</text>`);
 // Octave
 push(`<line x1="${legX + 8}" y1="${legY + 46}" x2="${legX + 20}" y2="${legY + 46}" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
-push(`<rect x="${legX + 8}" y="${legY + 41}" width="12" height="10" fill="${octBandColor}" stroke="none"/>`);
-push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#333" font-size="11">MATLAB/Octave dlm smoothed level ± 2σ</text>`);
+push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#333" font-size="11">MATLAB/Octave dlm smoothed level</text>`);
 
 push(`</svg>`);
 
