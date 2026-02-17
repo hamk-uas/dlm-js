@@ -12,42 +12,69 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | Feature | dlm&#8209;js | dlm | Description |
 | --- | --- | --- | --- |
 | Plotting | — | ✅ | dlm-js is a computation-only library. Plotting is not planned to be implemented. |
-| float32 computation | ✅ | ❌ | With float32, niledemo results differ by a factor less than 1 %. dlm-js dtype is configurable whereas dlm works in float64 in Octave. GPU acceleration can be used when float32 is selected, but it is very slow due to the serial algorithm. Using the wasm backend is recommended instead. |
-| float64 computation | ✅ | ✅ | With float64, niledemo results differ by a factor less than 1e-6 (was 1e-10 before swiching to jax-js unknown-order reductions). |
+| State space generation | ✅ | ✅ | `dlmgensys` generates G, F matrices for polynomial trend, full/trigonometric seasonal, and AR(p) components. |
+| Arbitrary state dimension | ✅ | ✅ | Kalman filter and RTS smoother support state dimension m ≥ 1, matching MATLAB's `dlmfit`/`dlmsmo`. |
+| float32 computation | ✅ | ❌ | dlm-js dtype is configurable whereas dlm works in float64 in Octave. Float32 is numerically stable for state dimension m ≤ 2; higher dimensions may diverge due to catastrophic cancellation in covariance updates. GPU acceleration can be used when float32 is selected, but the serial Kalman algorithm is slow on GPU. Using the wasm backend is recommended instead. |
+| float64 computation | ✅ | ✅ | With float64, results match the MATLAB reference within ~2e-3 relative tolerance (dominated by small covariance elements near zero with absolute error < 1e-7). See [numerical precision notes](#numerical-precision). |
+| Device × dtype test matrix | ✅ | — | All tests run on every available (device, dtype) combination: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
+
+## Numerical precision
+
+The jax-js `dot`/`matmul` kernels use naive (uncompensated) summation in their inner reduction loops. This means accumulated rounding scales as O(m·ε) per matrix multiplication, where m is the state dimension and ε is machine epsilon.
+
+The most precision-sensitive operation is the RTS backward smoother step `C_smooth = C - C·N·C`, where catastrophic cancellation amplifies any rounding when the smoothed correction nearly equals the prior covariance. See detailed comments in `src/index.ts`.
+
+Known precision issues have been filed upstream: [issues/](issues/).
 
 ## TODO
 
 * Test the built library (in `dist/`)
-* Choose the important dlm functions and non-default input variables and output variables for implementation
-* Human review the AI-generated DLM port. It does pass niledemo test, but has not been properly reviewed.
-* Document the library
+* Implement remaining dlm features (covariates, spline mode, missing data handling)
+* Human review the AI-generated DLM port
+* Document the library API
 
 ## Project structure
 
 ```
 ├── dist/                # Compiled and bundled output (after build)
+├── issues/              # Drafted GitHub issues for upstream jax-js
 ├── src/                 # Library TypeScript sources
-|   └── index.ts             # Main source file
+│   ├── index.ts             # Main source: dlmSmo (Kalman+RTS), dlmFit (two-pass fitting)
+│   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
+│   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators
-│   │   ├── dlm/                 # Minimal MATLAB dlm implementation
-│   │   └── niledemo.m           # Niledemo Octave script to generate reference output (and input)
-│   ├── out/                 # Test outputs
-|   │   └── niledemo-out.json    # Niledemot test output from Node.js
-|   ├── niledemo-in.json     # Niledemo test input
-|   ├── niledemo-keys.json   # Niledemo list of output keys to test, for partial implementations
-|   ├── niledemo-out-m.json  # Niledemo reference output from Octave
-|   ├── niledemo.test.ts     # Niledemo test
-|   └── utils.ts             # Test utility functions
-├── .gitignore           # Ignore file for git
-├── .npmignore           # Ignore file for npm
+│   │   ├── dlm/                 # Minimal MATLAB dlm implementation (Marko Laine)
+│   │   ├── niledemo.m           # Niledemo — pre-existing MATLAB DLM demo script
+│   │   └── gensys_tests.m      # Additional model tests (synthetic data, generated for this project)
+│   ├── out/                 # Test outputs (gitignored)
+│   ├── test-matrix.ts       # Shared device × dtype test configurations and tolerances
+│   ├── niledemo-in.json     # Niledemo input data
+│   ├── niledemo-keys.json   # Output keys to compare (for partial implementations)
+│   ├── niledemo-out-m.json  # Niledemo reference output from Octave
+│   ├── niledemo.test.ts     # Niledemo integration test
+│   ├── gensys.test.ts       # dlmgensys unit tests + multi-model integration tests
+│   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
+│   └── utils.ts             # Test utility functions
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)
 ├── package.json         # Node.js package information
-├── pnpm-lock.yaml       # Locked dependencies for reproducible installs (update with "pnpm update")
 ├── README.md            # This readme          
 ├── tsconfig.json        # Configuration file of the TypeScript project
-├── vite.config.ts       # Configuration file of the Vite project
+└── vite.config.ts       # Configuration file of the Vite project
 ```
+
+### Test data origins
+
+| Test | Source | Description |
+| --- | --- | --- |
+| `niledemo` | Pre-existing MATLAB DLM demo (`niledemo.m` by Marko Laine) | Annual Nile river flow, order=1 (local linear trend), m=2. Input/reference generated by Octave. |
+| `order0` | Generated for this project (`gensys_tests.m`) | Nile data with order=0 (local level), m=1. Tests the simplest model (scalar state). |
+| `level` | Generated for this project (`gensys_tests.m`) | First 50 Nile values with order=0, m=1. Compact edge-case test. |
+| `order2` | Generated for this project (`gensys_tests.m`) | Synthetic quadratic signal + deterministic "noise" (sin/cos), order=2, m=3. Tests higher polynomial trend. |
+| `seasonal` | Generated for this project (`gensys_tests.m`) | Synthetic monthly data (10 years) with trend + 3 harmonics, fullseas=1, ns=12, m=13. Tests full seasonal decomposition. |
+| `trig` | Generated for this project (`gensys_tests.m`) | Same synthetic monthly data, trig=2, ns=12, m=6. Tests trigonometric seasonal with fewer states. |
+
+All generated test data uses deterministic signals (no random noise) so reference outputs are exactly reproducible across platforms.
 
 ## Development
 
@@ -91,14 +118,18 @@ This does two things:
 ### Generate reference output using Octave
 
 ```shell
-npm run test:octave
+pnpm run test:octave
 ```
 
-This will generate `tests/out/niledemo-out-m.json`. It will also generate `tests/niledemo-in.json`, unless it already exists, and will use that as its input.
+This generates Octave reference outputs:
+- `tests/niledemo-out-m.json` (from `niledemo.m` — pre-existing MATLAB DLM demo)
+- `tests/{order0,order2,seasonal,trig,level}-out-m.json` (from `gensys_tests.m` — generated for this project)
 
-### Run niledemo test
+It will also generate test input files unless they already exist.
 
-You can run the niledemo test directly (no build step needed) with:
+### Run tests
+
+You can run all tests directly (no build step needed) with:
 
 ```shell
 pnpm vitest run
@@ -110,7 +141,13 @@ or
 pnpm run test:node
 ```
 
-This runs the test using the source code in `src/` (not the built output). Vitest compiles your TypeScript on the fly.
+This runs both `niledemo.test.ts` and `gensys.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+
+To run the full CI-local check (lint + Octave reference generation + tests):
+
+```shell
+pnpm run test
+```
 
 ### Authors
 * Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`

@@ -1,11 +1,11 @@
-import { defaultDevice, init, DType, Device } from "@jax-js-nonconsuming/jax";
+import { checkLeaks } from '@jax-js-nonconsuming/jax';
 import { describe, it } from 'vitest';
 import { dlmFit } from '../src/index';
 import { filterKeys, deepAlmostEqual } from './utils';
+import { getTestConfigs, applyConfig, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Read input from tests/niledemo-in.json
 const inputFile = path.join(__dirname, 'niledemo-in.json');
 if (!fs.existsSync(inputFile)) {
   throw new Error(`Input file not found: ${inputFile}`);
@@ -13,59 +13,68 @@ if (!fs.existsSync(inputFile)) {
 const nileInput = JSON.parse(fs.readFileSync(inputFile, 'utf-8'));
 
 const referenceFileName = path.join(__dirname, 'niledemo-out-m.json');
+if (!fs.existsSync(referenceFileName)) {
+  throw new Error(`Reference file not found: ${referenceFileName}`);
+}
+const reference = JSON.parse(fs.readFileSync(referenceFileName, 'utf-8'));
 
-describe('niledemo output', () => {
-  const runTest = async () => {
-    const outputDir = path.join(__dirname, 'out');
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-    const devices = await init();
-    let useDevice: Device = 'cpu';
-    let useDType = DType.Float64;
-    if (devices.includes('webgpu')) {
-        useDevice = 'webgpu';
-        useDType = DType.Float32;
-    } else if (devices.includes('wasm')) {
-        useDevice = 'wasm';
-    }
-    console.log(`Using device: ${useDevice}, dtype: ${useDType}`);
-    defaultDevice(useDevice);
-    const startTime = performance.now();
-    const result = await dlmFit(nileInput.y, nileInput.s, nileInput.w, useDType);
-    const endTime = performance.now();
-    console.log(`Time: ${(endTime - startTime).toFixed(0)}ms`);
-    const outputFileName = path.join(outputDir, `niledemo-out.json`);
-    fs.writeFileSync(outputFileName, JSON.stringify(result, null, 2));
-    if (!fs.existsSync(referenceFileName)) {
-      throw new Error(`Reference file not found: ${referenceFileName}`);
-    }
-    const reference = JSON.parse(fs.readFileSync(referenceFileName, 'utf-8'));
-    const keysFile = path.join(__dirname, 'niledemo-keys.json');
-    let filteredResult = result;
-    let filteredReference = reference;
-    if (fs.existsSync(keysFile)) {
-      const keys: string[] = JSON.parse(fs.readFileSync(keysFile, 'utf-8'));
-      filteredResult = filterKeys(result, keys);
-      filteredReference = filterKeys(reference, keys);
-    }
-    const relativeTolerance = 1e-6;
-    const cmp = deepAlmostEqual(filteredResult, filteredReference, relativeTolerance);
-    if (!cmp.equal) {
-      throw new Error(
-        `Output does not match reference.\n` +
-        `First mismatch at: ${cmp.path}\n` +
-        `Result value:    ${JSON.stringify(cmp.a)}\n` +
-        `Reference value: ${JSON.stringify(cmp.b)}`
-      );
-    }
-  };
+const keysFile = path.join(__dirname, 'niledemo-keys.json');
+const compareKeys: string[] | null = fs.existsSync(keysFile)
+  ? JSON.parse(fs.readFileSync(keysFile, 'utf-8'))
+  : null;
 
-  it(`should match reference`, async () => {
-    await runTest();
-  });
+const runTest = async (config: TestConfig) => {
+  applyConfig(config);
 
-  it(`should match reference`, async () => {
-    await runTest();
-  });
+  const outputDir = path.join(__dirname, 'out');
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  checkLeaks.start();
+  const result = await dlmFit(nileInput.y, nileInput.s, nileInput.w, config.dtype);
+  checkLeaks.stop();
+
+  const outputFileName = path.join(outputDir, `niledemo-out-${config.label.replace('/', '-')}.json`);
+  fs.writeFileSync(outputFileName, JSON.stringify(result, (_key, value) =>
+    ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
+  , 2));
+
+  let filteredResult: Record<string, unknown> = result as unknown as Record<string, unknown>;
+  let filteredReference: Record<string, unknown> = reference;
+  if (compareKeys) {
+    filteredResult = filterKeys(result, compareKeys) as Record<string, unknown>;
+    filteredReference = filterKeys(reference, compareKeys) as Record<string, unknown>;
+  }
+
+  const cmp = deepAlmostEqual(
+    filteredResult,
+    filteredReference,
+    config.relativeTolerance,
+    '',
+    config.absoluteTolerance,
+  );
+  if (!cmp.equal) {
+    throw new Error(
+      `[${config.label}] Output does not match reference.\n` +
+      `First mismatch at: ${cmp.path}\n` +
+      `Result value:    ${JSON.stringify(cmp.a)}\n` +
+      `Reference value: ${JSON.stringify(cmp.b)}`
+    );
+  }
+};
+
+describe('niledemo output', async () => {
+  const configs = await getTestConfigs();
+
+  for (const config of configs) {
+    it(`should match reference (${config.label})`, async () => {
+      await runTest(config);
+    });
+
+    // Second run exercises warm-cache / JIT path
+    it(`should match reference — 2nd run (${config.label})`, async () => {
+      await runTest(config);
+    });
+  }
 });

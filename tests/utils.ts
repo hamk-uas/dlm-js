@@ -24,18 +24,22 @@ export interface ComparisonResult {
 }
 
 /**
- * Deep comparison with percentage tolerance and path reporting
+ * Deep comparison with percentage tolerance and path reporting.
+ * @param absoluteTolerance - If set, values differing by less than this
+ *   are considered equal regardless of relative error (handles near-zero values).
  */
 export function deepAlmostEqual(
   a: unknown,
   b: unknown,
   relativeTolerance = 0.001,
-  path = ''
+  path = '',
+  absoluteTolerance = 0,
 ): ComparisonResult {
   if (typeof a === 'number' && typeof b === 'number') {
     if (isNaN(a) && isNaN(b)) return { equal: true };
     if (!isFinite(a) || !isFinite(b)) return { equal: a === b, path, a, b };
     const diff = Math.abs(a - b);
+    if (absoluteTolerance > 0 && diff < absoluteTolerance) return { equal: true };
     const maxAbs = Math.max(Math.abs(a), Math.abs(b), 1e-12);
     if (diff / maxAbs > relativeTolerance) {
       return { equal: false, path, a, b };
@@ -44,7 +48,7 @@ export function deepAlmostEqual(
   }
   if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
     for (let i = 0; i < a.length; i++) {
-      const res = deepAlmostEqual(a[i], b[i], relativeTolerance, `${path}[${i}]`);
+      const res = deepAlmostEqual(a[i], b[i], relativeTolerance, `${path}[${i}]`, absoluteTolerance);
       if (!res.equal) return res;
     }
     return { equal: true };
@@ -60,7 +64,8 @@ export function deepAlmostEqual(
         (a as Record<string, unknown>)[k],
         (b as Record<string, unknown>)[k],
         relativeTolerance,
-        path ? `${path}.${k}` : k
+        path ? `${path}.${k}` : k,
+        absoluteTolerance,
       );
       if (!res.equal) return res;
     }

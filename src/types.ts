@@ -10,27 +10,27 @@ export type FloatArrayConstructor = typeof Float32Array | typeof Float64Array;
  * Result from the DLM smoother function (dlmSmo).
  * All tensor outputs are np.Arrays returned directly from the JIT core.
  * Caller is responsible for reading (.data()) and disposing these arrays.
+ *
+ * For a model with state dimension m and n observations:
+ * - State/covariance tensors are stacked: x [n,m,1], C [n,m,m]
+ * - Observation-space diagnostics are [n] vectors
+ * - Scalar diagnostics are 0-d tensors
+ *
  * @internal - Used only within the library implementation.
  */
 export interface DlmSmoResult {
-  /** Smoothed state: level component [n] */
-  x_0: np.Array;
-  /** Smoothed state: slope component [n] */
-  x_1: np.Array;
-  /** Smoothed covariance components [n] */
-  C_00: np.Array; C_01: np.Array; C_10: np.Array; C_11: np.Array;
-  /** Filtered state: level component [n] */
-  xf_0: np.Array;
-  /** Filtered state: slope component [n] */
-  xf_1: np.Array;
-  /** Filtered covariance components [n] */
-  Cf_00: np.Array; Cf_01: np.Array; Cf_10: np.Array; Cf_11: np.Array;
-  /** Filter predictions [n] */
+  /** Smoothed states [n, m, 1] */
+  x: np.Array;
+  /** Smoothed covariances [n, m, m] */
+  C: np.Array;
+  /** Filtered (predicted) states [n, m, 1] */
+  xf: np.Array;
+  /** Filtered covariances [n, m, m] */
+  Cf: np.Array;
+  /** Filter predictions yhat = F·xf [n] */
   yhat: np.Array;
   /** Prediction standard deviations [n] */
   ystd: np.Array;
-  /** Smoothed state std devs [n] */
-  xstd_0: np.Array; xstd_1: np.Array;
   /** Innovations [n] */
   v: np.Array;
   /** Innovation covariances [n] */
@@ -53,6 +53,8 @@ export interface DlmSmoResult {
   mape: np.Array;
   /** Number of observations */
   nobs: number;
+  /** State dimension */
+  m: number;
 }
 
 /**
@@ -70,11 +72,11 @@ export interface DlmFitResult {
   C: FloatArray[][];
   /** Smoothed state standard deviations [time][state_dim] */
   xstd: FloatArray[];
-  /** State transition matrix G (2x2) */
+  /** State transition matrix G (m×m) */
   G: number[][];
-  /** Observation matrix F (1x2 flattened) */
+  /** Observation vector F (1×m flattened) */
   F: number[];
-  /** State noise covariance W (2x2) */
+  /** State noise covariance W (m×m) */
   W: number[][];
   /** Observations */
   y: FloatArray;
