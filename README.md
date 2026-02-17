@@ -17,6 +17,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | float32 computation | ✅ | ❌ | dlm-js dtype is configurable whereas dlm works in float64 in Octave. Float32 is numerically stable for state dimension m ≤ 2; higher dimensions may diverge due to catastrophic cancellation in covariance updates. GPU acceleration can be used when float32 is selected, but the serial Kalman algorithm is slow on GPU. Using the wasm backend is recommended instead. |
 | float64 computation | ✅ | ✅ | With float64, results match the MATLAB reference within ~2e-3 relative tolerance (or < 1e-6 absolute tolerance for small covariance elements). See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | All tests run on every available (device, dtype) combination: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
+| Synthetic ground-truth tests | ✅ | — | Tests against known true states from a seeded generating process. Verifies noise reduction, calibrated uncertainty, positive covariance — independent of any reference implementation. |
 
 ## Numerical precision
 
@@ -54,6 +55,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── niledemo-out-m.json  # Niledemo reference output from Octave
 │   ├── niledemo.test.ts     # Niledemo integration test
 │   ├── gensys.test.ts       # dlmgensys unit tests + multi-model integration tests
+│   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
 │   └── utils.ts             # Test utility functions
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)
@@ -75,6 +77,17 @@ Precision issues have been filed upstream: [issues/](issues/).
 | `trig` | Generated for this project (`gensys_tests.m`) | Same synthetic monthly data, trig=2, ns=12, m=6. Tests trigonometric seasonal with fewer states. |
 
 All generated test data uses deterministic signals (no random noise) so reference outputs are exactly reproducible across platforms.
+
+### Synthetic ground-truth tests
+
+In addition to the Octave reference tests above, `synthetic.test.ts` generates state-space data from a **known generating process** with known true hidden states (using a seeded PRNG with Box-Muller transform for reproducible Gaussian noise). The DLM smoother is then tested against mathematical ground truth rather than another implementation's rounding:
+
+- **Finite outputs**: No NaN/Inf in any result field
+- **Positive covariance**: Smoothed covariance diagonals `C[k][k][t] > 0` for all states and timesteps
+- **Noise reduction**: Smoother RMSE < observation RMSE (the smoother actually reduces noise)
+- **Calibrated uncertainty**: True states fall within the 95% posterior credible intervals at roughly the nominal rate
+
+Models tested: local level (m=1) at moderate/high/low SNR, and local linear trend (m=2). All run across the full device × dtype matrix.
 
 ## Development
 
