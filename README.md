@@ -87,7 +87,7 @@ In addition to the Octave reference tests above, `synthetic.test.ts` generates s
 - **Noise reduction**: Smoother RMSE < observation RMSE (the smoother actually reduces noise)
 - **Calibrated uncertainty**: True states fall within the 95% posterior credible intervals at roughly the nominal rate
 
-Models tested: local level (m=1) at moderate/high/low SNR, and local linear trend (m=2). All run across the full device × dtype matrix.
+Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m=2), trigonometric seasonal (m=6), and full seasonal (m=13). All run across the full device × dtype matrix. Float32 is skipped for m > 2 (see float32 row in the features table).
 
 ## Development
 
@@ -154,7 +154,7 @@ or
 pnpm run test:node
 ```
 
-This runs both `niledemo.test.ts` and `gensys.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs `niledemo.test.ts`, `gensys.test.ts`, and `synthetic.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 
