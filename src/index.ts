@@ -317,7 +317,7 @@ const dlmSmo = async (
     ));
     const s2 = np.mean(np.square(resid));
     const mse = np.mean(np.square(resid2));
-    const mape = np.mean(np.divide(np.abs(resid2), np.abs(y_1d)));
+    const mape = np.mean(np.divide(np.abs(resid2), y_1d));
     
     return {
       x: x_smooth, C: C_smooth,
