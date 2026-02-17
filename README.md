@@ -17,11 +17,13 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 ### Core computation
 
 | Feature | dlm&#8209;js | dlm | Description |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | Kalman filter + RTS smoother | ✅ | ✅ | Forward filter and backward smoother for arbitrary state dimension m ≥ 1. |
 | Two-pass initialization | ✅ | ✅ | Diffuse prior → smooth → refined initial state, matching MATLAB `dlmfit`. |
 | State space generation (`dlmgensys`) | ✅ | ✅ | Polynomial trend (order 0/1/2), full seasonal, trigonometric seasonal, AR(p) components. |
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
+| Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
+| Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
 | float32 computation | ✅ | ❌ | Configurable dtype. Float32 is numerically stable for m ≤ 2; higher dimensions may diverge. GPU/WASM backends available. |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
@@ -30,17 +32,15 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 ### MATLAB `dlmfit`/`dlmsmo` features not yet ported
 
-| Feature | MATLAB location | Description |
+| Feature | MATLAB location | Why not yet ported |
 | --- | --- | --- |
-| Covariates / proxies | `dlmfit` X argument, `dlmsmo` X argument | External regressors extend the state with an identity block in G and `kron(X(i,:), eye(p))` in F. |
-| Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | dlm-js assumes p = 1 (scalar observation per timestep). MATLAB supports p-dimensional observation vectors. |
-| Missing data (NaN handling) | `dlmsmo` `ig = not(isnan(y(i,:)))` | MATLAB skips NaN observations in the filter/smoother. dlm-js requires complete data. |
-| Log-likelihood | `dlmsmo` `out.lik` | -2·log-likelihood via prediction error decomposition. Needed for parameter estimation. |
-| Parameter optimization | `dlmfit` `options.opt` | `fminsearch` over V, W diagonal, and AR parameters by minimizing -2·log-likelihood. |
-| MCMC parameter estimation | `dlmfit` `options.mcmc` | Bayesian inference via `mcmcrun` (Adaptive Metropolis). |
-| State sampling (disturbance smoother) | `dlmsmo` `sample` argument | Generates one sampled state trajectory for Gibbs sampling in MCMC. |
-| Covariance symmetry enforcement | `dlmsmo` `triu(C) + triu(C,1)'` | MATLAB forces exact matrix symmetry at each step. dlm-js relies on algebraic symmetry. |
-| Diagnostic statistics | `dlmsmo` output fields | MSE, MAPE, scaled residuals (`out.mse`, `out.mape`, `out.resid2`). |
+| Covariates / proxies | `dlmfit` X argument, `dlmsmo` X argument | Straightforward to add (identity block in G, `kron(X(i,:), eye(p))` in F), but no use case has required it yet. |
+| Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | Biggest remaining lift — affects all matrix dimensions throughout the filter/smoother. dlm-js currently assumes scalar observations (p = 1). |
+| Missing data (NaN handling) | `dlmsmo` `ig = not(isnan(y(i,:)))` | Requires masking innovation updates for NaN timesteps. Moderate effort; also needs `meannan`/`sumnan` utility functions. |
+| Parameter optimization | `dlmfit` `options.opt` | MATLAB version uses `fminsearch` (Nelder-Mead). No JS optimizer is bundled; would need a third-party dependency or a from-scratch implementation. |
+| MCMC parameter estimation | `dlmfit` `options.mcmc` | Depends on Marko Laine's external `mcmcrun` MCMC toolbox, which is not included in the dlm repository. Would require porting or replacing the entire MCMC engine. |
+| State sampling (disturbance smoother) | `dlmsmo` `sample` argument | Generates sampled state trajectories for Gibbs sampling. Only useful together with MCMC parameter estimation, so blocked on MCMC. |
+| Covariance symmetry enforcement | `dlmsmo` `triu(C) + triu(C,1)'` | MATLAB forces exact matrix symmetry at each step to counteract asymmetric floating-point rounding. dlm-js relies on algebraic symmetry; adding enforcement is low effort but has not been needed. |
 
 ## Numerical precision
 
@@ -53,7 +53,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 ## TODO
 
 * Test the built library (in `dist/`)
-* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — covariates, multivariate observations, missing data, likelihood, parameter estimation)
+* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — covariates, multivariate observations, missing data, parameter estimation)
 * Human review the AI-generated DLM port
 
 ## Project structure
