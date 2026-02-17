@@ -7,9 +7,9 @@
 
 A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
 
-<img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
+<img alt="Nile river annual flow — Kalman smoother ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Niledemo main output from dlm-js (which uses jax-js-nonconsuming) and from the MATLAB dlm implementation (using Octave). The JIT-compiled dlm-js computation lasts about 60 ms (or 24 ms on successive runs with cached compilation) using `lax.scan` from [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming).*
+*Nile demo: dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red) with ± 2σ confidence bands. Regenerate with `pnpm run gen:svg`.*
 
 ## Installation
 
@@ -116,6 +116,8 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── copilot-instructions.md  # AI coding agent instructions
 │   └── workflows/           # GitHub Actions CI
 │       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
+├── assets/              # Generated images (committed to repo)
+│   └── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
