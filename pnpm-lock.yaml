@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@jax-js-nonconsuming/jax':
         specifier: github:hamk-uas/jax-js-nonconsuming
-        version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/78bb983b39cac5d38aa48378ca563792a874841f
+        version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/236c2dde817b4e069de2a57d742dcff4ec31775a
     devDependencies:
       '@jax-js-nonconsuming/eslint-plugin-jax-js':
         specifier: github:hamk-uas/jax-js-nonconsuming#path:packages/eslint-plugin&eslint-plugin-v0.1.0
@@ -433,8 +433,8 @@ packages:
     peerDependencies:
       eslint: '>=9.0.0'
 
-  '@jax-js-nonconsuming/jax@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/78bb983b39cac5d38aa48378ca563792a874841f':
-    resolution: {tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/78bb983b39cac5d38aa48378ca563792a874841f}
+  '@jax-js-nonconsuming/jax@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/236c2dde817b4e069de2a57d742dcff4ec31775a':
+    resolution: {tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/236c2dde817b4e069de2a57d742dcff4ec31775a}
     version: 0.2.2
     engines: {pnpm: '>=10.0.0'}
 
@@ -1857,7 +1857,7 @@ snapshots:
     dependencies:
       eslint: 9.39.2(jiti@2.6.1)
 
-  '@jax-js-nonconsuming/jax@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/78bb983b39cac5d38aa48378ca563792a874841f': {}
+  '@jax-js-nonconsuming/jax@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/236c2dde817b4e069de2a57d742dcff4ec31775a': {}
 
   '@jest/schemas@29.6.3':
     dependencies:
