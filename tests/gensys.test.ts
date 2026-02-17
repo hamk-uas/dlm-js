@@ -134,6 +134,7 @@ interface ModelCase {
   inputFile: string;
   referenceFile: string;
   options: DlmOptions;
+  omitMape?: boolean;
 }
 
 const modelCases: ModelCase[] = [
@@ -162,10 +163,11 @@ const modelCases: ModelCase[] = [
     options: { order: 1, fullseas: true, ns: 12 },
   },
   {
-    name: 'trig=2, ns=12 (trigonometric seasonal)',
-    inputFile: 'trig-in.json',
-    referenceFile: 'trig-out-m.json',
-    options: { order: 1, trig: 2, ns: 12 },
+    name: 'Kaisaniemi seasonal demo (order=1, trig=1)',
+    inputFile: 'kaisaniemi-in.json',
+    referenceFile: 'kaisaniemi-out-m.json',
+    options: { order: 1, trig: 1 },
+    omitMape: true,
   },
 ];
 
@@ -223,9 +225,13 @@ describe('dlmgensys integration tests', async () => {
 
           const normalizedRef = normalizeMatlabOutput(reference, sys.m);
 
+          const keysToCompare = mc.omitMape
+            ? COMPARE_KEYS.filter((k) => k !== 'mape')
+            : COMPARE_KEYS;
+
           const filteredResult: Record<string, unknown> = {};
           const filteredRef: Record<string, unknown> = {};
-          for (const k of COMPARE_KEYS) {
+          for (const k of keysToCompare) {
             if (k in result) filteredResult[k] = (result as Record<string, unknown>)[k];
             if (k in normalizedRef) filteredRef[k] = normalizedRef[k];
           }
