@@ -141,4 +141,4 @@ To:
 
 And imports change from `"@jax-js-nonconsuming/jax"` to `"@hamk-uas/jax-js-nonconsuming"`.
 
-Note: dlm-js currently uses a **pure-array Adam** (no optax dependency) because optax isn't jittable. If the `count.item()` issue is fixed, we could switch back to optax for cleaner code.
+Note: dlm-js currently uses a **pure-array Adam** (no optax dependency) because optax wasn't jittable in v0.3.0. As of v0.4.0, `optax.adam` is jittable — dlm-js could switch to optax for cleaner code, but the pure-array implementation works and has no external dependency.

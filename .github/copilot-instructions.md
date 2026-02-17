@@ -37,7 +37,7 @@ Project-specific conventions & gotchas ⚠️
 - Partial-output testing: use `tests/niledemo-keys.json` to limit comparisons for partial implementations.
 - Memory management: This project uses `@hamk-uas/jax-js-nonconsuming` which has **non-consuming ops** — operations leave inputs intact. Use TC39 `using` keyword for automatic disposal and `tree.dispose()` for bulk cleanup. Do NOT use `.ref` (that is the consuming-ops pattern from a different fork).
 - ESLint plugin: The `@hamk-uas/jax-js-nonconsuming/eslint-plugin` sub-path export enforces correct `using`/disposal patterns. **Always run `pnpm run lint` after editing `src/` files** to catch memory leaks, missing `using` declarations, and use-after-dispose bugs.
-- Dependencies: `@hamk-uas/jax-js-nonconsuming` v0.3.0 (includes the eslint plugin as a sub-path export) is installed from `github:hamk-uas/jax-js-nonconsuming#v0.3.0`.
+- Dependencies: `@hamk-uas/jax-js-nonconsuming` v0.4.0 (includes the eslint plugin as a sub-path export) is installed from `github:hamk-uas/jax-js-nonconsuming#v0.4.0`.
 - AD workarounds: `np.eye(m)` has an AD bug — use `np.diag(np.ones([m]))` instead. The eslint `require-using` rule must be disabled in AD-traced code (tracers manage lifetimes, not `using`). See `src/mle.ts` for examples.
 
 Testing & tolerance details (important for PRs) ✅
