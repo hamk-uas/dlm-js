@@ -88,9 +88,9 @@ for (let v = Math.ceil(tMin / 20) * 20; v <= tMax; v += 20) tTicks.push(v);
 // Colors
 const obsColor = "#555";
 const jsColor = "#2563eb";     // blue
-const octColor = "#dc2626";    // red
+const octColor = "#ef4444";    // red
 const jsBandColor = "rgba(37,99,235,0.12)";
-const octBandColor = "rgba(220,38,38,0.12)";
+const octBandColor = "rgba(239,68,68,0.12)";
 
 // Build SVG
 const lines: string[] = [];
