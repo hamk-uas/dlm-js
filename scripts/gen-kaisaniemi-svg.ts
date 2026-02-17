@@ -1,12 +1,10 @@
 /**
  * Generate an SVG plot of the Kaisaniemi seasonal demo from mjlaine/dlm.
  *
- * Uses:
- * - Input data exported by tests/octave/kaisaniemi_demo.m
- * - Octave reference output from tests/kaisaniemi-out-m.json
- * - dlm-js output from src/index.ts dlmFit
- *
- * Plot: smoothed level state x[0] ± 2σ bands for dlm-js and MATLAB/Octave.
+ * Two panels:
+ * 1) Smoothed level state x[0] ± 2σ
+ * 2) Combined signal x[0] + x[2] ± 2σ, where
+ *      Var(x0+x2) = Var(x0) + Var(x2) + 2*Cov(x0,x2)
  */
 
 import { dlmFit } from "../src/index.ts";
@@ -25,33 +23,52 @@ const w: number[] = input.w;
 const options = input.options;
 
 const jsResult = await dlmFit(y, s, w, DType.Float64, options);
+
 const jsLevel = Array.from(jsResult.x[0]);
 const jsLevelStd = jsResult.xstd.map((row: any) => row[0] as number);
+const jsSeasObs = Array.from(jsResult.x[2]);
 
 const octLevel: number[] = octave.x[0];
 const octLevelStd: number[] = octave.xstd.map((row: number[]) => row[0]);
+const octSeasObs: number[] = octave.x[2];
 
 const n = tDatenum.length;
 
-const margin = { top: 34, right: 20, bottom: 52, left: 64 };
-const W = 860;
-const H = 360;
-const plotW = W - margin.left - margin.right;
-const plotH = H - margin.top - margin.bottom;
+function varianceCombinedFromJs(t: number): number {
+  const c00 = jsResult.C[0][0][t];
+  const c22 = jsResult.C[2][2][t];
+  const c02 = jsResult.C[0][2][t];
+  return Math.max(0, c00 + c22 + 2 * c02);
+}
 
-const tMin = tDatenum[0];
-const tMax = tDatenum[n - 1];
+function varianceCombinedFromOct(t: number): number {
+  const c00 = octave.C[0][0][t];
+  const c22 = octave.C[2][2][t];
+  const c02 = octave.C[0][2][t];
+  return Math.max(0, c00 + c22 + 2 * c02);
+}
 
-const allVals = [
-  ...y,
-  ...jsLevel.map((v, i) => v + 2 * jsLevelStd[i]),
-  ...jsLevel.map((v, i) => v - 2 * jsLevelStd[i]),
-  ...octLevel.map((v, i) => v + 2 * octLevelStd[i]),
-  ...octLevel.map((v, i) => v - 2 * octLevelStd[i]),
-];
+const jsCombined = jsLevel.map((v, i) => v + jsSeasObs[i]);
+const jsCombinedStd = Array.from({ length: n }, (_, i) => Math.sqrt(varianceCombinedFromJs(i)));
 
-const yMin = Math.floor((Math.min(...allVals) - 1) / 2) * 2;
-const yMax = Math.ceil((Math.max(...allVals) + 1) / 2) * 2;
+const octCombined = octLevel.map((v, i) => v + octSeasObs[i]);
+const octCombinedStd = Array.from({ length: n }, (_, i) => Math.sqrt(varianceCombinedFromOct(i)));
+
+const panel1 = {
+  title: "Smoothed level state x[0] ± 2σ",
+  jsMean: jsLevel,
+  jsStd: jsLevelStd,
+  octMean: octLevel,
+  octStd: octLevelStd,
+};
+
+const panel2 = {
+  title: "Combined x[0] + seasonal x[2] ± 2σ (covariance-aware)",
+  jsMean: jsCombined,
+  jsStd: jsCombinedStd,
+  octMean: octCombined,
+  octStd: octCombinedStd,
+};
 
 const matlabDatenumToYear = (dn: number): number => {
   const unixMs = (dn - 719529) * 86400000;
@@ -59,30 +76,23 @@ const matlabDatenumToYear = (dn: number): number => {
   return d.getUTCFullYear() + (d.getUTCMonth() + 0.5) / 12;
 };
 
-function sx(val: number): number {
-  return margin.left + ((val - tMin) / (tMax - tMin)) * plotW;
-}
-function sy(val: number): number {
-  return margin.top + ((yMax - val) / (yMax - yMin)) * plotH;
-}
+const tMin = tDatenum[0];
+const tMax = tDatenum[n - 1];
 
-function polyline(xs: number[], ys: number[]): string {
-  return xs.map((x, i) => `${sx(x).toFixed(1)},${sy(ys[i]).toFixed(1)}`).join(" ");
-}
+const W = 900;
+const H = 640;
+const outer = { left: 66, right: 22, top: 34, bottom: 52, gap: 48 };
+const plotW = W - outer.left - outer.right;
+const panelH = (H - outer.top - outer.bottom - outer.gap) / 2;
 
-function bandPath(xs: number[], upper: number[], lower: number[]): string {
-  const fwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(upper[i]).toFixed(1)}`);
-  const bwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(lower[i]).toFixed(1)}`).reverse();
-  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
-}
+const panel1Top = outer.top;
+const panel2Top = outer.top + panelH + outer.gap;
 
-const jsUpper = jsLevel.map((v, i) => v + 2 * jsLevelStd[i]);
-const jsLower = jsLevel.map((v, i) => v - 2 * jsLevelStd[i]);
-const octUpper = octLevel.map((v, i) => v + 2 * octLevelStd[i]);
-const octLower = octLevel.map((v, i) => v - 2 * octLevelStd[i]);
-
-const yTicks: number[] = [];
-for (let v = yMin; v <= yMax; v += 4) yTicks.push(v);
+const obsColor = "#555";
+const jsColor = "#2563eb";
+const octColor = "#ef4444";
+const jsBandColor = "rgba(37,99,235,0.12)";
+const octBandColor = "rgba(239,68,68,0.12)";
 
 const startYear = Math.floor(matlabDatenumToYear(tMin));
 const endYear = Math.ceil(matlabDatenumToYear(tMax));
@@ -93,61 +103,114 @@ for (let year = startYear; year <= endYear; year += 1) {
   if (dn >= tMin && dn <= tMax) yearTicks.push({ dn, label: `${year}` });
 }
 
-const obsColor = "#555";
-const jsColor = "#2563eb";
-const octColor = "#ef4444";
-const jsBandColor = "rgba(37,99,235,0.12)";
-const octBandColor = "rgba(239,68,68,0.12)";
+function sx(val: number): number {
+  return outer.left + ((val - tMin) / (tMax - tMin)) * plotW;
+}
+
+function makeSy(yMin: number, yMax: number, panelTop: number) {
+  return (val: number): number => panelTop + ((yMax - val) / (yMax - yMin)) * panelH;
+}
+
+function polyline(xs: number[], ys: number[], sy: (val: number) => number): string {
+  return xs.map((x, i) => `${sx(x).toFixed(1)},${sy(ys[i]).toFixed(1)}`).join(" ");
+}
+
+function bandPath(
+  xs: number[],
+  upper: number[],
+  lower: number[],
+  sy: (val: number) => number,
+): string {
+  const fwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(upper[i]).toFixed(1)}`);
+  const bwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(lower[i]).toFixed(1)}`).reverse();
+  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
+}
+
+function yTicksFromRange(min: number, max: number): number[] {
+  const span = max - min;
+  const step = span > 20 ? 4 : span > 8 ? 2 : 1;
+  const ticks: number[] = [];
+  const start = Math.floor(min / step) * step;
+  const end = Math.ceil(max / step) * step;
+  for (let v = start; v <= end; v += step) ticks.push(v);
+  return ticks;
+}
 
 const lines: string[] = [];
 const push = (s: string) => lines.push(s);
 
 push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui,-apple-system,sans-serif" font-size="12">`);
 push(`<rect width="${W}" height="${H}" fill="white"/>`);
+push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Kaisaniemi seasonal demo — level and covariance-aware combined signal</text>`);
 
-for (const v of yTicks) {
-  push(`<line x1="${margin.left}" y1="${sy(v).toFixed(1)}" x2="${W - margin.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
+function drawPanel(
+  panelTop: number,
+  panel: { title: string; jsMean: number[]; jsStd: number[]; octMean: number[]; octStd: number[] },
+  showXAxis: boolean,
+) {
+  const jsUpper = panel.jsMean.map((v, i) => v + 2 * panel.jsStd[i]);
+  const jsLower = panel.jsMean.map((v, i) => v - 2 * panel.jsStd[i]);
+  const octUpper = panel.octMean.map((v, i) => v + 2 * panel.octStd[i]);
+  const octLower = panel.octMean.map((v, i) => v - 2 * panel.octStd[i]);
+
+  const allVals = [...y, ...jsUpper, ...jsLower, ...octUpper, ...octLower];
+  const yMin = Math.floor((Math.min(...allVals) - 1) / 2) * 2;
+  const yMax = Math.ceil((Math.max(...allVals) + 1) / 2) * 2;
+  const sy = makeSy(yMin, yMax, panelTop);
+
+  const yTicks = yTicksFromRange(yMin, yMax);
+
+  for (const v of yTicks) {
+    push(`<line x1="${outer.left}" y1="${sy(v).toFixed(1)}" x2="${W - outer.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
+  }
+
+  push(`<path d="${bandPath(tDatenum, jsUpper, jsLower, sy)}" fill="${jsBandColor}" stroke="none"/>`);
+  push(`<path d="${bandPath(tDatenum, octUpper, octLower, sy)}" fill="${octBandColor}" stroke="none"/>`);
+  push(`<polyline points="${polyline(tDatenum, panel.jsMean, sy)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+  push(`<polyline points="${polyline(tDatenum, panel.octMean, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+
+  for (let i = 0; i < n; i++) {
+    push(`<circle cx="${sx(tDatenum[i]).toFixed(1)}" cy="${sy(y[i]).toFixed(1)}" r="2.0" fill="${obsColor}" opacity="0.50"/>`);
+  }
+
+  push(`<line x1="${outer.left}" y1="${panelTop}" x2="${outer.left}" y2="${panelTop + panelH}" stroke="#333" stroke-width="1.5"/>`);
+  push(`<line x1="${outer.left}" y1="${panelTop + panelH}" x2="${W - outer.right}" y2="${panelTop + panelH}" stroke="#333" stroke-width="1.5"/>`);
+
+  for (const v of yTicks) {
+    const yy = sy(v).toFixed(1);
+    push(`<line x1="${outer.left - 5}" y1="${yy}" x2="${outer.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
+    push(`<text x="${outer.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
+  }
+
+  if (showXAxis) {
+    for (const tick of yearTicks) {
+      const xx = sx(tick.dn).toFixed(1);
+      push(`<line x1="${xx}" y1="${panelTop + panelH}" x2="${xx}" y2="${panelTop + panelH + 5}" stroke="#333" stroke-width="1.5"/>`);
+      push(`<text x="${xx}" y="${panelTop + panelH + 18}" text-anchor="middle" fill="#333">${tick.label}</text>`);
+    }
+  }
+
+  push(`<text x="${outer.left + 6}" y="${panelTop + 14}" text-anchor="start" fill="#333" font-size="12" font-weight="600">${panel.title}</text>`);
 }
 
-push(`<path d="${bandPath(tDatenum, jsUpper, jsLower)}" fill="${jsBandColor}" stroke="none"/>`);
-push(`<path d="${bandPath(tDatenum, octUpper, octLower)}" fill="${octBandColor}" stroke="none"/>`);
-push(`<polyline points="${polyline(tDatenum, jsLevel)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
-push(`<polyline points="${polyline(tDatenum, octLevel)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+drawPanel(panel1Top, panel1, false);
+drawPanel(panel2Top, panel2, true);
 
-for (let i = 0; i < n; i++) {
-  push(`<circle cx="${sx(tDatenum[i]).toFixed(1)}" cy="${sy(y[i]).toFixed(1)}" r="2.2" fill="${obsColor}" opacity="0.55"/>`);
-}
+push(`<text x="${W / 2}" y="${H - 8}" text-anchor="middle" fill="#333" font-size="13">Year</text>`);
+push(`<text x="14" y="${panel1Top + panelH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${panel1Top + panelH / 2})">Temperature (°C)</text>`);
+push(`<text x="14" y="${panel2Top + panelH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${panel2Top + panelH / 2})">Temperature (°C)</text>`);
 
-push(`<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-push(`<line x1="${margin.left}" y1="${H - margin.bottom}" x2="${W - margin.right}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-
-for (const v of yTicks) {
-  const yy = sy(v).toFixed(1);
-  push(`<line x1="${margin.left - 5}" y1="${yy}" x2="${margin.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${margin.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
-}
-
-for (const tick of yearTicks) {
-  const xx = sx(tick.dn).toFixed(1);
-  push(`<line x1="${xx}" y1="${H - margin.bottom}" x2="${xx}" y2="${H - margin.bottom + 5}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${xx}" y="${H - margin.bottom + 18}" text-anchor="middle" fill="#333">${tick.label}</text>`);
-}
-
-push(`<text x="${margin.left + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#333" font-size="13">Year</text>`);
-push(`<text x="${14}" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${margin.top + plotH / 2})">Temperature (°C)</text>`);
-push(`<text x="${margin.left + plotW / 2}" y="${17}" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Kaisaniemi seasonal demo — smoothed level state x[0] ± 2σ</text>`);
-
-const legX = W - margin.right - 318;
-const legY = margin.top + 8;
-push(`<rect x="${legX}" y="${legY}" width="312" height="62" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>`);
+const legX = W - outer.right - 316;
+const legY = panel1Top + 20;
+push(`<rect x="${legX}" y="${legY}" width="308" height="62" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>`);
 push(`<circle cx="${legX + 14}" cy="${legY + 14}" r="3" fill="${obsColor}" opacity="0.6"/>`);
 push(`<text x="${legX + 24}" y="${legY + 14}" dominant-baseline="middle" fill="#333" font-size="11">Observed monthly temperature</text>`);
 push(`<line x1="${legX + 8}" y1="${legY + 30}" x2="${legX + 20}" y2="${legY + 30}" stroke="${jsColor}" stroke-width="2"/>`);
 push(`<rect x="${legX + 8}" y="${legY + 25}" width="12" height="10" fill="${jsBandColor}" stroke="none"/>`);
-push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#333" font-size="11">dlm-js level x[0] ± 2σ</text>`);
+push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#333" font-size="11">dlm-js mean ± 2σ</text>`);
 push(`<line x1="${legX + 8}" y1="${legY + 46}" x2="${legX + 20}" y2="${legY + 46}" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 push(`<rect x="${legX + 8}" y="${legY + 41}" width="12" height="10" fill="${octBandColor}" stroke="none"/>`);
-push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#333" font-size="11">MATLAB/Octave level x[0] ± 2σ</text>`);
+push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#333" font-size="11">MATLAB/Octave mean ± 2σ</text>`);
 
 push(`</svg>`);
 
