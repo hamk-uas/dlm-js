@@ -25,13 +25,13 @@ const w: number[] = input.w;        // state noise stds
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 
 const jsResult = await dlmFit(y, s, w, DType.Float64, { order: 1 });
-const jsYhat = Array.from(jsResult.yhat);
-const jsYstd = Array.from(jsResult.ystd);
+const jsLevel = Array.from(jsResult.x[0]);              // smoothed state level
+const jsLevelStd = jsResult.xstd.map((row: any) => row[0] as number); // xstd[:,0]
 
 // ── Octave results ─────────────────────────────────────────────────────────
 
-const octYhat: number[] = octave.yhat;
-const octYstd: number[] = octave.ystd;
+const octLevel: number[] = octave.x[0];                  // smoothed state level
+const octLevelStd: number[] = octave.xstd.map((row: number[]) => row[0]); // xstd[:,0]
 
 // ── SVG generation ─────────────────────────────────────────────────────────
 
@@ -49,8 +49,8 @@ const tMin = t[0];
 const tMax = t[n - 1];
 const allVals = [
   ...y,
-  ...jsYhat.map((v, i) => v + 2 * jsYstd[i]),
-  ...jsYhat.map((v, i) => v - 2 * jsYstd[i]),
+  ...jsLevel.map((v, i) => v + 2 * jsLevelStd[i]),
+  ...jsLevel.map((v, i) => v - 2 * jsLevelStd[i]),
 ];
 const yMin = Math.floor(Math.min(...allVals) / 50) * 50;
 const yMax = Math.ceil(Math.max(...allVals) / 50) * 50;
@@ -73,11 +73,11 @@ function bandPath(xs: number[], upper: number[], lower: number[]): string {
   return `M${fwd.join("L")}L${bwd.join("L")}Z`;
 }
 
-// Confidence bands
-const jsUpper = jsYhat.map((v, i) => v + 2 * jsYstd[i]);
-const jsLower = jsYhat.map((v, i) => v - 2 * jsYstd[i]);
-const octUpper = octYhat.map((v, i) => v + 2 * octYstd[i]);
-const octLower = octYhat.map((v, i) => v - 2 * octYstd[i]);
+// Confidence bands (smoothed level ± 2σ)
+const jsUpper = jsLevel.map((v, i) => v + 2 * jsLevelStd[i]);
+const jsLower = jsLevel.map((v, i) => v - 2 * jsLevelStd[i]);
+const octUpper = octLevel.map((v, i) => v + 2 * octLevelStd[i]);
+const octLower = octLevel.map((v, i) => v - 2 * octLevelStd[i]);
 
 // Tick marks
 const yTicks: number[] = [];
@@ -111,9 +111,9 @@ push(`<path d="${bandPath(t, jsUpper, jsLower)}" fill="${jsBandColor}" stroke="n
 // 2. MATLAB/Octave confidence band (red, low alpha)
 push(`<path d="${bandPath(t, octUpper, octLower)}" fill="${octBandColor}" stroke="none"/>`);
 // 3. dlm-js smoothed level (blue, full opacity)
-push(`<polyline points="${polyline(t, jsYhat)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+push(`<polyline points="${polyline(t, jsLevel)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
 // 4. MATLAB/Octave smoothed level (red dashed, full opacity)
-push(`<polyline points="${polyline(t, octYhat)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+push(`<polyline points="${polyline(t, octLevel)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 
 // Observations
 for (let i = 0; i < n; i++) {
