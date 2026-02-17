@@ -4,6 +4,10 @@
 
 [hamk-uas/jax-js-nonconsuming#4](https://github.com/hamk-uas/jax-js-nonconsuming/issues/4)
 
+## Status
+
+**Resolved** in jax-js-nonconsuming v0.2.2. CI upgraded back to Node 22.
+
 ## Problem
 
 When jax-js-nonconsuming is installed from git (the only install method), the package manager runs

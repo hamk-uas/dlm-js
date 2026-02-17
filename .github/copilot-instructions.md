@@ -73,6 +73,9 @@ Where agents should open files first (order matters) ▶️
 6. `tests/gensys.test.ts` (multi-model Octave reference tests)
 7. `tests/synthetic.test.ts` (ground-truth tests with known true states)
 
+Filesystem safety 📂
+- **Always use a local `tmp/` directory inside the workspace** for scratch files, debug output, and temporary data. Never write to `/tmp` or any path outside the workspace root. Accessing the filesystem outside the project is risky and breaks agentic coding sandboxes. The `tmp/` directory is already gitignored.
+
 Do not attempt to change (without explicit human approval) 🚫
 - The Octave reference generator in `tests/octave/` (numerical ground truth). Changes here must be accompanied by a justification and regression analysis.
 - Public API shape in `dist/` or `types` unless a major version bump is planned.
