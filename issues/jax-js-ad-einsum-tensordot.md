@@ -90,4 +90,4 @@ The existing `dlmSmo` Kalman filter uses 3-operand einsum extensively. For MLE v
 
 ## Additional note: optax not found
 
-The `optax` module (Adam, SGD, etc.) is not exported in v0.2.2. We implemented a simple gradient descent loop as a workaround. If optax is available in a newer version or the upstream fork, that would be the preferred optimizer.
+The `optax` module (Adam, SGD, etc.) is not exported in v0.2.2. We implemented a simple gradient descent loop as a workaround. ~~If optax is available in a newer version or the upstream fork, that would be the preferred optimizer.~~ **Resolved**: as of v0.4.0, optax is available via `@hamk-uas/jax-js-nonconsuming/optax` and is fully jittable. dlm-js now uses optax Adam.

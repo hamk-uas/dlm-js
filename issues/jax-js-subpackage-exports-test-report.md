@@ -12,6 +12,8 @@ Installation and sub-path exports work correctly. The new `@hamk-uas` scope and 
 
 **One existing issue confirmed**: `optax.adam` is still not jittable due to `count.item()` in the bias correction logic. This is not a regression — same behavior as the old separate-package optax.
 
+> **Update (v0.4.0)**: This issue is now fixed. `optax.adam` is fully jittable as of v0.4.0 — dlm-js has switched from the pure-array Adam workaround to optax.
+
 ## Installation
 
 ### What works
@@ -85,6 +87,8 @@ let state = optimizer.init(params);
 
 ### ❌ Optax + jit (jit wrapping the optimizer step)
 
+> **Update (v0.4.0)**: This issue is now fixed. The test below works correctly as of v0.4.0. dlm-js has switched to optax Adam.
+
 ```js
 const step = jit((params, state) => {
   const [val, grads] = valueAndGrad(loss)(params);
@@ -97,13 +101,13 @@ const step = jit((params, state) => {
 
 **Root cause**: `optimizer.update()` internally calls `count.item()` on the step counter to extract a JS number for bias correction (`1 - β^t`). Under `jit()`, `count` is a tracer (abstract value), not a concrete array, so `.item()` fails.
 
-**Workaround used in dlm-js**: We replaced optax adam with a pure-array Adam implementation where all operations (including bias correction via `np.power(beta, step)`) use only `np.Array` ops — fully traceable by JIT.
+**Workaround used in dlm-js**: ~~We replaced optax adam with a pure-array Adam implementation where all operations (including bias correction via `np.power(beta, step)`) use only `np.Array` ops — fully traceable by JIT.~~ As of v0.4.0, dlm-js uses optax Adam directly.
 
 ## Feedback for upstream
 
 1. **`onlyBuiltDependencies` requirement**: The README should mention that pnpm users need `"onlyBuiltDependencies": ["@hamk-uas/jax-js-nonconsuming"]` in their package.json. Without it, installation fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`.
 
-2. **Optax JIT compatibility**: `adam`'s `count.item()` prevents wrapping the optimizer step in `jit()`. This is a significant limitation for performance-sensitive optimization loops. Consider replacing `count.item()` with pure array operations for bias correction (e.g., `np.power(beta1, count)` instead of `Math.pow(beta1, count.item())`).
+2. **Optax JIT compatibility**: ~~`adam`'s `count.item()` prevents wrapping the optimizer step in `jit()`. This is a significant limitation for performance-sensitive optimization loops. Consider replacing `count.item()` with pure array operations for bias correction (e.g., `np.power(beta1, count)` instead of `Math.pow(beta1, count.item())`).~~ **Fixed in v0.4.0.**
 
 3. **ESLint plugin sub-path**: The eslint plugin export at `@hamk-uas/jax-js-nonconsuming/eslint-plugin` is great — this replaces the previous `github:hamk-uas/jax-js-nonconsuming#path:packages/eslint-plugin&eslint-plugin-v0.1.0` install syntax which was fragile.
 
@@ -141,4 +145,4 @@ To:
 
 And imports change from `"@jax-js-nonconsuming/jax"` to `"@hamk-uas/jax-js-nonconsuming"`.
 
-Note: dlm-js currently uses a **pure-array Adam** (no optax dependency) because optax wasn't jittable in v0.3.0. As of v0.4.0, `optax.adam` is jittable — dlm-js could switch to optax for cleaner code, but the pure-array implementation works and has no external dependency.
+Note: ~~dlm-js currently uses a **pure-array Adam** (no optax dependency) because optax wasn't jittable in v0.3.0.~~ As of v0.4.0, `optax.adam` is jittable — dlm-js has switched to optax for cleaner code with no performance penalty.

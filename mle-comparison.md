@@ -31,7 +31,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Per-iteration cost** | 1 forward filter pass (likelihood evaluation) | 1 forward + 1 backward pass (AD doubles the cost per iteration) |
 | **Typical iterations** | 400 (`options.maxfuneval` default) | 200 (converges faster per iteration due to gradient info) |
 | **Compilation** | None (interpreted MATLAB, or optional `dlmmex` C MEX) | Entire step is `jit()`-compiled: forward filter + AD + Adam update fused into one compiled kernel |
-| **Jittability** | N/A | Fully jittable — pure array-op Adam (replaces optax which fails under `jit()` due to `count.item()`) |
+| **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
 | **WASM performance** | N/A | ~5 s for 300 iterations (Nile, n=100, m=2) |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it trivial to implement and robust to non-smooth objectives. But it scales poorly with dimension — $O(d^2)$ simplex operations per iteration for $d$ parameters. Adam with autodiff has higher per-iteration cost (2× due to backward pass) but exploits gradient information, converging in far fewer iterations for smooth objectives like the DLM log-likelihood.
@@ -42,10 +42,10 @@ All timings measured on the same machine. MATLAB DLM uses Octave `fminsearch` (N
 
 | Model | n | m | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | -2logL (Octave) | -2logL (dlm-js) |
 |-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 3668 ms | 1104.6 | 1105.0 |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 3707 ms | 1104.6 | 1105.0 |
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1445 ms | 1095.8 | 1095.9 |
-| Kaisaniemi, trig, fit w | 117 | 4 | 4 | **failed** (NaN/Inf) | 6317 ms | — | 341.6 |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1412 ms | 1095.8 | 1095.9 |
+| Kaisaniemi, trig, fit w | 117 | 4 | 4 | **failed** (NaN/Inf) | 6230 ms | — | 341.6 |
 
 **Key observations:**
 - On the Nile data, Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.

@@ -114,7 +114,7 @@ console.log(mle.elapsed);     // wall-clock ms
 console.log(mle.fit);         // full DlmFitResult with optimized parameters
 ```
 
-The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and pure-array Adam parameter update (no external optimizer dependency). The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`.
+The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`.
 
 **Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2, 300 iterations) takes ~5 s. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
@@ -133,7 +133,7 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
-| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). Pure-array Adam optimizer, fully `jit()`-compiled. |
+| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). optax Adam optimizer, fully `jit()`-compiled. |
 | float32 computation | ✅ | ❌ | Configurable dtype. Float32 is numerically stable for m ≤ 2; higher dimensions may diverge. GPU/WASM backends available. |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
@@ -187,7 +187,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
-│   ├── mle.ts               # `dlmMLE`: MLE parameter estimation via autodiff (valueAndGrad + lax.scan + Adam)
+│   ├── mle.ts               # `dlmMLE`: MLE parameter estimation via autodiff (valueAndGrad + lax.scan + optax Adam)
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators

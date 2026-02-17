@@ -1,4 +1,5 @@
 import { DType, numpy as np, lax, jit, valueAndGrad, tree } from "@hamk-uas/jax-js-nonconsuming";
+import { adam, applyUpdates } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
 import { dlmGenSys } from "./dlmgensys";
@@ -153,20 +154,10 @@ const makeKalmanLoss = (
 /* eslint-enable jax-js/require-using */
 
 /**
- * Adam optimizer state — all arrays, fully jittable.
- * @internal
- */
-interface AdamState {
-  m: np.Array;       // first moment
-  v: np.Array;       // second moment
-  step: np.Array;    // scalar step counter (array so it's traceable)
-}
-
-/**
  * Estimate DLM parameters (s, w) by maximum likelihood via autodiff.
  *
  * The entire optimization step — `valueAndGrad(loss)` (Kalman filter forward
- * pass + AD backward pass) and pure-array Adam moment/parameter updates — is
+ * pass + AD backward pass) and optax Adam moment/parameter updates — is
  * wrapped in a single `jit()` call, so every iteration runs from compiled code.
  *
  * The parameterization maps unconstrained reals → positive values:
@@ -235,64 +226,36 @@ export const dlmMLE = async (
   ];
 
   // Build loss & JIT the entire optimization step:
-  //   (theta, adamState) → (newTheta, newAdamState, likValue)
-  // One jit() wrapping: valueAndGrad (Kalman scan + AD) + Adam moment updates
-  // + parameter update. Traces once, then every iteration is compiled.
+  //   (theta, optState) → (newTheta, newOptState, likValue)
+  // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
+  // Traces once, then every iteration is compiled.
 
   const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype);
+  const optimizer = adam(lr);
 
-  // Adam hyperparams as closed-over constants
-  const beta1 = 0.9, beta2 = 0.999, eps = 1e-8;
-  using lrArr = np.array(lr, { dtype });
-  using beta1Arr = np.array(beta1, { dtype });
-  using beta2Arr = np.array(beta2, { dtype });
-  using one = np.array(1.0, { dtype });
-  using epsArr = np.array(eps, { dtype });
-
-  const optimStep = jit((
-    theta: np.Array, am: np.Array, av: np.Array, step: np.Array,
-  ): [np.Array, np.Array, np.Array, np.Array, np.Array] => {
-    // Forward + backward pass
+  const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
     const [likVal, grad] = valueAndGrad(lossFn)(theta);
-
-    // Adam: update biased moments
-    //   m = β1·m + (1-β1)·g
-    //   v = β2·v + (1-β2)·g²
-    const newM = np.add(np.multiply(beta1Arr, am), np.multiply(np.subtract(one, beta1Arr), grad));
-    const newV = np.add(np.multiply(beta2Arr, av), np.multiply(np.subtract(one, beta2Arr), np.square(grad)));
-
-    // Bias correction:  m̂ = m/(1-β1^t),  v̂ = v/(1-β2^t)
-    const newStep = np.add(step, one);
-    const bc1 = np.subtract(one, np.power(beta1Arr, newStep));
-    const bc2 = np.subtract(one, np.power(beta2Arr, newStep));
-    const mHat = np.divide(newM, bc1);
-    const vHat = np.divide(newV, bc2);
-
-    // Parameter update: θ = θ - lr · m̂ / (√v̂ + ε)
-    const newTheta = np.subtract(theta, np.multiply(lrArr, np.divide(mHat, np.add(np.sqrt(vHat), epsArr))));
-
-    return [newTheta, newM, newV, newStep, likVal];
+    const [updates, newOptState] = optimizer.update(grad, optState);
+    const newTheta = applyUpdates(theta, updates);
+    return [newTheta, newOptState, likVal];
   });
 
-  // Initialize Adam state — all zeros
-  const dim = 1 + m;
+  // Initialize
   let theta = np.array(theta_init, { dtype });
-  let am = np.zeros([dim], { dtype });
-  let av = np.zeros([dim], { dtype });
-  let step = np.zeros([], { dtype });  // scalar
+  let optState: any = optimizer.init(theta);
 
   const likHistory: number[] = [];
   let prevLik = Infinity;
   let iter = 0;
 
   for (iter = 0; iter < maxIter; iter++) {
-    const [newTheta, newM, newV, newStep, likVal] = optimStep(theta, am, av, step);
+    const [newTheta, newOptState, likVal] = optimStep(theta, optState);
     const likNum = (await likVal.consumeData() as Float64Array | Float32Array)[0];
     likHistory.push(likNum);
 
     // Dispose old state
-    theta.dispose(); am.dispose(); av.dispose(); step.dispose();
-    theta = newTheta; am = newM; av = newV; step = newStep;
+    theta.dispose(); tree.dispose(optState);
+    theta = newTheta; optState = newOptState;
 
     // Check convergence
     const relChange = Math.abs((likNum - prevLik) / (Math.abs(prevLik) + 1e-30));
@@ -305,7 +268,7 @@ export const dlmMLE = async (
 
   // Extract optimized parameters
   const thetaData = await theta.data() as Float64Array | Float32Array;
-  theta.dispose(); am.dispose(); av.dispose(); step.dispose();
+  theta.dispose(); tree.dispose(optState);
 
   const s_opt = Math.exp(thetaData[0]);
   const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[1 + i]));
