@@ -17,7 +17,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 ### Core computation
 
 | Feature | dlm&#8209;js | dlm | Description |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | Kalman filter + RTS smoother | ✅ | ✅ | Forward filter and backward smoother for arbitrary state dimension m ≥ 1. |
 | Two-pass initialization | ✅ | ✅ | Diffuse prior → smooth → refined initial state, matching MATLAB `dlmfit`. |
 | State space generation (`dlmgensys`) | ✅ | ✅ | Polynomial trend (order 0/1/2), full seasonal, trigonometric seasonal, AR(p) components. |
@@ -85,6 +85,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
 │   └── utils.ts             # Test utility functions
+├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)
 ├── eslint.config.ts     # ESLint configuration (jax-js-nonconsuming memory rules)
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)
 ├── package.json         # Node.js package information
@@ -105,8 +106,6 @@ The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mj
 | `dlmsmo.m` | Kalman filter + RTS smoother | ✅ Yes — called by `dlmfit.m` with `sample=0` |
 | `meannan.m` | Mean ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmfit.m` for initial state |
 | `sumnan.m` | Sum ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmsmo.m` for diagnostics |
-| `mvnorrnan.m` | Multivariate normal with singular covariance (from mcmcstat) | ❌ No — only needed for disturbance sampling (`sample=1`), kept for completeness |
-
 **Excluded** (not needed for basic filtering/smoothing): `mcmcrun` (MCMC engine — separate toolbox), `fminsearch`/`optimset` (MATLAB builtins for optimization), `dlmmex` (compiled C acceleration), plotting functions (`dlmplotfit`, `dlmplotdiag`).
 
 ### Test data origins
@@ -208,13 +207,11 @@ pnpm run test
 
 ### Authors
 * Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
-* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Framework and initial human-assisted AI port of DLM
-* ########### -- Refined DLM port
+* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Human-assisted AI port of DLM
 
 ### Copyright
 * 2013-2017 Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
 * 2026 HAMK Häme University of Applied Sciences
-* 2026 ######
   
 ### License
 MIT license
