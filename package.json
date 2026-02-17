@@ -33,8 +33,10 @@
     "build": "vite build",
     "lint": "eslint src/",
     "docs": "typedoc",
-    "gen:svg": "npx tsx scripts/gen-niledemo-svg.ts",
-    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m",
+    "gen:svg:nile": "npx tsx scripts/gen-niledemo-svg.ts",
+    "gen:svg:kaisaniemi": "npx tsx scripts/gen-kaisaniemi-svg.ts",
+    "gen:svg": "pnpm run gen:svg:nile && pnpm run gen:svg:kaisaniemi",
+    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",
     "prepublishOnly": "pnpm run build && pnpm run test"

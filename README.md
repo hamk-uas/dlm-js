@@ -11,6 +11,10 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Regenerate with `pnpm run gen:svg`.*
 
+<img alt="Kaisaniemi monthly temperatures with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/kaisaniemi.svg" />
+
+*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]`. Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Regenerate with `pnpm run gen:svg`.*
+
 ## Installation
 
 dlm-js is not yet published to npm. Install directly from GitHub:
@@ -117,7 +121,8 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   └── workflows/           # GitHub Actions CI
 │       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
 ├── assets/              # Generated images (committed to repo)
-│   └── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
+│   ├── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
+│   └── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
@@ -129,7 +134,9 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── octave/              # Octave reference output generators
 │   │   ├── dlm/                 # Subset of Marko Laine's MATLAB dlm + mcmcstat (see note below)
 │   │   ├── niledemo.m           # Niledemo — pre-existing MATLAB DLM demo script
-│   │   └── gensys_tests.m      # Additional model tests (synthetic data, generated for this project)
+│   │   ├── gensys_tests.m       # Additional model tests (synthetic data, generated for this project)
+│   │   ├── kaisaniemi_demo.m    # Kaisaniemi seasonal demo reference generator
+│   │   └── kaisaniemi.mat       # Kaisaniemi monthly temperature data from mjlaine/dlm examples
 │   ├── out/                 # Test outputs (gitignored)
 │   ├── test-matrix.ts       # Shared device × dtype test configurations and tolerances
 │   ├── niledemo-in.json     # Niledemo input data
@@ -158,7 +165,8 @@ The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mj
 | --- | --- | --- |
 | `dlmgensys.m` | System matrix generation (G, F) | ✅ Yes — all reference generators |
 | `dlmfit.m` | Two-pass fitting entry point | ✅ Yes — called with `options.opt=0`, `options.mcmc=0` (defaults) |
-| `dlmsmo.m` | Kalman filter + RTS smoother | ✅ Yes — called by `dlmfit.m` with `sample=0` |
+| `dlmsmo.m` | Kalman filter + RTS smoother | ✅ Yes — called by `dlmfit.m` |
+| `mvnorrnan.m` | Multivariate normal sampler with singular/zero-variance handling | ✅ Yes — used by `dlmsmo.m` sample path |
 | `meannan.m` | Mean ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmfit.m` for initial state |
 | `sumnan.m` | Sum ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmsmo.m` for diagnostics |
 
