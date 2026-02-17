@@ -27,7 +27,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
-For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The MLE demo uses Nile data with our own autodiff-based parameter estimation (see [mle-comparison.md](mle-comparison.md)).
+For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The MLE demo uses Nile data with our own autodiff-based parameter estimation (see [MLE comparison](mle-comparison.md)).
 
 ## Installation
 
@@ -118,7 +118,7 @@ The optimizer uses `jit(valueAndGrad(loss))` with a pure-array Adam (no external
 
 **Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2, 300 iterations) takes ~5 s. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
-For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter estimation (Nelder-Mead, MCMC), see [mle-comparison.md](mle-comparison.md).
+For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter estimation (Nelder-Mead, MCMC), see the [MLE comparison](mle-comparison.md).
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
