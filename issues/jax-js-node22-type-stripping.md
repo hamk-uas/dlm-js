@@ -2,7 +2,7 @@
 
 ## Filed to
 
-[hamk-uas/jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) — issue #3
+[hamk-uas/jax-js-nonconsuming#4](https://github.com/hamk-uas/jax-js-nonconsuming/issues/4)
 
 ## Problem
 
