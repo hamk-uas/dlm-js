@@ -121,7 +121,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 
 ## Project structure
 
-```
+```text
 ├── .github/             # GitHub configuration
 │   ├── copilot-instructions.md  # AI coding agent instructions
 │   └── workflows/           # GitHub Actions CI
