@@ -7,9 +7,9 @@
 
 A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
 
-<img alt="Nile river annual flow — Kalman smoother ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
+<img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Nile demo: smoothed level from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red) with ± 2σ bands. Regenerate with `pnpm run gen:svg`.*
+*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]`. Regenerate with `pnpm run gen:svg`.*
 
 ## Installation
 

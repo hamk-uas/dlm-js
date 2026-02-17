@@ -33,7 +33,7 @@
     "build": "vite build",
     "lint": "eslint src/",
     "docs": "typedoc",
-    "gen:svg": "tsx scripts/gen-niledemo-svg.ts",
+    "gen:svg": "npx tsx scripts/gen-niledemo-svg.ts",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",

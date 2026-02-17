@@ -143,7 +143,7 @@ push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fil
 push(`<text x="${14}" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${margin.top + plotH / 2})">Annual flow</text>`);
 
 // Title
-push(`<text x="${margin.left + plotW / 2}" y="${16}" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile river annual flow — Kalman smoother ± 2σ</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="${16}" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile annual flow — smoothed level state x[0] ± 2σ</text>`);
 
 // Legend
 const legX = W - margin.right - 255;
