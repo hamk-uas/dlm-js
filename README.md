@@ -126,6 +126,9 @@ Precision issues have been filed upstream: [issues/](issues/).
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
+├── scripts/             # SVG plot generators
+│   ├── gen-niledemo-svg.ts      # Nile demo SVG generator
+│   └── gen-kaisaniemi-svg.ts    # Kaisaniemi seasonal demo SVG generator
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: dlmSmo (Kalman+RTS), dlmFit (two-pass fitting)
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -145,6 +148,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── niledemo.test.ts     # Niledemo integration test
 │   ├── gensys.test.ts       # dlmgensys unit tests + multi-model integration tests
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
+│   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
 │   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
 │   └── utils.ts             # Test utility functions
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)
@@ -182,6 +186,7 @@ The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mj
 | `order2` | Generated for this project (`gensys_tests.m`) | Synthetic quadratic signal + deterministic "noise" (sin/cos), order=2, m=3. Tests higher polynomial trend. |
 | `seasonal` | Generated for this project (`gensys_tests.m`) | Synthetic monthly data (10 years) with trend + 3 harmonics, fullseas=1, ns=12, m=13. Tests full seasonal decomposition. |
 | `trig` | Generated for this project (`gensys_tests.m`) | Same synthetic monthly data, trig=2, ns=12, m=6. Tests trigonometric seasonal with fewer states. |
+| `kaisaniemi` | `mjlaine/dlm` example data (`kaisaniemi_demo.m`) | Helsinki Kaisaniemi monthly temperatures (117 obs), order=1, trig=1, ns=12, m=4. Tests seasonal cycle with real-world data. |
 
 All generated test data uses deterministic signals (no random noise) so reference outputs are exactly reproducible across platforms.
 
@@ -244,6 +249,7 @@ pnpm run test:octave
 This generates Octave reference outputs:
 - `tests/niledemo-out-m.json` (from `niledemo.m` — pre-existing MATLAB DLM demo)
 - `tests/{order0,order2,seasonal,trig,level}-out-m.json` (from `gensys_tests.m` — generated for this project)
+- `tests/kaisaniemi-out-m.json` (from `kaisaniemi_demo.m` — Kaisaniemi seasonal demo)
 
 It will also generate test input files unless they already exist.
 
