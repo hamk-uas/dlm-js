@@ -106,13 +106,13 @@ for (const v of yTicks) {
   push(`<line x1="${margin.left}" y1="${sy(v).toFixed(1)}" x2="${W - margin.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
 }
 
-// Confidence bands (Octave first / behind)
-push(`<path d="${bandPath(t, octUpper, octLower)}" fill="${octBandColor}" stroke="none"/>`);
+// Confidence bands (dlm-js first / behind)
 push(`<path d="${bandPath(t, jsUpper, jsLower)}" fill="${jsBandColor}" stroke="none"/>`);
+push(`<path d="${bandPath(t, octUpper, octLower)}" fill="${octBandColor}" stroke="none"/>`);
 
-// Smoothed level lines
-push(`<polyline points="${polyline(t, octYhat)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+// Smoothed level lines (Octave dashed on top)
 push(`<polyline points="${polyline(t, jsYhat)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+push(`<polyline points="${polyline(t, octYhat)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 
 // Observations
 for (let i = 0; i < n; i++) {
