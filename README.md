@@ -72,7 +72,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators
-│   │   ├── dlm/                 # Minimal MATLAB dlm implementation (Marko Laine)
+│   │   ├── dlm/                 # Subset of Marko Laine's MATLAB dlm + mcmcstat (see note below)
 │   │   ├── niledemo.m           # Niledemo — pre-existing MATLAB DLM demo script
 │   │   └── gensys_tests.m      # Additional model tests (synthetic data, generated for this project)
 │   ├── out/                 # Test outputs (gitignored)
@@ -93,6 +93,21 @@ Precision issues have been filed upstream: [issues/](issues/).
 ├── typedoc.json         # TypeDoc API documentation configuration
 └── vite.config.ts       # Configuration file of the Vite project
 ```
+
+### Included MATLAB sources (`tests/octave/dlm/`)
+
+The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mjlaine.github.io/dlm/dlmtut.html) and [mcmcstat](https://mjlaine.github.io/mcmcstat/) MATLAB toolboxes — just enough to run the Kalman filter and RTS smoother without MCMC or optimization dependencies:
+
+| File | Role | Used by our tests? |
+| --- | --- | --- |
+| `dlmgensys.m` | System matrix generation (G, F) | ✅ Yes — all reference generators |
+| `dlmfit.m` | Two-pass fitting entry point | ✅ Yes — called with `options.opt=0`, `options.mcmc=0` (defaults) |
+| `dlmsmo.m` | Kalman filter + RTS smoother | ✅ Yes — called by `dlmfit.m` with `sample=0` |
+| `meannan.m` | Mean ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmfit.m` for initial state |
+| `sumnan.m` | Sum ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmsmo.m` for diagnostics |
+| `mvnorrnan.m` | Multivariate normal with singular covariance (from mcmcstat) | ❌ No — only needed for disturbance sampling (`sample=1`), kept for completeness |
+
+**Excluded** (not needed for basic filtering/smoothing): `mcmcrun` (MCMC engine — separate toolbox), `fminsearch`/`optimset` (MATLAB builtins for optimization), `dlmmex` (compiled C acceleration), plotting functions (`dlmplotfit`, `dlmplotdiag`).
 
 ### Test data origins
 
