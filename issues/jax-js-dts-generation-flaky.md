@@ -6,7 +6,7 @@
 
 ## Status
 
-**Resolved** upstream via [PR #6](https://github.com/hamk-uas/jax-js-nonconsuming/pull/6) — `prepare` script now fails loudly if `dist/index.d.ts` is not generated. dlm-js dependency updated.
+**Open** upstream. [PR #6](https://github.com/hamk-uas/jax-js-nonconsuming/pull/6) added a hard error guard, but this broke downstream CI installs (the guard triggered on the exact silent failure it was meant to detect). [PR #7](https://github.com/hamk-uas/jax-js-nonconsuming/pull/7) downgraded the guard to a warning so install succeeds. The underlying DTS generation flakiness remains unfixed.
 
 ## Problem
 
@@ -26,5 +26,6 @@ Separate from #4 (Node 22 type stripping). This issue can occur on any Node vers
 
 ## Suggested upstream fix
 
-The core issue is that tsdown DTS generation fails silently. The `prepare` script should verify
-that `dist/index.d.ts` was actually produced and fail loudly if not.
+The core issue is that tsdown DTS generation fails silently. The `prepare` script now warns
+(PR #7) but does not fix the root cause. A proper fix would ensure tsdown reliably generates
+`.d.ts` files, or ship pre-built `dist/` in the repo.
