@@ -1,3 +1,6 @@
+# Scratch / temp directory (used by agents and debug scripts)
+tmp/
+
 # Ignore test outputs
 tests/out/
 
