@@ -11,6 +11,20 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Niledemo main output from dlm-js (which uses jax-js-nonconsuming) and from the MATLAB dlm implementation (using Octave). The JIT-compiled dlm-js computation lasts about 60 ms (or 24 ms on successive runs with cached compilation) using `lax.scan` from [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming).*
 
+## Installation
+
+dlm-js is not yet published to npm. Install directly from GitHub:
+
+```shell
+# npm
+npm install github:hamk-uas/dlm-js
+
+# pnpm
+pnpm add github:hamk-uas/dlm-js
+```
+
+This also installs the `@jax-js-nonconsuming/jax` peer dependency automatically.
+
 ## Usage
 
 dlm-js works in **both Node.js and the browser** — the library has no platform-specific code. It ships ESM, CommonJS, and TypeScript declarations.
@@ -145,6 +159,7 @@ The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mj
 | `dlmsmo.m` | Kalman filter + RTS smoother | ✅ Yes — called by `dlmfit.m` with `sample=0` |
 | `meannan.m` | Mean ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmfit.m` for initial state |
 | `sumnan.m` | Sum ignoring NaNs (from mcmcstat) | ✅ Yes — used by `dlmsmo.m` for diagnostics |
+
 **Excluded** (not needed for basic filtering/smoothing): `mcmcrun` (MCMC engine — separate toolbox), `fminsearch`/`optimset` (MATLAB builtins for optimization), `dlmmex` (compiled C acceleration), plotting functions (`dlmplotfit`, `dlmplotdiag`).
 
 ### Test data origins
@@ -246,7 +261,7 @@ pnpm run test
 
 ### Authors
 * Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
-* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Human-assisted AI port of DLM
+* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Supervision of AI coding agent port of DLM
 
 ### Copyright
 * 2013-2017 Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
