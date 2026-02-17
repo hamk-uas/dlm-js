@@ -14,7 +14,7 @@
  */
 import { checkLeaks, DType } from '@jax-js-nonconsuming/jax';
 import { describe, it, expect } from 'vitest';
-import { dlmFit, dlmgensys } from '../src/index';
+import { dlmFit, dlmGenSys } from '../src/index';
 import { getTestConfigs, applyConfig, assertAllFinite } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 
@@ -246,7 +246,7 @@ describe('synthetic ground-truth tests', async () => {
         it(sc.name, async () => {
           applyConfig(config);
 
-          const sys = dlmgensys(sc.options);
+          const sys = dlmGenSys(sc.options);
 
           // Float32 Kalman filter is numerically unstable for m > 2:
           // covariance goes negative → NaN. Skip entirely.

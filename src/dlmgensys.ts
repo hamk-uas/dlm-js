@@ -56,7 +56,7 @@ function stackMatrices(a: number[][], b: number[][]): number[][] {
   return result;
 }
 
-export function dlmgensys(options: DlmOptions = {}): DlmSystem {
+export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
   const order = options.order ?? 1;
   const trig = options.trig ?? 0;
   const ns = options.ns ?? 12;

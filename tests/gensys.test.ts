@@ -1,44 +1,44 @@
 import { checkLeaks } from '@jax-js-nonconsuming/jax';
 import { describe, it, expect } from 'vitest';
-import { dlmFit, dlmgensys } from '../src/index';
+import { dlmFit, dlmGenSys } from '../src/index';
 import { deepAlmostEqual } from './utils';
 import { getTestConfigs, applyConfig, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// ─── dlmgensys unit tests (pure math, no device/dtype needed) ───────────────
+// ─── dlmGenSys unit tests (pure math, no device/dtype needed) ───────────────
 
-describe('dlmgensys', () => {
+describe('dlmGenSys', () => {
   it('order=0: local level (m=1)', () => {
-    const sys = dlmgensys({ order: 0 });
+    const sys = dlmGenSys({ order: 0 });
     expect(sys.m).toBe(1);
     expect(sys.G).toEqual([[1]]);
     expect(sys.F).toEqual([1]);
   });
 
   it('order=1: local linear trend (m=2)', () => {
-    const sys = dlmgensys({ order: 1 });
+    const sys = dlmGenSys({ order: 1 });
     expect(sys.m).toBe(2);
     expect(sys.G).toEqual([[1, 1], [0, 1]]);
     expect(sys.F).toEqual([1, 0]);
   });
 
   it('order=2: quadratic trend (m=3)', () => {
-    const sys = dlmgensys({ order: 2 });
+    const sys = dlmGenSys({ order: 2 });
     expect(sys.m).toBe(3);
     expect(sys.G).toEqual([[1, 1, 0], [0, 1, 1], [0, 0, 1]]);
     expect(sys.F).toEqual([1, 0, 0]);
   });
 
   it('default is order=1', () => {
-    const sys = dlmgensys();
+    const sys = dlmGenSys();
     expect(sys.m).toBe(2);
     expect(sys.G).toEqual([[1, 1], [0, 1]]);
   });
 
   it('fullseas=true, ns=12: 11 seasonal states (m=13)', () => {
-    const sys = dlmgensys({ order: 1, fullseas: true, ns: 12 });
+    const sys = dlmGenSys({ order: 1, fullseas: true, ns: 12 });
     expect(sys.m).toBe(13);
     expect(sys.F[0]).toBe(1);
     expect(sys.F[1]).toBe(0);
@@ -50,7 +50,7 @@ describe('dlmgensys', () => {
   });
 
   it('trig=2, ns=12: 4 harmonic states (m=6)', () => {
-    const sys = dlmgensys({ order: 1, trig: 2, ns: 12 });
+    const sys = dlmGenSys({ order: 1, trig: 2, ns: 12 });
     expect(sys.m).toBe(6);
     expect(sys.F).toEqual([1, 0, 1, 0, 1, 0]);
     expect(sys.G[2][2]).toBeCloseTo(Math.cos(2 * Math.PI / 12), 10);
@@ -60,23 +60,23 @@ describe('dlmgensys', () => {
   });
 
   it('trig > ns/2 throws', () => {
-    expect(() => dlmgensys({ trig: 7, ns: 12 })).toThrow();
+    expect(() => dlmGenSys({ trig: 7, ns: 12 })).toThrow();
   });
 
   it('trig=ns/2 removes redundant last element', () => {
-    const sys = dlmgensys({ order: 1, trig: 6, ns: 12 });
+    const sys = dlmGenSys({ order: 1, trig: 6, ns: 12 });
     expect(sys.m).toBe(13);
   });
 
   it('arphi: AR(1) adds 1 state', () => {
-    const sys = dlmgensys({ order: 1, arphi: [0.8] });
+    const sys = dlmGenSys({ order: 1, arphi: [0.8] });
     expect(sys.m).toBe(3);
     expect(sys.G[2][2]).toBeCloseTo(0.8);
     expect(sys.F[2]).toBe(1);
   });
 
   it('arphi: AR(2) adds 2 states', () => {
-    const sys = dlmgensys({ order: 1, arphi: [0.5, 0.3] });
+    const sys = dlmGenSys({ order: 1, arphi: [0.5, 0.3] });
     expect(sys.m).toBe(4);
     expect(sys.G[2][2]).toBeCloseTo(0.5);
     expect(sys.G[2][3]).toBeCloseTo(1);
@@ -195,14 +195,14 @@ const COMPARE_KEYS = [
   'class',
 ];
 
-describe('dlmgensys integration tests', async () => {
+describe('dlmGenSys integration tests', async () => {
   const configs = await getTestConfigs();
 
   for (const config of configs) {
     describe(config.label, () => {
       for (const mc of modelCases) {
         it(mc.name, async () => {
-          const sys = dlmgensys(mc.options);
+          const sys = dlmGenSys(mc.options);
           const tol = getModelTolerances(config, sys.m);
           if (!tol) {
             // Float32 + large state space: Kalman filter is numerically

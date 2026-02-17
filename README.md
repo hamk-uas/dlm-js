@@ -39,10 +39,12 @@ This also installs the `@jax-js-nonconsuming/jax` peer dependency automatically.
 
 dlm-js works in **both Node.js and the browser** — the library has no platform-specific code. It ships ESM, CommonJS, and TypeScript declarations.
 
+Naming convention: exported JS/TS APIs use camelCase (for example `dlmFit`, `dlmGenSys`), while original MATLAB functions are lowercase (for example `dlmfit`, `dlmsmo`, `dlmgensys`).
+
 ### ESM (Node.js / browser bundler)
 
 ```js
-import { dlmFit, dlmgensys } from "dlm-js";
+import { dlmFit, dlmGenSys } from "dlm-js";
 import { DType } from "@jax-js-nonconsuming/jax";
 
 // Nile river annual flow data (excerpt)
@@ -66,9 +68,9 @@ const { DType } = require("@jax-js-nonconsuming/jax");
 ### Generate system matrices only
 
 ```js
-import { dlmgensys } from "dlm-js";
+import { dlmGenSys } from "dlm-js";
 
-const sys = dlmgensys({ order: 1, trig: 2, ns: 12 });
+const sys = dlmGenSys({ order: 1, trig: 2, ns: 12 });
 console.log(sys.G);  // state transition matrix (m×m)
 console.log(sys.F);  // observation vector (1×m)
 console.log(sys.m);  // state dimension
@@ -83,7 +85,7 @@ console.log(sys.m);  // state dimension
 | --- | --- | --- | --- |
 | Kalman filter + RTS smoother | ✅ | ✅ | Forward filter and backward smoother for arbitrary state dimension m ≥ 1. |
 | Two-pass initialization | ✅ | ✅ | Diffuse prior → smooth → refined initial state, matching MATLAB `dlmfit`. |
-| State space generation (`dlmgensys`) | ✅ | ✅ | Polynomial trend (order 0/1/2), full seasonal, trigonometric seasonal, AR(p) components. |
+| State space generation (`dlmGenSys`) | ✅ | ✅ | Polynomial trend (order 0/1/2), full seasonal, trigonometric seasonal, AR(p) components. |
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
@@ -111,8 +113,6 @@ Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compe
 
 However, the dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
 
-Precision issues have been filed upstream: [issues/](issues/).
-
 ## TODO
 
 * Test the built library (in `dist/`)
@@ -136,7 +136,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── gen-niledemo-svg.ts      # Nile demo SVG generator
 │   └── gen-kaisaniemi-svg.ts    # Kaisaniemi seasonal demo SVG generator
 ├── src/                 # Library TypeScript sources
-│   ├── index.ts             # Main source: dlmSmo (Kalman+RTS), dlmFit (two-pass fitting)
+│   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
@@ -152,7 +152,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── niledemo-keys.json   # Output keys to compare (for partial implementations)
 │   ├── niledemo-out-m.json  # Niledemo reference output from Octave
 │   ├── niledemo.test.ts     # Niledemo integration test
-│   ├── gensys.test.ts       # dlmgensys unit tests + multi-model integration tests
+│   ├── gensys.test.ts       # dlmGenSys unit tests + multi-model integration tests
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
 │   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
