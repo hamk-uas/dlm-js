@@ -1,5 +1,7 @@
 # einsum multi-operand contraction: option for fused reduction
 
+> **Update:** Kahan compensated summation for Float64 dot reductions shipped in jax-js-nonconsuming v0.2.1. As predicted in "Don't bother" (option 3 below), the remaining benefit of einsum fusion is small once individual dots are compensated. The dominant error source is catastrophic cancellation in `C - C·N·C`, not dot product accumulation. This issue is kept for reference but is low priority.
+
 ## Summary
 
 `einsum` with 3+ operands (e.g., `'ij,jk,kl->il'`) decomposes the contraction into sequential pairwise `dot()` calls via an optimal contraction path. Each intermediate materialization introduces its own rounding. For precision-sensitive workloads, a fused kernel that contracts all operands in a single pass over the reduction index would reduce intermediate rounding.

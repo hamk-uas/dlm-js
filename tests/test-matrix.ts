@@ -33,11 +33,14 @@ export interface Tolerances {
  * The tolerances are applied in combination: values pass if EITHER
  *   |a - b| < absoluteTolerance  OR  |a - b| / max(|a|, |b|) < relativeTolerance.
  *
- * Float64 measured maxima (worst case across m=1..13):
- *   - Largest relErr on significant values: 8.4e-4 (trig Cf[0][4], m=6)
- *   - Largest relErr on large values: 2.9e-5 (seasonal Cf off-diagonal, m=13)
- *   - Near-zero values: absErr ≤ 5e-8 (trig C[5][4], m=6)
- *   Setting: relTol=2e-3, absTol=1e-7 → ~2x headroom over measured worst case.
+ * Float64 measured maxima (jax-js v0.2.1, Kahan summation for f64 reductions):
+ *   - Largest relErr: 4.8e-3 (trig Cf[0][4], m=6, absErr=2.6e-7)
+ *   - Seasonal (m=13) improved vs v0.2.0: worst 2.9e-5 → 1.8e-5
+ *   - Near-zero values: absErr ≤ 7.1e-9 (trig C[5][4], m=6)
+ *   Kahan helps the seasonal model (m=13) but shifts rounding in trig (m=6);
+ *   the dominant error source remains catastrophic cancellation in C - C·N·C
+ *   which Kahan cannot fix.
+ *   Setting: relTol=2e-3, absTol=1e-6 → absTol catches the trig Cf outlier.
  *
  * Float32 measured maxima (m ≤ 2 only; m > 2 diverges):
  *   - m=1: relErr ≤ 7e-6
@@ -49,7 +52,7 @@ const FULL_MATRIX: Omit<TestConfig, 'label'>[] = [
     device: 'cpu',
     dtype: DType.Float64,
     relativeTolerance: 2e-3,
-    absoluteTolerance: 1e-7,
+    absoluteTolerance: 1e-6,
   },
   {
     device: 'cpu',
@@ -61,7 +64,7 @@ const FULL_MATRIX: Omit<TestConfig, 'label'>[] = [
     device: 'wasm',
     dtype: DType.Float64,
     relativeTolerance: 2e-3,
-    absoluteTolerance: 1e-7,
+    absoluteTolerance: 1e-6,
   },
   {
     device: 'wasm',

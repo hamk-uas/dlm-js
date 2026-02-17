@@ -117,11 +117,13 @@ const dlmSmo = async (
     //
     // NUMERICAL PRECISION NOTE:
     // einsum('ij,jk,lk->il', G, C, L) decomposes into two sequential
-    // dot products: tmp = G·C, then result = tmp·L'. Each dot's inner
-    // reduction uses naive (uncompensated) summation in jax-js, so
-    // accumulated rounding scales as O(m·ε) where m is the state
-    // dimension. For m ≤ 6 with Float64 this is fine; for m = 13
-    // (full seasonal) we see relative errors up to ~3e-5.
+    // dot products: tmp = G·C, then result = tmp·L'. Since jax-js
+    // v0.2.1, Float64 reductions use Kahan compensated summation,
+    // reducing per-dot rounding from O(m·ε) to O(ε²). For m = 13
+    // (full seasonal) this improved worst-case relative error from
+    // ~3e-5 to ~1.8e-5 vs MATLAB. However, the dominant error
+    // source remains the subtraction C - C·N·C in the backward
+    // step (see below), which Kahan cannot fix.
     //
     // POTENTIAL DLM-SIDE IMPROVEMENT (not yet implemented):
     // The Joseph form covariance update is numerically more stable:
@@ -172,11 +174,11 @@ const dlmSmo = async (
     // N_new = F'·Cp⁻¹·F + L'·N·L  [m,m]
     //
     // NUMERICAL PRECISION NOTE:
-    // The L'·N·L product via einsum also uses two pairwise dot()
-    // calls with uncompensated summation. Errors here propagate
-    // into C_smooth via the C·N·C product below. N accumulates
-    // information over the backward pass, so rounding compounds
-    // across timesteps.
+    // The L'·N·L product via einsum uses two pairwise dot() calls.
+    // Since jax-js v0.2.1, Float64 uses Kahan compensated summation
+    // in each dot, but errors still propagate into C_smooth via the
+    // C·N·C product below. N accumulates information over the
+    // backward pass, so rounding compounds across timesteps.
     const N_new = np.add(
       np.matmul(FtCpInv, F),
       np.einsum('ji,jk,kl->il', L, N, L)
@@ -192,15 +194,17 @@ const dlmSmo = async (
     // error in the DLM. When the smoothing correction C·N·C is
     // nearly equal to C_pred, we subtract two similar-magnitude
     // quantities to get a small result — classic catastrophic
-    // cancellation. Measured worst case: trig model (m=6),
-    // C[5][4] ≈ 2e-7 shows 1.25% relative error vs MATLAB (though
-    // absolute error is only ~2.6e-9).
+    // cancellation. Measured worst case (jax-js v0.2.1 with Kahan):
+    // trig model (m=6), C[5][4] ≈ 2e-7 shows ~3.5% relative error
+    // vs MATLAB (absolute error ~7e-9). Kahan compensated summation
+    // in dot products (v0.2.1) improved the seasonal model (m=13)
+    // but shifted the rounding pattern for trig (m=6), making this
+    // specific element worse. This confirms that the bottleneck is
+    // the subtraction itself, not the dot product accuracy.
     //
-    // The error is compounded by jax-js's einsum decomposition:
-    // einsum('ij,jk,kl->il', C, N, C) becomes two pairwise dot()
-    // calls, each using naive (uncompensated) summation. So the
-    // C·N·C product accumulates O(m·ε) rounding before the
-    // subtraction amplifies it.
+    // The einsum('ij,jk,kl->il', C, N, C) still decomposes into
+    // two pairwise dot() calls; Kahan helps each individual dot
+    // but cannot prevent the cancellation in the outer subtraction.
     //
     // POTENTIAL DLM-SIDE IMPROVEMENTS (not yet implemented):
     //

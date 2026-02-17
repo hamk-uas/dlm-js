@@ -1,5 +1,7 @@
 # Compensated or pairwise summation in dot product / reduction kernels
 
+> **Update (v0.2.1):** Kahan compensated summation for Float64 reductions shipped in jax-js-nonconsuming v0.2.1. Results are mixed — see [Measured impact after Kahan](#measured-impact-after-kahan) below. The dominant error source is catastrophic cancellation in `C - C·N·C`, which Kahan cannot fix. Pairwise summation for Float32 remains an open request.
+
 ## Summary
 
 The inner-product reduction in `dot` (and by extension `matmul`, `einsum`) uses naive summation (`acc += a[i] * b[i]`). This accumulates O(n·ε) rounding error where n is the reduction dimension and ε is machine epsilon. For Float64 Kalman filter workloads with state dimension m = 6–13, this produces relative errors up to ~1e-4 against a MATLAB/Octave reference — significantly worse than the ~1e-14 achievable with compensated summation.
@@ -97,3 +99,31 @@ console.log(await result.data());
 - NumPy uses pairwise summation: [numpy/core/src/npymath](https://github.com/numpy/numpy/blob/main/numpy/_core/src/npymath/npy_math_internal.h.src)
 - JAX `precision` parameter: [jax.numpy.dot](https://jax.readthedocs.io/en/latest/_autosummary/jax.numpy.dot.html)
 - Python `math.fsum`: uses Shewchuk's algorithm (exact summation)
+
+## Measured impact after Kahan (v0.2.1)
+
+Float64 Kahan summation shipped in v0.2.1. Comparison against MATLAB/Octave reference:
+
+| Model | m | v0.2.0 worst relErr | v0.2.1 worst relErr | Element | Verdict |
+|---|---|---|---|---|---|
+| level/order0 | 1 | 2.2e-8 | 2.2e-8 | `s2` | No change (m=1, scalar dot) |
+| niledemo | 2 | 4.7e-7 | 4.7e-7 | `lik` | No change (m=2, minimal benefit) |
+| order2 | 3 | 1.6e-7 | 1.6e-7 | `resid0` | No change |
+| seasonal | 13 | 2.9e-5 | 1.8e-5 | `Cf[0][2]` → `C[1][8]` | **Improved** (37% reduction) |
+| trig | 6 | 8.4e-4 | 4.8e-3 | `Cf[0][4]` | **Worse** (different rounding path) |
+
+Per-element breakdown for the trig model (m=6):
+- 3458 elements improved, 7723 worsened, 825 similar (±10%)
+- Median relErr: 7.5e-9 → 1.1e-8 (47% worse)
+- All high-error elements are near-zero covariance entries C[5][4], C[4][5] (|ref| ≈ 2e-7)
+
+Per-element breakdown for the seasonal model (m=13):
+- 30299 improved, 13359 worsened, 3201 similar
+- Median relErr: 2.7e-9 → 1.6e-9 (43% improvement)
+- Worst-case element improved across the board
+
+### Conclusion
+
+Kahan compensated summation helps for larger state dimensions (m=13) where the O(m·ε) naive accumulation was the bottleneck. For medium state dimensions (m=6) with catastrophic cancellation in `C - C·N·C`, Kahan changes the rounding pattern but doesn't help — and can make specific elements worse. The subtraction is the real problem, not the dot products.
+
+For a DLM-side fix, the Joseph form covariance update would address the cancellation directly. For the jax-js side, pairwise summation for Float32 would still be valuable (Float32 remains naive in v0.2.1).

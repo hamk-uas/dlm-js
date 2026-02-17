@@ -15,16 +15,16 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 | State space generation | ✅ | ✅ | `dlmgensys` generates G, F matrices for polynomial trend, full/trigonometric seasonal, and AR(p) components. |
 | Arbitrary state dimension | ✅ | ✅ | Kalman filter and RTS smoother support state dimension m ≥ 1, matching MATLAB's `dlmfit`/`dlmsmo`. |
 | float32 computation | ✅ | ❌ | dlm-js dtype is configurable whereas dlm works in float64 in Octave. Float32 is numerically stable for state dimension m ≤ 2; higher dimensions may diverge due to catastrophic cancellation in covariance updates. GPU acceleration can be used when float32 is selected, but the serial Kalman algorithm is slow on GPU. Using the wasm backend is recommended instead. |
-| float64 computation | ✅ | ✅ | With float64, results match the MATLAB reference within ~2e-3 relative tolerance (dominated by small covariance elements near zero with absolute error < 1e-7). See [numerical precision notes](#numerical-precision). |
+| float64 computation | ✅ | ✅ | With float64, results match the MATLAB reference within ~2e-3 relative tolerance (or < 1e-6 absolute tolerance for small covariance elements). See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | All tests run on every available (device, dtype) combination: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
 
 ## Numerical precision
 
-The jax-js `dot`/`matmul` kernels use naive (uncompensated) summation in their inner reduction loops. This means accumulated rounding scales as O(m·ε) per matrix multiplication, where m is the state dimension and ε is machine epsilon.
+Since jax-js v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
 
-The most precision-sensitive operation is the RTS backward smoother step `C_smooth = C - C·N·C`, where catastrophic cancellation amplifies any rounding when the smoothed correction nearly equals the prior covariance. See detailed comments in `src/index.ts`.
+However, the dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
 
-Known precision issues have been filed upstream: [issues/](issues/).
+Precision issues have been filed upstream: [issues/](issues/).
 
 ## TODO
 
