@@ -12,7 +12,8 @@ Quick start — commands you will need (copy/paste) ▶️
 - Run node tests (uses source TS): `pnpm vitest run` or `pnpm run test:node`.
 - Lint (jax-js-nonconsuming memory rules): `pnpm run lint`.
 - Generate API docs: `pnpm run docs` (outputs to `docs/`, opens at `docs/index.html`).
-- Generate Octave reference (requires `octave-cli`): `pnpm run test:octave` (produces `tests/niledemo-out-m.json`).
+- Generate Octave reference (requires `octave-cli`): `pnpm run test:octave` (produces `tests/*-out-m.json`).
+- Generate SVG plots: `pnpm run gen:svg` (produces `assets/*.svg`).
 - Build for distribution: `pnpm run build`.
 - Full CI-local check: `pnpm run test` (runs lint + Octave reference + Node tests).
 
@@ -22,7 +23,8 @@ Files & places to inspect first 📁
 - Types & helpers: `src/types.ts` (TypedArray usage, `getFloatArrayType`).
 - Test matrix: `tests/test-matrix.ts` (shared device × dtype configs and tolerances).
 - Tests: `tests/niledemo.test.ts` (Nile demo vs Octave), `tests/gensys.test.ts` (multi-model vs Octave), `tests/synthetic.test.ts` (known true states, statistical assertions).
-- Reference generators: `tests/octave/niledemo.m`, `tests/octave/gensys_tests.m` (MATLAB/Octave ground truth).
+- Reference generators: `tests/octave/niledemo.m`, `tests/octave/gensys_tests.m`, `tests/octave/kaisaniemi_demo.m` (MATLAB/Octave ground truth).
+- SVG generators: `scripts/gen-niledemo-svg.ts`, `scripts/gen-kaisaniemi-svg.ts`, `scripts/gen-trigar-svg.ts`.
 - Upstream issues: `issues/` (precision analysis filed to jax-js-nonconsuming).
 - Build / CI hooks: `package.json`, `vite.config.ts`.
 
