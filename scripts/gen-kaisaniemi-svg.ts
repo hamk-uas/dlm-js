@@ -8,7 +8,7 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { checkLeaks, DType } from "@jax-js-nonconsuming/jax";
+import { checkLeaks, DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";

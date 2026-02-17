@@ -5,7 +5,7 @@
  * Test files use `describe.each(getTestConfigs())` to run against all
  * available device/dtype combinations.
  */
-import { init, defaultDevice, DType, type Device } from '@jax-js-nonconsuming/jax';
+import { init, defaultDevice, DType, type Device } from '@hamk-uas/jax-js-nonconsuming';
 
 /** A single (device, dtype) test configuration with tolerances */
 export interface TestConfig {

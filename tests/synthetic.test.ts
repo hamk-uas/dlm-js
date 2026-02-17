@@ -12,7 +12,7 @@
  * 3. Smoother RMSE < observation RMSE (smoother reduces noise)
  * 4. True states fall within posterior credible intervals at nominal rate
  */
-import { checkLeaks, DType } from '@jax-js-nonconsuming/jax';
+import { checkLeaks, DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys } from '../src/index';
 import { getTestConfigs, applyConfig, assertAllFinite } from './test-matrix';

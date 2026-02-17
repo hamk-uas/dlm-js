@@ -8,15 +8,14 @@
     "dist"
   ],
   "dependencies": {
-    "@jax-js-nonconsuming/jax": "github:hamk-uas/jax-js-nonconsuming"
+    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#v0.3.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@jax-js-nonconsuming/jax"
+      "@hamk-uas/jax-js-nonconsuming"
     ]
   },
   "devDependencies": {
-    "@jax-js-nonconsuming/eslint-plugin-jax-js": "github:hamk-uas/jax-js-nonconsuming#path:packages/eslint-plugin&eslint-plugin-v0.1.0",
     "@types/node": "^25.0.10",
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.31.0",
@@ -36,7 +35,8 @@
     "gen:svg:nile": "npx tsx scripts/gen-niledemo-svg.ts",
     "gen:svg:kaisaniemi": "npx tsx scripts/gen-kaisaniemi-svg.ts",
     "gen:svg:trigar": "npx tsx scripts/gen-trigar-svg.ts",
-    "gen:svg": "pnpm run gen:svg:nile && pnpm run gen:svg:kaisaniemi && pnpm run gen:svg:trigar",
+    "gen:svg:nile-mle": "npx tsx scripts/gen-nile-mle-svg.ts",
+    "gen:svg": "pnpm run gen:svg:nile && pnpm run gen:svg:kaisaniemi && pnpm run gen:svg:trigar && pnpm run gen:svg:nile-mle",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",

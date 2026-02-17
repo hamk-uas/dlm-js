@@ -1,4 +1,4 @@
-import { checkLeaks } from '@jax-js-nonconsuming/jax';
+import { checkLeaks } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys } from '../src/index';
 import { deepAlmostEqual } from './utils';

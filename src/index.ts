@@ -1,4 +1,4 @@
-import { DType, numpy as np, lax, jit, tree } from "@jax-js-nonconsuming/jax";
+import { DType, numpy as np, lax, jit, tree } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmSmoResult, DlmFitResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
 import { dlmGenSys } from "./dlmgensys";
@@ -8,6 +8,8 @@ import type { DlmOptions } from "./dlmgensys";
 export type { DlmFitResult, FloatArray } from "./types";
 export type { DlmOptions, DlmSystem } from "./dlmgensys";
 export { dlmGenSys } from "./dlmgensys";
+export { dlmMLE } from "./mle";
+export type { DlmMleResult } from "./mle";
 
 /**
  * DLM Smoother - Kalman filter (forward) + Rauch-Tung-Striebel smoother (backward).
