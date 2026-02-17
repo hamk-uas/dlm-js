@@ -4,6 +4,10 @@
 
 [hamk-uas/jax-js-nonconsuming#5](https://github.com/hamk-uas/jax-js-nonconsuming/issues/5)
 
+## Status
+
+**Resolved** upstream via [PR #6](https://github.com/hamk-uas/jax-js-nonconsuming/pull/6) — `prepare` script now fails loudly if `dist/index.d.ts` is not generated. dlm-js dependency updated.
+
 ## Problem
 
 When `@jax-js-nonconsuming/jax` is installed as a git dependency, the `prepare` script runs
