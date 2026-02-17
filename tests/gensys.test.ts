@@ -205,10 +205,16 @@ const modelCases: ModelCase[] = [
     options: { order: 1, trig: 1, ns: 12, arphi: [0.7] },
   },
   {
-    name: 'synthetic energy demand (trend + seasonal + strong AR)',
+    name: 'synthetic energy demand (trend + seasonal + AR)',
     inputFile: 'energy-in.json',
     referenceFile: 'energy-out-m.json',
-    options: { order: 1, trig: 1, ns: 12, arphi: [0.85] },
+    options: { order: 1, trig: 1, ns: 12, arphi: [0.425] },
+  },
+  {
+    name: 'synthetic AR(2) (damped oscillation)',
+    inputFile: 'ar2-in.json',
+    referenceFile: 'ar2-out-m.json',
+    options: { order: 1, arphi: [0.6, -0.3] },
   },
 ];
 

@@ -110,19 +110,19 @@ out_trigar = dlmfit(y_seas, s_seas, w_trigar, [], [], [], options_trigar);
 save_json(out_trigar, "tests/trigar-out-m.json");
 disp('  done');
 
-%% Test 7: Synthetic energy demand — trend + seasonal + strong AR(1)
+%% Test 7: Synthetic energy demand — trend + seasonal + AR(1)
 % Simulates monthly energy consumption with:
 %   - Linear growth trend (rising demand)
 %   - Seasonal cycle (1 trig harmonic, ns=12)
-%   - Strong AR(1) with phi=0.85 (persistent weather/economic deviations)
+%   - AR(1) with phi=0.425 (moderate weather/economic deviations)
 %   - Observation noise
 % Data generated from the DLM state-space model itself using a fixed seed.
 % State dimension m = 2 + 2 + 1 = 5
 
-disp('Test 7: synthetic energy demand (trend + seasonal + strong AR)');
+disp('Test 7: synthetic energy demand (trend + seasonal + AR)');
 
 % Generate system matrices
-options_energy = struct("order", 1, "trig", 1, "ns", 12, "arphi", 0.85);
+options_energy = struct("order", 1, "trig", 1, "ns", 12, "arphi", 0.425);
 [G_e, F_e] = dlmgensys(options_energy);
 m_e = size(G_e, 1);  % should be 5
 
@@ -168,6 +168,65 @@ out_energy = dlmfit(y_energy, s_energy, w_energy, [], [], [], options_energy);
 % Also save the true states for reference
 out_energy.x_true = x_true;
 save_json(out_energy, "tests/energy-out-m.json");
+disp('  done');
+
+%% Test 8: Synthetic data with AR(2) — trend + damped oscillatory AR
+% Simulates monthly data with:
+%   - Linear trend (order=1)
+%   - AR(2) with phi=[0.6, -0.3] (damped oscillation, complex roots)
+%   - No seasonal component (isolates AR(2) behavior)
+%   - Observation noise
+% Data generated from the DLM state-space model itself using a fixed seed.
+% State dimension m = 2 + 2 = 4 (trend + AR companion block)
+
+disp('Test 8: synthetic AR(2) (damped oscillation)');
+
+% Generate system matrices
+options_ar2 = struct("order", 1, "arphi", [0.6, -0.3]);
+[G_a2, F_a2] = dlmgensys(options_ar2);
+m_a2 = size(G_a2, 1);  % should be 4
+
+% Noise parameters (standard deviations)
+% w: [level, slope, ar1_state, ar2_state]
+w_ar2 = [0.5, 0.05, 2.0, 0];
+s_ar2 = 1.0;
+
+% Build W (process noise covariance)
+W_a2 = zeros(m_a2, m_a2);
+for i = 1:length(w_ar2)
+  W_a2(i,i) = w_ar2(i)^2;
+end
+
+% Generate data from the model with fixed seed
+rng(99, 'twister');
+n_a2 = 100;
+
+% Initial state: [level=50, slope=0.1, ar1=0, ar2=0]
+x_true_a2 = zeros(m_a2, n_a2);
+y_ar2 = zeros(n_a2, 1);
+x_prev_a2 = [50; 0.1; 0; 0];
+
+for t_i = 1:n_a2
+  % State transition + process noise
+  w_noise = zeros(m_a2, 1);
+  for j = 1:m_a2
+    w_noise(j) = w_ar2(min(j, length(w_ar2))) * randn();
+  end
+  x_t = G_a2 * x_prev_a2 + w_noise;
+  x_true_a2(:, t_i) = x_t;
+
+  % Observation + observation noise
+  y_ar2(t_i) = F_a2 * x_t + s_ar2 * randn();
+  x_prev_a2 = x_t;
+end
+
+inputs_ar2 = struct("y", y_ar2, "s", s_ar2, "w", w_ar2);
+save_json(inputs_ar2, "tests/ar2-in.json");
+
+out_ar2 = dlmfit(y_ar2, s_ar2, w_ar2, [], [], [], options_ar2);
+% Also save the true states for reference
+out_ar2.x_true = x_true_a2;
+save_json(out_ar2, "tests/ar2-out-m.json");
 disp('  done');
 
 disp('All gensys test references generated.');

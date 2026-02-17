@@ -38,7 +38,7 @@ Project-specific conventions & gotchas ⚠️
 - Dependencies: Both `@jax-js-nonconsuming/jax` and its eslint plugin are installed from `github:hamk-uas/jax-js-nonconsuming`.
 
 Testing & tolerance details (important for PRs) ✅
-- **Three test suites**: `niledemo.test.ts` (8 tests, Nile data vs Octave), `gensys.test.ts` (43 tests, multi-model vs Octave), `synthetic.test.ts` (24 tests, known true states). Total: 75 tests.
+- **Three test suites**: `niledemo.test.ts` (8 tests, Nile data vs Octave), `gensys.test.ts` (47 tests, multi-model vs Octave), `synthetic.test.ts` (24 tests, known true states). Total: 79 tests.
 - **Tolerances** are defined in `tests/test-matrix.ts`: Float64 relTol=2e-3, absTol=1e-6; Float32 relTol=1e-2, absTol=1e-4. The niledemo test uses tighter ~1e-10 relative tolerance for its specific comparison.
 - Test artifacts: failing runs write `tests/out/` — inspect JSON files there.
 - When adding features: include tests that run in all three modes (`for`, `scan`, `jit`) and add keys to `niledemo-keys.json` if the change is a partial implementation.
