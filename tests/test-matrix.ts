@@ -33,7 +33,7 @@ export interface Tolerances {
  * The tolerances are applied in combination: values pass if EITHER
  *   |a - b| < absoluteTolerance  OR  |a - b| / max(|a|, |b|) < relativeTolerance.
  *
- * Float64 measured maxima (jax-js v0.2.1, Kahan summation for f64 reductions):
+ * Float64 measured maxima (jax-js-nonconsuming v0.2.1, Kahan summation for f64 reductions):
  *   - Largest relErr: 4.8e-3 (trig Cf[0][4], m=6, absErr=2.6e-7)
  *   - Seasonal (m=13) improved vs v0.2.0: worst 2.9e-5 → 1.8e-5
  *   - Near-zero values: absErr ≤ 7.1e-9 (trig C[5][4], m=6)

@@ -1,7 +1,7 @@
 {
   "name": "dlm-js",
   "version": "0.1.0",
-  "description": "JavaScript re-implementation of the MATLAB dlm library using jax-js",
+  "description": "JavaScript re-implementation of the MATLAB dlm library using jax-js-nonconsuming",
   "type": "module",
   "files": [
     "dist"

@@ -8,7 +8,7 @@ The inner-product reduction in `dot` (and by extension `matmul`, `einsum`) uses 
 
 ## Context — how we found this
 
-We're porting a MATLAB Dynamic Linear Model (DLM) library to jax-js. The DLM runs a Kalman filter (forward) + RTS smoother (backward), which chains many matrix multiplications per timestep over ~100 timesteps. We compared Float64 outputs against Octave's reference (which uses LAPACK/BLAS with 80-bit intermediate accumulators on x86).
+We're porting a MATLAB Dynamic Linear Model (DLM) library to jax-js-nonconsuming. The DLM runs a Kalman filter (forward) + RTS smoother (backward), which chains many matrix multiplications per timestep over ~100 timesteps. We compared Float64 outputs against Octave's reference (which uses LAPACK/BLAS with 80-bit intermediate accumulators on x86).
 
 Worst measured errors (Float64, `wasm` and `cpu` backends identical):
 
@@ -126,7 +126,7 @@ Per-element breakdown for the seasonal model (m=13):
 
 Kahan compensated summation helps for larger state dimensions (m=13) where the O(m·ε) naive accumulation was the bottleneck. For medium state dimensions (m=6) with catastrophic cancellation in `C - C·N·C`, Kahan changes the rounding pattern but doesn't help — and can make specific elements worse. The subtraction is the real problem, not the dot products.
 
-For a DLM-side fix, the Joseph form covariance update would address the cancellation directly. For the jax-js side, pairwise summation for Float32 would still be valuable (Float32 remains naive in v0.2.1).
+For a DLM-side fix, the Joseph form covariance update would address the cancellation directly. For the jax-js-nonconsuming side, pairwise summation for Float32 would still be valuable (Float32 remains naive in v0.2.1).
 
 ### Verification: synthetic ground-truth tests and analytical error propagation
 
@@ -163,4 +163,4 @@ The analytical bound underestimates because it uses average cancellation ratio r
 - **m > 2: difference scales with $(m-2) \cdot m$** (11× ratio improvement from m=6 to m=13)
 - **No anomalous signs or magnitudes** (an incorrect Kahan implementation would show disrupted scaling)
 
-**Conclusion for DLM users:** Kahan is a correctness improvement for jax-js as a numeric library, but the DLM's accuracy in recovering hidden states is entirely dominated by statistical estimation uncertainty, not floating-point rounding. The v0.2.0 → v0.2.1 change has zero practical effect on DLM results.
+**Conclusion for DLM users:** Kahan is a correctness improvement for jax-js-nonconsuming as a numeric library, but the DLM's accuracy in recovering hidden states is entirely dominated by statistical estimation uncertainty, not floating-point rounding. The v0.2.0 → v0.2.1 change has zero practical effect on DLM results.

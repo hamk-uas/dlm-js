@@ -10,7 +10,7 @@ High-level summary (big picture) 🔎
 Quick start — commands you will need (copy/paste) ▶️
 - Install: `pnpm install`.
 - Run node tests (uses source TS): `pnpm vitest run` or `pnpm run test:node`.
-- Lint (jax-js memory rules): `pnpm run lint`.
+- Lint (jax-js-nonconsuming memory rules): `pnpm run lint`.
 - Generate API docs: `pnpm run docs` (outputs to `docs/`, opens at `docs/index.html`).
 - Generate Octave reference (requires `octave-cli`): `pnpm run test:octave` (produces `tests/niledemo-out-m.json`).
 - Build for distribution: `pnpm run build`.
@@ -41,8 +41,8 @@ Testing & tolerance details (important for PRs) ✅
 - Test artifacts: failing runs write `tests/out/` — inspect JSON files there.
 - When adding features: include tests that run in all three modes (`for`, `scan`, `jit`) and add keys to `niledemo-keys.json` if the change is a partial implementation.
 - **Float32 + m > 2**: numerically unstable (covariance goes negative → NaN). These combinations are skipped in both `gensys.test.ts` and `synthetic.test.ts`.
-- **Leak detection**: Wrap jax-js code in tests with `checkLeaks.start()` before and `checkLeaks.stop()` after to verify no `np.Array` objects are leaked. This catches missing `using`/`dispose` calls at runtime.
-- **Eager-first development**: When writing new jax-js code, always get it working in eager mode first (no `jit()` wrapper). Only wrap with `jit()` after the eager version is correct and leak-free. JIT adds tracing complexity that makes debugging harder.
+- **Leak detection**: Wrap jax-js-nonconsuming code in tests with `checkLeaks.start()` before and `checkLeaks.stop()` after to verify no `np.Array` objects are leaked. This catches missing `using`/`dispose` calls at runtime.
+- **Eager-first development**: When writing new jax-js-nonconsuming code, always get it working in eager mode first (no `jit()` wrapper). Only wrap with `jit()` after the eager version is correct and leak-free. JIT adds tracing complexity that makes debugging harder.
 
 Troubleshooting checklist (fast) 🩺
 - Deterministic mismatch? Re-run with CPU+Float64: tests set device via `defaultDevice('cpu')` and `DType.Float64` in the harness.
@@ -55,7 +55,7 @@ PR checklist (what an AI should do before opening a PR) 📋
 2. If numeric behavior intentionally changes, update or regenerate Octave reference and explain reasoning in the PR description.
 3. Update `tests/niledemo-keys.json` when exposing only a subset of outputs.
 4. Ensure no new `np.Array` leaks — use `using` for temporaries, `tree.dispose()` for bulk cleanup.
-5. **Run `pnpm run lint`** to verify the jax-js eslint plugin reports no memory/disposal issues.
+5. **Run `pnpm run lint`** to verify the jax-js-nonconsuming eslint plugin reports no memory/disposal issues.
 6. Run: `pnpm install && pnpm vitest run && pnpm run test:octave` (if applicable).
 7. If public API changes, update `README.md` and TypeScript types in `src/types.ts`.
 

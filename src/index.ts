@@ -117,7 +117,7 @@ const dlmSmo = async (
     //
     // NUMERICAL PRECISION NOTE:
     // einsum('ij,jk,lk->il', G, C, L) decomposes into two sequential
-    // dot products: tmp = G·C, then result = tmp·L'. Since jax-js
+    // dot products: tmp = G·C, then result = tmp·L'. Since jax-js-nonconsuming
     // v0.2.1, Float64 reductions use Kahan compensated summation,
     // reducing per-dot rounding from O(m·ε) to O(ε²). For m = 13
     // (full seasonal) this improved worst-case relative error from
@@ -175,7 +175,7 @@ const dlmSmo = async (
     //
     // NUMERICAL PRECISION NOTE:
     // The L'·N·L product via einsum uses two pairwise dot() calls.
-    // Since jax-js v0.2.1, Float64 uses Kahan compensated summation
+    // Since jax-js-nonconsuming v0.2.1, Float64 uses Kahan compensated summation
     // in each dot, but errors still propagate into C_smooth via the
     // C·N·C product below. N accumulates information over the
     // backward pass, so rounding compounds across timesteps.
@@ -194,7 +194,7 @@ const dlmSmo = async (
     // error in the DLM. When the smoothing correction C·N·C is
     // nearly equal to C_pred, we subtract two similar-magnitude
     // quantities to get a small result — classic catastrophic
-    // cancellation. Measured worst case (jax-js v0.2.1 with Kahan):
+    // cancellation. Measured worst case (jax-js-nonconsuming v0.2.1 with Kahan):
     // trig model (m=6), C[5][4] ≈ 2e-7 shows ~3.5% relative error
     // vs MATLAB (absolute error ~7e-9). Kahan compensated summation
     // in dot products (v0.2.1) improved the seasonal model (m=13)

@@ -36,7 +36,7 @@ With Kahan summation on the single accumulator, it drops to O(ε²) regardless o
 
 ## Practical considerations
 
-- **Fused triple-product kernels are unusual** — most BLAS libraries don't have them. The standard approach is `DGEMM` + `DGEMM` (two calls). But jax-js generates its own kernels, so there's no BLAS constraint.
+- **Fused triple-product kernels are unusual** — most BLAS libraries don't have them. The standard approach is `DGEMM` + `DGEMM` (two calls). But jax-js-nonconsuming generates its own kernels, so there's no BLAS constraint.
 
 - **JIT already fuses element-wise ops** but not reduction ops like matmul. Fusing reductions is fundamentally harder because of the shared accumulator.
 
@@ -64,11 +64,11 @@ With the current naive-summation pairwise decomposition (Float64):
 | `C·N·C` (backward, before subtraction) | 6 | ~8e-4 (after C - C·N·C cancellation) |
 | `L'·N·L` (backward N update) | 13 | contributes to above via N accumulation |
 
-These are acceptable for most applications. The issue is primarily relevant if jax-js wants to compete with LAPACK-backed libraries on numerical accuracy for Float64 scientific computing.
+These are acceptable for most applications. The issue is primarily relevant if jax-js-nonconsuming wants to compete with LAPACK-backed libraries on numerical accuracy for Float64 scientific computing.
 
 ## Synthetic ground-truth perspective
 
-Testing the DLM against known true hidden states (rather than Octave reference) shows that the ~1e-4 relative errors reported above are **implementation disagreements** between jax-js and LAPACK rounding pathways. They do not affect the DLM's ability to recover hidden states from noisy observations.
+Testing the DLM against known true hidden states (rather than Octave reference) shows that the ~1e-4 relative errors reported above are **implementation disagreements** between jax-js-nonconsuming and LAPACK rounding pathways. They do not affect the DLM's ability to recover hidden states from noisy observations.
 
 The smoothed state RMSE is ~1–3 (dominated by statistical estimation uncertainty), while the entire v0.2.0 vs v0.2.1 rounding difference is ~2e-10 — ten orders of magnitude smaller. Even the full naive-summation rounding (without Kahan) is negligible at the precision that matters for DLM end users.
 

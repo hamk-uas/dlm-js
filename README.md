@@ -1,15 +1,15 @@
-# dlm-js — a minimal jax-js port of dynamic linear model
+# dlm-js — a minimal jax-js-nonconsuming port of dynamic linear model
 
 <strong>
   <a href="https://hamk-uas.github.io/dlm-js/">API Reference</a> |
   <a href="https://github.com/hamk-uas/dlm-js">GitHub</a>
 </strong>
 
-A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
+A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
 
-*Niledemo main output from dlm-js (which uses jax-js) and from the MATLAB dlm implementation (using Octave). The JIT-compiled dlm-js computation lasts about 60 ms (or 24 ms on successive runs with cached compilation) using `lax.scan` from [a non-consuming ownership jax-js fork](https://github.com/hamk-uas/jax-js-nonconsuming).*
+*Niledemo main output from dlm-js (which uses jax-js-nonconsuming) and from the MATLAB dlm implementation (using Octave). The JIT-compiled dlm-js computation lasts about 60 ms (or 24 ms on successive runs with cached compilation) using `lax.scan` from [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming).*
 
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
@@ -26,7 +26,7 @@ A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://m
 
 ## Numerical precision
 
-Since jax-js v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
+Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
 
 However, the dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
 
@@ -47,7 +47,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
-├── issues/              # Drafted GitHub issues for upstream jax-js
+├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: dlmSmo (Kalman+RTS), dlmFit (two-pass fitting)
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -67,10 +67,12 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── {order0,order2,seasonal,trig,level}-{in,out-m}.json  # Test data (see below)
 │   └── utils.ts             # Test utility functions
+├── eslint.config.ts     # ESLint configuration (jax-js-nonconsuming memory rules)
 ├── LICENSE              # License (does not apply to tests/octave/dlm/)
 ├── package.json         # Node.js package information
-├── README.md            # This readme          
+├── README.md            # This readme
 ├── tsconfig.json        # Configuration file of the TypeScript project
+├── typedoc.json         # TypeDoc API documentation configuration
 └── vite.config.ts       # Configuration file of the Vite project
 ```
 
@@ -131,7 +133,7 @@ Install Octave and add the folder containing `octave-cli` or `octave-cli.exe` to
 This project is written in TypeScript. You need to build (compile) it before use:
 
 ```shell
-npm run build
+pnpm run build
 ```
 This does two things:
   - **Compiles TypeScript (`src/index.ts`) to ESM and CommonJS JavaScript (`dist/dlm-js.es.js`, `dist/dlm-js.cjs.js`) and type definitions (`dist/index.d.ts`).** TypeScript lets you write code with types, but Node.js and browsers only run JavaScript. The build step converts your code to JavaScript.
