@@ -23,7 +23,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, before (initial guess, orange dashed) vs after (MLE optimum, blue solid)" src="assets/nile-mle.svg" />
 
-*Nile MLE demo: hyperparameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. Pure-array Adam optimizer with `jit(valueAndGrad(...))` wrapping the entire Kalman filter. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. Pure-array Adam optimizer with `jit(valueAndGrad(...))` wrapping the entire Kalman filter. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
@@ -84,7 +84,7 @@ console.log(sys.F);  // observation vector (1×m)
 console.log(sys.m);  // state dimension
 ```
 
-### MLE hyperparameter estimation
+### MLE parameter estimation
 
 Estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff:
 
@@ -133,7 +133,7 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
-| MLE hyperparameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). Pure-array Adam optimizer, fully `jit()`-compiled. |
+| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). Pure-array Adam optimizer, fully `jit()`-compiled. |
 | float32 computation | ✅ | ❌ | Configurable dtype. Float32 is numerically stable for m ≤ 2; higher dimensions may diverge. GPU/WASM backends available. |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
@@ -147,7 +147,7 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | Covariates / proxies | `dlmfit` X argument, `dlmsmo` X argument | Straightforward to add (identity block in G, `kron(X(i,:), eye(p))` in F), but no use case has required it yet. |
 | Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | Biggest remaining lift — affects all matrix dimensions throughout the filter/smoother. dlm-js currently assumes scalar observations (p = 1). |
 | Missing data (NaN handling) | `dlmsmo` `ig = not(isnan(y(i,:)))` | Requires masking innovation updates for NaN timesteps. Moderate effort; also needs `meannan`/`sumnan` utility functions. |
-| ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. See [MLE estimation](#mle-hyperparameter-estimation) below. |
+| ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. See [MLE estimation](#mle-parameter-estimation) below. |
 | MCMC parameter estimation | `dlmfit` `options.mcmc` | Depends on Marko Laine's external `mcmcrun` MCMC toolbox, which is not included in the dlm repository. Would require porting or replacing the entire MCMC engine. |
 | State sampling (disturbance smoother) | `dlmsmo` `sample` argument | Generates sampled state trajectories for Gibbs sampling. Only useful together with MCMC parameter estimation, so blocked on MCMC. |
 | Covariance symmetry enforcement | `dlmsmo` `triu(C) + triu(C,1)'` | MATLAB forces exact matrix symmetry at each step to counteract asymmetric floating-point rounding. dlm-js relies on algebraic symmetry; adding enforcement is low effort but has not been needed. |
@@ -187,7 +187,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
-│   ├── mle.ts               # `dlmMLE`: MLE hyperparameter estimation via autodiff (valueAndGrad + lax.scan + Adam)
+│   ├── mle.ts               # `dlmMLE`: MLE parameter estimation via autodiff (valueAndGrad + lax.scan + Adam)
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators

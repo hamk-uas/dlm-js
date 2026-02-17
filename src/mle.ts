@@ -163,7 +163,7 @@ interface AdamState {
 }
 
 /**
- * Estimate DLM hyperparameters (s, w) by maximum likelihood via autodiff.
+ * Estimate DLM parameters (s, w) by maximum likelihood via autodiff.
  *
  * Uses `jit(valueAndGrad(...))` + pure-array Adam to differentiate the Kalman
  * filter log-likelihood and optimize in one compiled step. The entire loop body

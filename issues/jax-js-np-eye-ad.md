@@ -82,7 +82,7 @@ const I = np.diag(np.ones([m], { dtype }));
 
 ## Context
 
-Discovered while implementing MLE hyperparameter estimation for `dlm-js` via
+Discovered while implementing MLE parameter estimation for `dlm-js` via
 `valueAndGrad` + Adam optimizer. The full Kalman filter (100 timesteps, m=2
 state dimension, using `lax.scan`) differentiates correctly with this single
 substitution applied.
