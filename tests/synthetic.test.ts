@@ -166,6 +166,15 @@ interface SyntheticCase {
   minCoverage: number;
 }
 
+const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
+  checkLeaks.start();
+  try {
+    return await fn();
+  } finally {
+    checkLeaks.stop();
+  }
+};
+
 const syntheticCases: SyntheticCase[] = [
   {
     name: 'local level (m=1)',
@@ -247,9 +256,9 @@ describe('synthetic ground-truth tests', async () => {
             sys.G, sys.F, sc.s, sc.w, sc.n, sc.seed,
           );
 
-          checkLeaks.start();
-          const result = await dlmFit(data.y, sc.s, sc.w, config.dtype, sc.options);
-          checkLeaks.stop();
+          const result = await withLeakCheck(() =>
+            dlmFit(data.y, sc.s, sc.w, config.dtype, sc.options)
+          );
 
           // 1. All outputs finite
           assertAllFinite(result);

@@ -23,6 +23,15 @@ const compareKeys: string[] | null = fs.existsSync(keysFile)
   ? JSON.parse(fs.readFileSync(keysFile, 'utf-8'))
   : null;
 
+const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
+  checkLeaks.start();
+  try {
+    return await fn();
+  } finally {
+    checkLeaks.stop();
+  }
+};
+
 const runTest = async (config: TestConfig) => {
   applyConfig(config);
 
@@ -31,9 +40,9 @@ const runTest = async (config: TestConfig) => {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  checkLeaks.start();
-  const result = await dlmFit(nileInput.y, nileInput.s, nileInput.w, config.dtype);
-  checkLeaks.stop();
+  const result = await withLeakCheck(() =>
+    dlmFit(nileInput.y, nileInput.s, nileInput.w, config.dtype)
+  );
 
   const outputFileName = path.join(outputDir, `niledemo-out-${config.label.replace('/', '-')}.json`);
   fs.writeFileSync(outputFileName, JSON.stringify(result, (_key, value) =>

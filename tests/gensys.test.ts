@@ -136,6 +136,15 @@ interface ModelCase {
   options: DlmOptions;
 }
 
+const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
+  checkLeaks.start();
+  try {
+    return await fn();
+  } finally {
+    checkLeaks.stop();
+  }
+};
+
 const modelCases: ModelCase[] = [
   {
     name: 'order=0 (local level on Nile data)',
@@ -213,9 +222,9 @@ describe('dlmgensys integration tests', async () => {
 
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
-          checkLeaks.start();
-          const result = await dlmFit(input.y, input.s, w, config.dtype, mc.options);
-          checkLeaks.stop();
+          const result = await withLeakCheck(() =>
+            dlmFit(input.y, input.s, w, config.dtype, mc.options)
+          );
 
           // Write debug output
           const outputDir = path.join(__dirname, 'out');

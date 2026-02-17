@@ -11,11 +11,13 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Regenerate with `pnpm run gen:svg`.*
+*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 62.19 ms, warm run 23.13 ms. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave" src="assets/kaisaniemi.svg" />
 
-*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 63.74 ms, warm run 22.95 ms. Regenerate with `pnpm run gen:svg`.*
+
+Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
 For background on these demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/).
 

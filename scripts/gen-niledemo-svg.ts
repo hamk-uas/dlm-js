@@ -7,9 +7,10 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { DType } from "@jax-js-nonconsuming/jax";
+import { checkLeaks, DType } from "@jax-js-nonconsuming/jax";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { performance } from "node:perf_hooks";
 
 // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -22,9 +23,35 @@ const y: number[] = input.y;        // observations
 const s: number = input.s;          // observation noise std
 const w: number[] = input.w;        // state noise stds
 
+const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
+  checkLeaks.start();
+  try {
+    return await fn();
+  } finally {
+    checkLeaks.stop();
+  }
+};
+
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 
-const jsResult = await dlmFit(y, s, w, DType.Float64, { order: 1 });
+const timedFit = async () => {
+  const t0 = performance.now();
+  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }));
+  const t1 = performance.now();
+
+  const warmStart = performance.now();
+  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }));
+  const warmEnd = performance.now();
+
+  return {
+    result,
+    firstRunMs: t1 - t0,
+    warmRunMs: warmEnd - warmStart,
+  };
+};
+
+const timed = await timedFit();
+const jsResult = timed.result;
 const jsLevel = Array.from(jsResult.x[0]);              // smoothed state level
 const jsLevelStd = jsResult.xstd.map((row: any) => row[0] as number); // xstd[:,0]
 
@@ -170,3 +197,6 @@ mkdirSync(outDir, { recursive: true });
 const outPath = resolve(outDir, "niledemo.svg");
 writeFileSync(outPath, lines.join("\n"), "utf8");
 console.log(`Written: ${outPath}`);
+console.log(
+  `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`
+);
