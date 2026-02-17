@@ -139,7 +139,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators
-│   │   ├── dlm/                 # Subset of Marko Laine's MATLAB dlm + mcmcstat (see note below)
+│   │   ├── dlm/                 # Subset of Marko Laine's MATLAB dlm + mcmcstat (license: `tests/octave/dlm/LICENSE.txt`)
 │   │   ├── niledemo.m           # Niledemo — pre-existing MATLAB DLM demo script
 │   │   ├── gensys_tests.m       # Additional model tests (synthetic data, generated for this project)
 │   │   ├── kaisaniemi_demo.m    # Kaisaniemi seasonal demo reference generator
@@ -167,7 +167,7 @@ Precision issues have been filed upstream: [issues/](issues/).
 
 ### Included MATLAB sources (`tests/octave/dlm/`)
 
-The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mjlaine.github.io/dlm/dlmtut.html) and [mcmcstat](https://mjlaine.github.io/mcmcstat/) MATLAB toolboxes — just enough to run the Kalman filter and RTS smoother without MCMC or optimization dependencies:
+The `dlm/` directory contains a curated subset of Marko Laine's [dlm](https://mjlaine.github.io/dlm/dlmtut.html) and [mcmcstat](https://mjlaine.github.io/mcmcstat/) MATLAB toolboxes — just enough to run the Kalman filter and RTS smoother without MCMC or optimization dependencies. Licensing for this included subset is documented in [`tests/octave/dlm/LICENSE.txt`](tests/octave/dlm/LICENSE.txt):
 
 | File | Role | Used by our tests? |
 | --- | --- | --- |
@@ -280,12 +280,14 @@ pnpm run test
 ```
 
 ### Authors
-* Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
+* Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
 * Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Supervision of AI coding agent port of DLM
 
 ### Copyright
-* 2013-2017 Marko Laine -- Original dlm and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
+* 2013-2017 Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
 * 2026 HAMK Häme University of Applied Sciences
   
 ### License
-MIT license
+This project is MIT licensed (see [`LICENSE`](LICENSE)).
+
+The included original DLM and mcmcstat MATLAB subset in [`tests/octave/dlm/`](tests/octave/dlm/) is covered by its own license text in [`tests/octave/dlm/LICENSE.txt`](tests/octave/dlm/LICENSE.txt).
