@@ -20,6 +20,8 @@
     "@typescript-eslint/parser": "^8.46.4",
     "eslint": "^9.31.0",
     "jiti": "^2.6.1",
+    "typedoc": "^0.28.17",
+    "typedoc-theme-fresh": "^0.2.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "^7.3.1",
@@ -29,6 +31,7 @@
   "scripts": {
     "build": "vite build",
     "lint": "eslint src/",
+    "docs": "typedoc",
     "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",

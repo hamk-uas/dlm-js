@@ -6,7 +6,7 @@ import type { DlmOptions } from "./dlmgensys";
 
 // Public type exports
 export type { DlmFitResult, FloatArray } from "./types";
-export type { DlmOptions } from "./dlmgensys";
+export type { DlmOptions, DlmSystem } from "./dlmgensys";
 export { dlmgensys } from "./dlmgensys";
 
 /**

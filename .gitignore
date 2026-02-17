@@ -1,6 +1,9 @@
 # Ignore test outputs
 tests/out/
 
+# Generated docs
+docs/
+
 # Node.js
 node_modules/
 .env

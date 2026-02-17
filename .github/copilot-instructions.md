@@ -11,6 +11,7 @@ Quick start — commands you will need (copy/paste) ▶️
 - Install: `pnpm install`.
 - Run node tests (uses source TS): `pnpm vitest run` or `pnpm run test:node`.
 - Lint (jax-js memory rules): `pnpm run lint`.
+- Generate API docs: `pnpm run docs` (outputs to `docs/`, opens at `docs/index.html`).
 - Generate Octave reference (requires `octave-cli`): `pnpm run test:octave` (produces `tests/niledemo-out-m.json`).
 - Build for distribution: `pnpm run build`.
 - Full CI-local check: `pnpm run test` (runs lint + Octave reference + Node tests).

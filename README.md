@@ -1,5 +1,10 @@
 # dlm-js — a minimal jax-js port of dynamic linear model
 
+<strong>
+  <a href="https://hamk-uas.github.io/dlm-js/">API Reference</a> |
+  <a href="https://github.com/hamk-uas/dlm-js">GitHub</a>
+</strong>
+
 A minimal [jax-js](https://jax-js.com/) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 
 
 <img width="1277" height="453" alt="image" src="https://github.com/user-attachments/assets/264af73a-d797-45a9-93a6-1fc5cc0503a2" />
@@ -32,12 +37,16 @@ Precision issues have been filed upstream: [issues/](issues/).
 * Test the built library (in `dist/`)
 * Implement remaining dlm features (covariates, spline mode, missing data handling)
 * Human review the AI-generated DLM port
-* Document the library API
 
 ## Project structure
 
 ```
+├── .github/             # GitHub configuration
+│   ├── copilot-instructions.md  # AI coding agent instructions
+│   └── workflows/           # GitHub Actions CI
+│       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
 ├── dist/                # Compiled and bundled output (after build)
+├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: dlmSmo (Kalman+RTS), dlmFit (two-pass fitting)
