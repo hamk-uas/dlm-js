@@ -40,7 +40,7 @@
     "gen:svg:covariate": "npx tsx scripts/gen-covariate-svg.ts",
     "gen:svg:ozone": "npx tsx scripts/gen-ozone-svg.ts",
     "gen:svg": "pnpm run gen:svg:nile && pnpm run gen:svg:kaisaniemi && pnpm run gen:svg:trigar && pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle && pnpm run gen:svg:covariate && pnpm run gen:svg:ozone",
-    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m",
+    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m && octave-cli --no-gui tests/octave/ozonedemo.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",
     "prepublishOnly": "pnpm run build && pnpm run test"
