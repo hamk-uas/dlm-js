@@ -113,7 +113,7 @@ console.log(`  β_qbo2 =${(beta_qbo2_f  * ys).toExponential(3)}`);
 // This shows the pure trend + seasonal component extrapolation.
 // Use median of s_filled as the representative scalar observation noise std.
 const s_median = [...s_filled].sort((a, b) => a - b)[Math.floor(s_filled.length / 2)];
-const H_FORE = 36;
+const H_FORE = 180;  // 15 years
 const X_forecast_zero = Array.from({ length: H_FORE }, () => [0, 0, 0]);
 const fore = await dlmForecast(fit, s_median, H_FORE, DType.Float64, X_forecast_zero);
 
