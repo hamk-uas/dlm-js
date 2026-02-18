@@ -206,10 +206,8 @@ svg.push(...renderGridLines(yTicks1Raw, sy1, margin.left, margin.left + plotW));
 
 // ±2σ band — dlm-js (blue)
 svg.push(`<path d="${bandPathD(time, mu_upper, mu_lower, sx, sy1)}" fill="#3b82f6" fill-opacity="0.15" stroke="none"/>`);
-// ±2σ band — MATLAB (orange, behind)
-svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fill="#f59e0b" fill-opacity="0.10" stroke="none"/>`);
 
-// Observations as dots for sparse/gappy data, plus connecting line
+// Observations
 {
   const pts: string[] = [];
   for (let i = 0; i < N; i++) {
@@ -218,10 +216,12 @@ svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fi
   svg.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="#9ca3af" stroke-width="1" opacity="0.6"/>`);
 }
 
-// MATLAB smoothed level — dashed orange
-svg.push(`<polyline points="${polylinePoints(time, m_level, sx, sy1)}" fill="none" stroke="#d97706" stroke-width="1.8" stroke-dasharray="5 3"/>`);
-// dlm-js smoothed level — solid blue (on top)
+// dlm-js smoothed level — solid blue
 svg.push(`<polyline points="${polylinePoints(time, mu_hat, sx, sy1)}" fill="none" stroke="#2563eb" stroke-width="2.2"/>`);
+// ±2σ band — MATLAB (orange, on top of blue band)
+svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fill="#f59e0b" fill-opacity="0.15" stroke="none"/>`);
+// MATLAB smoothed level — dashed orange (drawn last, always visible)
+svg.push(`<polyline points="${polylinePoints(time, m_level, sx, sy1)}" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6 3"/>`);
 
 // Axes
 svg.push(...renderYAxis(yTicks1Raw, sy1, margin.left, fmt1));
@@ -251,10 +251,10 @@ svg.push(`<line x1="${margin.left}" y1="${r(sy2(0))}" x2="${margin.left+plotW}" 
 svg.push(`<polyline points="${polylinePoints(time, contrib_solar, sx, sy2)}" fill="none" stroke="#f59e0b" stroke-width="1.8"/>`);
 // QBO total — dlm-js (solid)
 svg.push(`<polyline points="${polylinePoints(time, contrib_qbo, sx, sy2)}" fill="none" stroke="#8b5cf6" stroke-width="1.8"/>`);
-// Solar contribution — MATLAB (dashed)
-svg.push(`<polyline points="${polylinePoints(time, m_contrib_solar, sx, sy2)}" fill="none" stroke="#d97706" stroke-width="1.4" stroke-dasharray="5 3"/>`);
-// QBO total — MATLAB (dashed)
-svg.push(`<polyline points="${polylinePoints(time, m_contrib_qbo, sx, sy2)}" fill="none" stroke="#7c3aed" stroke-width="1.4" stroke-dasharray="5 3"/>`);
+// Solar contribution — MATLAB (dashed, on top)
+svg.push(`<polyline points="${polylinePoints(time, m_contrib_solar, sx, sy2)}" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6 3"/>`);
+// QBO total — MATLAB (dashed, on top)
+svg.push(`<polyline points="${polylinePoints(time, m_contrib_qbo, sx, sy2)}" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 3"/>`);
 
 // Axes
 svg.push(...renderYAxis(yTicks2Raw, sy2, margin.left, fmt2));
