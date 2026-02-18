@@ -7,7 +7,9 @@
   <a href="https://github.com/mjlaine/dlm">Original DLM GitHub</a>
 </strong>
 
-A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). 🤖 AI generated code & documentation with gentle human supervision.
+A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB).
+
+🤖 AI generated code & documentation with gentle human supervision.
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
