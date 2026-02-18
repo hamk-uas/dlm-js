@@ -95,10 +95,15 @@ const beta2_final = beta2_hat[N - 1];
 console.log(`  β₁ estimated: ${beta1_final.toFixed(3)}  (true: ${TRUE_BETA[0]})`);
 console.log(`  β₂ estimated: ${beta2_final.toFixed(3)}  (true: ${TRUE_BETA[1]})`);
 
-// Covariate contributions: β̂₁·X₁(t) and β̂₂·X₂(t) using final β estimates
+// Covariate contributions using estimated β (final smoothed values)
 const contrib1: number[] = t_months.map((_, i) => beta1_final * X[i][0]);
 const contrib2: number[] = t_months.map((_, i) => beta2_final * X[i][1]);
 const total_contrib: number[] = contrib1.map((v, i) => v + contrib2[i]);
+
+// True covariate contributions for comparison
+const true_contrib1: number[] = t_months.map((_, i) => TRUE_BETA[0] * X[i][0]);
+const true_contrib2: number[] = t_months.map((_, i) => TRUE_BETA[1] * X[i][1]);
+const true_total: number[] = true_contrib1.map((v, i) => v + true_contrib2[i]);
 
 // Level ± 2σ
 const mu_upper = mu_hat.map((v, i) => v + 2 * mu_std[i]);
@@ -128,7 +133,8 @@ const sy1 = makeLinearScale(y1Min, y1Max, p1Bot, p1Top);
 const yTicks1 = yTicksFromRange(y1Min, y1Max, 5);
 
 // ── Panel 2: covariate contributions ─────────────────────────────────────
-const allVals2 = [...contrib1, ...contrib2, ...total_contrib];
+const allVals2 = [...contrib1, ...contrib2, ...total_contrib,
+                  ...true_contrib1, ...true_contrib2, ...true_total];
 const y2Max_abs = Math.ceil(Math.max(...allVals2.map(Math.abs)) * 1.2 / 0.5) * 0.5;
 const y2Min = -y2Max_abs;
 const y2Max = y2Max_abs;
@@ -137,12 +143,12 @@ const p2Bot = margin.top + panelH + panelGap + panelH;
 const sy2 = makeLinearScale(y2Min, y2Max, p2Bot, p2Top);
 const yTicks2 = yTicksFromRange(y2Min, y2Max);
 
-// x-axis ticks: every 24 months (2 years)
-const xTicks = Array.from({ length: Math.floor(N / 24) + 1 }, (_, i) => i * 24 + 1)
-  .filter(v => v >= 1 && v <= N);
-
-// x-axis labels in years (month 1 = year 1)
-const xFmt = (v: number) => `Y${Math.round(v / 12)}`;
+// x-axis ticks every 24 months, starting from 24 so no tick crowds origin
+const xTicksRaw = Array.from({ length: Math.floor(N / 24) }, (_, i) => (i + 1) * 24)
+  .filter(v => v <= N);
+// Build { val, label } objects (renderXAxis expects this format)
+const xTickObjs1 = xTicksRaw.map(v => ({ val: v, label: `Y${v / 12}` }));
+const xTickObjs2 = xTicksRaw.map(v => ({ val: v, label: `Y${v / 12}` }));
 
 // ── Render ────────────────────────────────────────────────────────────────
 const svg: string[] = [
@@ -151,28 +157,21 @@ const svg: string[] = [
 ];
 
 // ── Panel 1 ──────────────────────────────────────────────────────────────
-// Grid
 svg.push(...renderGridLines(yTicks1, sy1, margin.left, margin.left + plotW));
-
-// Smoothed level ±2σ band
 svg.push(`<path d="${bandPathD(t_months, mu_upper, mu_lower, sx, sy1)}" fill="#3b82f6" fill-opacity="0.15" stroke="none"/>`);
-
-// Observations
 svg.push(`<polyline points="${polylinePoints(t_months, y, sx, sy1)}" fill="none" stroke="#9ca3af" stroke-width="1" opacity="0.7"/>`);
-
-// Smoothed level
 svg.push(`<polyline points="${polylinePoints(t_months, mu_hat, sx, sy1)}" fill="none" stroke="#2563eb" stroke-width="2"/>`);
-
-// True trend (faint, for reference)
 svg.push(`<polyline points="${polylinePoints(t_months, mu_true, sx, sy1)}" fill="none" stroke="#16a34a" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.6"/>`);
 
-// Axes
 svg.push(...renderYAxis(yTicks1, sy1, margin.left, v => v.toFixed(0)));
-svg.push(...renderXAxis(xTicks, sx, p1Bot, xFmt));
-svg.push(renderAxesBorder(margin.left, p1Top, plotW, panelH));
+svg.push(...renderXAxis(xTickObjs1, sx, p1Bot));
+svg.push(...renderAxesBorder(margin.left, p1Top, margin.left + plotW, p1Bot));
 
-// Panel 1 legend
-const leg1X = margin.left + plotW - 240;
+// Y-axis title (rotated)
+svg.push(`<text transform="rotate(-90)" x="${-(p1Top + panelH / 2)}" y="${margin.left - 42}" text-anchor="middle" fill="#374151" font-size="11">Ozone proxy</text>`);
+
+// Legend
+const leg1X = margin.left + plotW - 235;
 const leg1Y = p1Top + 14;
 const leg1 = [
   [`<line x1="${leg1X}" y1="${leg1Y}" x2="${leg1X + 24}" y2="${leg1Y}" stroke="#9ca3af" stroke-width="1"/>`, "Observations"],
@@ -183,44 +182,53 @@ leg1.forEach(([lineSvg, label], i) => {
   svg.push(lineSvg);
   svg.push(`<text x="${leg1X + 30}" y="${leg1Y + i * 16 + 4}" fill="#374151" font-size="11">${label}</text>`);
 });
-
-// Panel 1 title
 svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 8}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Synthetic ozone proxy: observations and smoothed trend</text>`);
-svg.push(`<text x="${margin.left}" y="${p1Bot + 36}" fill="#4b5563" font-size="11" text-anchor="start">Month</text>`);
 
 // ── Panel 2 ──────────────────────────────────────────────────────────────
-// Grid + zero line
 svg.push(...renderGridLines(yTicks2, sy2, margin.left, margin.left + plotW));
 svg.push(`<line x1="${margin.left}" y1="${r(sy2(0))}" x2="${margin.left + plotW}" y2="${r(sy2(0))}" stroke="#6b7280" stroke-width="0.8" stroke-dasharray="2 2"/>`);
 
-// Contributions
-svg.push(`<polyline points="${polylinePoints(t_months, contrib1, sx, sy2)}" fill="none" stroke="#f59e0b" stroke-width="1.6"/>`);
-svg.push(`<polyline points="${polylinePoints(t_months, contrib2, sx, sy2)}" fill="none" stroke="#8b5cf6" stroke-width="1.6"/>`);
-svg.push(`<polyline points="${polylinePoints(t_months, total_contrib, sx, sy2)}" fill="none" stroke="#374151" stroke-width="2" stroke-dasharray="5 3"/>`);
+// True contributions (dashed, faint)
+svg.push(`<polyline points="${polylinePoints(t_months, true_contrib1, sx, sy2)}" fill="none" stroke="#d97706" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>`);
+svg.push(`<polyline points="${polylinePoints(t_months, true_contrib2, sx, sy2)}" fill="none" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>`);
+svg.push(`<polyline points="${polylinePoints(t_months, true_total, sx, sy2)}" fill="none" stroke="#6b7280" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.65"/>`);
 
-// Axes
+// Estimated contributions (solid)
+svg.push(`<polyline points="${polylinePoints(t_months, contrib1, sx, sy2)}" fill="none" stroke="#f59e0b" stroke-width="1.8"/>`);
+svg.push(`<polyline points="${polylinePoints(t_months, contrib2, sx, sy2)}" fill="none" stroke="#8b5cf6" stroke-width="1.8"/>`);
+svg.push(`<polyline points="${polylinePoints(t_months, total_contrib, sx, sy2)}" fill="none" stroke="#374151" stroke-width="2.2" stroke-dasharray="5 3"/>`);
+
 svg.push(...renderYAxis(yTicks2, sy2, margin.left));
-svg.push(...renderXAxis(xTicks, sx, p2Bot, xFmt));
-svg.push(renderAxesBorder(margin.left, p2Top, plotW, panelH));
+svg.push(...renderXAxis(xTickObjs2, sx, p2Bot));
+svg.push(...renderAxesBorder(margin.left, p2Top, margin.left + plotW, p2Bot));
 
-// Panel 2 legend
-const leg2X = margin.left + plotW - 300;
-const leg2Y = p2Top + 14;
-const leg2 = [
-  [`<line x1="${leg2X}" y1="${leg2Y}" x2="${leg2X + 24}" y2="${leg2Y}" stroke="#f59e0b" stroke-width="1.6"/>`,
-    `β̂₁·X₁(t) solar  (est. β₁=${beta1_final.toFixed(2)}, true ${TRUE_BETA[0]})`],
-  [`<line x1="${leg2X}" y1="${leg2Y + 16}" x2="${leg2X + 24}" y2="${leg2Y + 16}" stroke="#8b5cf6" stroke-width="1.6"/>`,
-    `β̂₂·X₂(t) QBO  (est. β₂=${beta2_final.toFixed(2)}, true ${TRUE_BETA[1]})`],
-  [`<line x1="${leg2X}" y1="${leg2Y + 32}" x2="${leg2X + 24}" y2="${leg2Y + 32}" stroke="#374151" stroke-width="2" stroke-dasharray="5 3"/>`,
-    "Total β̂₁·X₁ + β̂₂·X₂"],
-] as [string, string][];
-leg2.forEach(([lineSvg, label], i) => {
-  svg.push(lineSvg);
-  svg.push(`<text x="${leg2X + 30}" y="${leg2Y + i * 16 + 4}" fill="#374151" font-size="11">${label}</text>`);
-});
+// Y-axis title
+svg.push(`<text transform="rotate(-90)" x="${-(p2Top + panelH / 2)}" y="${margin.left - 42}" text-anchor="middle" fill="#374151" font-size="11">Contribution</text>`);
 
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p2Top - 8}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Covariate contributions β̂·X(t)</text>`);
-svg.push(`<text x="${margin.left}" y="${p2Bot + 36}" fill="#4b5563" font-size="11" text-anchor="start">Month</text>`);
+// x-axis label under bottom panel
+svg.push(`<text x="${margin.left + plotW / 2}" y="${p2Bot + 36}" text-anchor="middle" fill="#4b5563" font-size="11">Year (month 24 = Y2, 48 = Y4, …)</text>`);
+
+// Panel 2 legend — 2-column: estimated (left) | true (right)
+const leg2W = 360;
+const leg2X = margin.left + plotW - leg2W;
+const leg2Y = p2Top + 12;
+const leg2Col0 = leg2X;
+const leg2Col1 = leg2X + leg2W / 2;
+const leg2Entries = [
+  // col 0 — estimated
+  { x: leg2Col0, y: leg2Y,      line: `<line x1="${leg2Col0}" y1="${leg2Y}" x2="${leg2Col0+22}" y2="${leg2Y}" stroke="#f59e0b" stroke-width="1.8"/>`,      label: `est. β̂₁·X₁ solar (β̂₁=${beta1_final.toFixed(2)})` },
+  { x: leg2Col0, y: leg2Y + 15, line: `<line x1="${leg2Col0}" y1="${leg2Y+15}" x2="${leg2Col0+22}" y2="${leg2Y+15}" stroke="#8b5cf6" stroke-width="1.8"/>`,  label: `est. β̂₂·X₂ QBO (β̂₂=${beta2_final.toFixed(2)})` },
+  { x: leg2Col0, y: leg2Y + 30, line: `<line x1="${leg2Col0}" y1="${leg2Y+30}" x2="${leg2Col0+22}" y2="${leg2Y+30}" stroke="#374151" stroke-width="2.2" stroke-dasharray="5 3"/>`, label: "est. total β̂·X" },
+  // col 1 — true
+  { x: leg2Col1, y: leg2Y,      line: `<line x1="${leg2Col1}" y1="${leg2Y}" x2="${leg2Col1+22}" y2="${leg2Y}" stroke="#d97706" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>`,      label: `true β₁·X₁ (β₁=${TRUE_BETA[0]})` },
+  { x: leg2Col1, y: leg2Y + 15, line: `<line x1="${leg2Col1}" y1="${leg2Y+15}" x2="${leg2Col1+22}" y2="${leg2Y+15}" stroke="#7c3aed" stroke-width="1" stroke-dasharray="4 3" opacity="0.65"/>`, label: `true β₂·X₂ (β₂=${TRUE_BETA[1]})` },
+  { x: leg2Col1, y: leg2Y + 30, line: `<line x1="${leg2Col1}" y1="${leg2Y+30}" x2="${leg2Col1+22}" y2="${leg2Y+30}" stroke="#6b7280" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.65"/>`, label: "true total β·X" },
+];
+for (const e of leg2Entries) {
+  svg.push(e.line);
+  svg.push(`<text x="${e.x + 27}" y="${e.y + 4}" fill="#374151" font-size="11">${e.label}</text>`);
+}
+svg.push(`<text x="${margin.left + plotW / 2}" y="${p2Top - 8}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Covariate contributions β·X(t): estimated (solid) vs true (dashed)</text>`);
 
 svg.push("</svg>");
 
