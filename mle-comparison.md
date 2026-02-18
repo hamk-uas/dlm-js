@@ -101,3 +101,27 @@ The MATLAB DLM has a second estimation mode (`options.mcmc=1`) that uses Adaptiv
 2. **Parameter tying** (`winds`) — reduces optimization dimension for structured models.
 3. **Custom fit functions** (`options.fitfun`) — user-supplied cost functions.
 4. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
+
+## Future: GPU + parallel Kalman filter via associative scan
+
+Särkkä & García-Fernández [1] show that Bayesian filtering and smoothing recursions can be posed as **all-prefix-sums (parallel scan) operations**. For the linear-Gaussian case (i.e. Kalman filter + RTS smoother), each time step is an affine map and their composition is **associative**:
+
+$$(A_2, b_2, \Sigma_2) \oplus (A_1, b_1, \Sigma_1) = (A_2 A_1,\; A_2 b_1 + b_2,\; A_2 \Sigma_1 A_2^\top + \Sigma_2)$$
+
+This means the sequential `lax.scan` (O(n) depth) could be replaced by `lax.associativeScan` (O(log n) depth). The paper formulates parallel versions of both the forward filter and the RTS backward smoother, reducing time complexity from linear to logarithmic while preserving exact numerical equivalence [1, §3–4]. Combined with a WebGPU backend, this would give two orthogonal dimensions of parallelism: across time steps (associative scan) and within each step's matrix operations (GPU ALUs).
+
+**Production use in Pyro/NumPyro:** This is not just theoretical — Pyro's `GaussianHMM` distribution already uses parallel-scan Kalman filtering for inference, "allowing fast analysis of very long time series" [2]. Their `LinearHMM` (heavy-tailed variant) uses parallel auxiliary variable methods that reduce to `GaussianHMM`, then applies parallel-scan inference. The Pyro forecasting tutorial demonstrates this on BART ridership data (n = 78,888 hourly observations) where sequential filtering would be impractical [2]. NumPyro's HMM enumeration example uses the same approach via `scan()` with parallel semantics, explicitly citing Särkkä & García-Fernández for "reduc[ing] parallel complexity from O(length) to O(log(length))" [3].
+
+**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan, both the forward pass and the AD backward pass shrink from O(n) to O(log n) depth, directly accelerating every optimizer iteration. For the energy demo (n=120, 300 iters, ~7.7 s), this would reduce the serial depth from 120 to ~7 per iteration.
+
+**Practical caveats for dlm-js today:**
+- **n ≈ 100–120 is short** — the 17× depth reduction is real but each parallel round does 2× work (total cost O(n log n) vs O(n)), and GPU kernel dispatch overhead for tiny m=2–5 matrices may dominate. Pyro's payoff comes from much longer series (n ≈ 79k) [2].
+- **WebGPU = float32 only** — the extra matrix multiplies in the tree reduction would amplify the existing float32 covariance instability (see numerical precision notes in `src/index.ts`).
+- **`lax.associativeScan` is not yet available** in jax-js-nonconsuming.
+
+The crossover point where GPU + associative scan clearly wins is likely around **n > 500, m > 5**, where GPU occupancy and parallel depth savings start to dominate dispatch overhead. This is the same algorithmic trick that makes S4/S5/Mamba efficient on GPU for long-sequence modeling.
+
+**References:**
+1. Särkkä, S. & García-Fernández, Á. F. (2020). [Temporal Parallelization of Bayesian Smoothers](https://arxiv.org/abs/1905.13002). *IEEE Transactions on Automatic Control*, 66(1), 299–306. — Poses Kalman filtering and RTS smoothing as associative all-prefix-sums operations; derives the parallel scan formulation for linear-Gaussian and general Bayesian models, reducing sequential depth from O(n) to O(log n).
+2. Pyro contributors. [Forecasting II: state space models](https://pyro.ai/examples/forecasting_ii.html). — Demonstrates `GaussianHMM` with parallel-scan Kalman filtering on 78,888-step BART ridership data; also covers `LinearHMM` for heavy-tailed models with parallel auxiliary variable inference.
+3. NumPyro contributors. [Example: Enumerate Hidden Markov Model](https://num.pyro.ai/en/latest/examples/hmm_enum.html). — Uses `scan()` with the parallel-scan algorithm of [1] to reduce parallel complexity of discrete HMM inference from O(length) to O(log(length)); demonstrates variable elimination combined with MCMC on polyphonic music data.
