@@ -17,7 +17,7 @@ import {
 } from "./lib/svg-helpers.ts";
 import {
   computeKeyTimes, buildAnimPolylineValues, buildAnimBandValues,
-  sparklinePoints, renderSparkline,
+  sparklinePoints, renderSparkline, renderSparklineLabels,
 } from "./lib/svg-anim-helpers.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -105,7 +105,7 @@ const bandValues = buildAnimBandValues(
 
 const legW = 400;
 const legH = 72;
-const legX = W - margin.right - legW - 5;
+const legX = margin.left + 5;
 const legY = margin.top + 8;
 
 // Right half: two mini sparklines stacked
@@ -114,7 +114,7 @@ const sparkH1 = 20; // −2·logL sparkline
 const sparkH2 = 20; // arphi sparkline
 const sparkGap = 6;
 const sparkMarginRight = 10;
-const sparkMarginTop = 10;
+const sparkMarginTop = 14; // top margin: enough for label clearance from legend border
 
 const sparkX = legX + legW - sparkMarginRight - sparkW;
 const sparkY1 = legY + sparkMarginTop;
@@ -167,8 +167,9 @@ push(`<rect width="${W}" height="${H}" fill="white"/>`);
 // Clip paths
 push(`<defs>`);
 push(`  <clipPath id="plot-clip"><rect x="${margin.left}" y="${margin.top}" width="${plotW}" height="${plotH}"/></clipPath>`);
+// Clip covers only the polyline area so reveal is in sync with the main plot.
 push(`  <clipPath id="spark-clip">`);
-push(`    <rect x="${sparkX}" y="${sparkY1 - 2}" width="0" height="${sparkH1 + sparkGap + sparkH2 + 4}">`);
+push(`    <rect x="${sparkX}" y="${sparkY1 - 12}" width="0" height="${sparkH1 + sparkGap + sparkH2 + 14}">`);
 push(`      <animate attributeName="width" values="0;${sparkW};${sparkW}" keyTimes="0;${(animDuration / totalDuration).toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
 push(`    </rect>`);
 push(`  </clipPath>`);
@@ -230,14 +231,28 @@ push(`<rect x="${legX + 8}" y="${legY + 25}" width="12" height="10" fill="${band
 push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#333" font-size="11">MLE: final s=${finalFrame.s.toFixed(1)}, \u03c6=${finalArphi.toFixed(2)}</text>`);
 
 // Lik + arphi values
-push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#666" font-size="10">−2·logL = ${finalLik.toFixed(1)}</text>`);
+push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#666" font-size="10">Final \u22122\u00b7logL = ${finalLik.toFixed(1)}</text>`);
 
 // Model description
 push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#999" font-size="9">order=1, trig=1, ns=12, fitar=true</text>`);
 
 // ── Convergence miniplots (right half) ─────────────────────────────────────
 
-// Both sparklines share the clip
+// Static labels outside the clip group (always visible)
+lines.push(...renderSparklineLabels({
+  x0: sparkX, y0: sparkY1, h: sparkH1,
+  label: "\u22122\u00b7logL",
+  vmin: likMin, vmax: likMax,
+}));
+lines.push(...renderSparklineLabels({
+  x0: sparkX, y0: sparkY2, h: sparkH2,
+  label: "\u03c6 (AR)",
+  vmin: arphiMin, vmax: arphiMax,
+  vminFmt: arphiMin.toFixed(2),
+  vmaxFmt: arphiMax.toFixed(2),
+}));
+
+// Polylines inside the clip group (progressively revealed)
 push(`<g clip-path="url(#spark-clip)">`);
 
 // −2·logL sparkline
@@ -247,6 +262,7 @@ lines.push(...renderSparkline({
   x0: sparkX, y0: sparkY1, w: sparkW, h: sparkH1,
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
+  noLabels: true,
 }));
 
 // arphi sparkline
@@ -258,6 +274,7 @@ lines.push(...renderSparkline({
   vmin: arphiMin, vmax: arphiMax,
   vminFmt: arphiMin.toFixed(2),
   vmaxFmt: arphiMax.toFixed(2),
+  noLabels: true,
 }));
 
 push(`</g>`);

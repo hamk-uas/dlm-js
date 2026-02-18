@@ -19,7 +19,7 @@ import {
 } from "./lib/svg-helpers.ts";
 import {
   computeKeyTimes, buildAnimPolylineValues, buildAnimBandValues,
-  sparklinePoints, renderSparkline,
+  sparklinePoints, renderSparkline, renderSparklineLabels,
 } from "./lib/svg-anim-helpers.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -46,7 +46,8 @@ const {
     w: number[];
     lik: number | null;
     level: number[];
-    std: number[];
+    std: number[];    // state (level) uncertainty std
+    ystd: number[];   // observation prediction std
   }[];
 };
 
@@ -63,12 +64,12 @@ const plotH = H - margin.top - margin.bottom;
 const tMin = t[0];
 const tMax = t[n - 1];
 
-// Compute y-range across ALL frames (not just final)
+// Compute y-range across ALL frames using obs-prediction band (wider than state band)
 const allVals: number[] = [...y];
 for (const f of frames) {
   for (let i = 0; i < n; i++) {
-    allVals.push(f.level[i] + 2 * f.std[i]);
-    allVals.push(f.level[i] - 2 * f.std[i]);
+    allVals.push(f.level[i] + 2 * f.ystd[i]);
+    allVals.push(f.level[i] - 2 * f.ystd[i]);
   }
 }
 const yMin = Math.floor(Math.min(...allVals) / 50) * 50;
@@ -92,7 +93,8 @@ const polylineValues = buildAnimPolylineValues(
   frames.map((f: any) => f.level as number[]), t, sx, sy,
 );
 
-const bandValues = buildAnimBandValues(
+// State uncertainty band (narrow, more opaque)
+const stateBandValues = buildAnimBandValues(
   frames.map((f: any) => ({
     upper: f.level.map((v: number, i: number) => v + 2 * f.std[i]),
     lower: f.level.map((v: number, i: number) => v - 2 * f.std[i]),
@@ -100,16 +102,25 @@ const bandValues = buildAnimBandValues(
   t, sx, sy,
 );
 
+// Observation prediction band (wider = includes obs noise, lighter fill)
+const obsBandValues = buildAnimBandValues(
+  frames.map((f: any) => ({
+    upper: f.level.map((v: number, i: number) => v + 2 * f.ystd[i]),
+    lower: f.level.map((v: number, i: number) => v - 2 * f.ystd[i]),
+  })),
+  t, sx, sy,
+);
+
 // ── Loss sparkline (drawn in legend area) ──────────────────────────────────
 
-const legW = 356;
-const legH = 62;
+const legW = 445;
+const legH = 78;
 
 // Sparkline occupies right half of legend
 const sparkW = 155;
 const sparkH = 30;
 const sparkMarginRight = 10;
-const sparkMarginTop = 12;
+const sparkMarginTop = 22; // extra top margin so vmax label doesn't clip
 const legX = W - margin.right - legW - 5;
 const legY = margin.top + 8;
 
@@ -132,7 +143,8 @@ for (let v = Math.ceil(tMin / 20) * 20; v <= tMax; v += 20) tTicks.push(v);
 
 const obsColor = "#555";
 const lineColor = "#2563eb";
-const bandColor = "rgba(37,99,235,0.15)";
+const stateBandColor = "rgba(37,99,235,0.22)";
+const obsBandColor = "rgba(37,99,235,0.07)";
 const sparkColor = "#f59e0b";
 
 // ── Final frame values for static text ─────────────────────────────────────
@@ -151,9 +163,9 @@ push(`<rect width="${W}" height="${H}" fill="white"/>`);
 // Clip path for main plot area (prevents band overflow)
 push(`<defs>`);
 push(`  <clipPath id="plot-clip"><rect x="${margin.left}" y="${margin.top}" width="${plotW}" height="${plotH}"/></clipPath>`);
-// Clip for sparkline progressive reveal
+// Clip for sparkline progressive reveal — covers only the polyline area so reveal is in sync with the main plot.
 push(`  <clipPath id="spark-clip">`);
-push(`    <rect x="${sparkX}" y="${sparkY - 2}" width="0" height="${sparkH + 4}">`);
+push(`    <rect x="${sparkX}" y="${sparkY - 12}" width="0" height="${sparkH + 14}">`);
 push(`      <animate attributeName="width" values="0;${sparkW};${sparkW}" keyTimes="0;${(animDuration / totalDuration).toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
 push(`    </rect>`);
 push(`  </clipPath>`);
@@ -166,9 +178,14 @@ lines.push(...renderGridLines(yTicks, sy, margin.left, W - margin.right));
 
 push(`<g clip-path="url(#plot-clip)">`);
 
-// Confidence band
-push(`<path fill="${bandColor}" stroke="none">`);
-push(`  <animate attributeName="d" values="${bandValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+// Observation prediction band (wider, behind state band)
+push(`<path fill="${obsBandColor}" stroke="none">`);
+push(`  <animate attributeName="d" values="${obsBandValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+push(`</path>`);
+
+// State uncertainty band (narrower, more opaque)
+push(`<path fill="${stateBandColor}" stroke="none">`);
+push(`  <animate attributeName="d" values="${stateBandValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
 push(`</path>`);
 
 // Level line
@@ -204,17 +221,27 @@ push(`<rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" rx="4" fill
 push(`<circle cx="${legX + 14}" cy="${legY + 14}" r="3" fill="${obsColor}" opacity="0.6"/>`);
 push(`<text x="${legX + 24}" y="${legY + 14}" dominant-baseline="middle" fill="#333" font-size="11">Observations</text>`);
 
-// MLE fit
+// MLE fit — state band swatch
 push(`<line x1="${legX + 8}" y1="${legY + 32}" x2="${legX + 20}" y2="${legY + 32}" stroke="${lineColor}" stroke-width="2"/>`);
-push(`<rect x="${legX + 8}" y="${legY + 27}" width="12" height="10" fill="${bandColor}" stroke="none"/>`);
-push(`<text x="${legX + 24}" y="${legY + 32}" dominant-baseline="middle" fill="#333" font-size="11">MLE: final s=${finalFrame.s.toFixed(1)}, w=[${finalFrame.w.map((v: number) => v.toFixed(1)).join(",")}]</text>`);
+push(`<rect x="${legX + 8}" y="${legY + 27}" width="12" height="10" fill="${stateBandColor}" stroke="none"/>`);
+push(`<text x="${legX + 24}" y="${legY + 32}" dominant-baseline="middle" fill="#333" font-size="11">MLE level \u00b12\u03c3 state, final s=${finalFrame.s.toFixed(1)}, w=[${finalFrame.w.map((v: number) => v.toFixed(1)).join(",")}]</text>`);
+
+// Obs prediction band swatch
+push(`<rect x="${legX + 8}" y="${legY + 46}" width="12" height="10" fill="${obsBandColor}" stroke="#2563eb" stroke-width="0.5"/>`);
+push(`<text x="${legX + 24}" y="${legY + 51}" dominant-baseline="middle" fill="#666" font-size="11">\u00b12\u03c3 obs prediction (incl. noise)</text>`);
 
 // Lik value
-push(`<text x="${legX + 24}" y="${legY + 48}" dominant-baseline="middle" fill="#666" font-size="10">−2·logL: ${finalLik.toFixed(2)}</text>`);
+push(`<text x="${legX + 24}" y="${legY + 65}" dominant-baseline="middle" fill="#666" font-size="10">Final \u22122\u00b7logL: ${finalLik.toFixed(2)}</text>`);
 
 // ── Convergence miniplot (right half of legend) ────────────────────────────
 
-// Loss sparkline (with progressive reveal clip)
+// Static sparkline labels rendered outside the clip group (always visible)
+lines.push(...renderSparklineLabels({
+  x0: sparkX, y0: sparkY, h: sparkH,
+  label: "\u22122\u00b7logL",
+  vmin: likMin, vmax: likMax,
+}));
+// Sparkline polyline inside clip group (progressively revealed)
 push(`<g clip-path="url(#spark-clip)">`);
 lines.push(...renderSparkline({
   points: sparkPoints,
@@ -222,6 +249,7 @@ lines.push(...renderSparkline({
   x0: sparkX, y0: sparkY, w: sparkW, h: sparkH,
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
+  noLabels: true,
 }));
 push(`</g>`);
 

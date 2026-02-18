@@ -75,7 +75,8 @@ interface Frame {
   w: number[];
   lik: number | null;
   level: number[];
-  std: number[];
+  std: number[];    // xstd[:,0]: state (level) uncertainty std
+  ystd: number[];   // observation prediction std = sqrt(C_00 + s^2)
 }
 
 const yArr = Float64Array.from(y);
@@ -90,7 +91,8 @@ for (const idx of sampleIndices) {
   const fit = await dlmFit(yArr, s, w, dtype, options);
   const level = Array.from(fit.x[0]);
   const std = fit.xstd.map((row: any) => row[0] as number);
-  frames.push({ iter: idx, s, w, lik, level, std });
+  const ystd = Array.from(fit.ystd as ArrayLike<number>);
+  frames.push({ iter: idx, s, w, lik, level, std, ystd });
 
   const likStr = lik !== null ? lik.toFixed(2) : "—";
   console.log(

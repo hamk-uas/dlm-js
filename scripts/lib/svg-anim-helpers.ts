@@ -109,14 +109,36 @@ export function renderSparkline(opts: {
   vmax: number;
   vminFmt?: string;
   vmaxFmt?: string;
+  /** When true, omit the static label/vmin/vmax texts so they can be placed outside a clip group. */
+  noLabels?: boolean;
 }): string[] {
   const { points, color, x0, y0, w, h, label, vmin, vmax } = opts;
   const vmaxFmt = opts.vmaxFmt ?? vmax.toFixed(0);
   const vminFmt = opts.vminFmt ?? vmin.toFixed(0);
-  return [
-    `<text x="${x0}" y="${y0 - 2}" fill="#666" font-size="8">${label}</text>`,
+  const polyAndRule = [
     `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>`,
     `<line x1="${x0}" y1="${y0 + h}" x2="${x0 + w}" y2="${y0 + h}" stroke="#eee" stroke-width="0.5"/>`,
+  ];
+  if (opts.noLabels) return polyAndRule;
+  return [
+    `<text x="${x0}" y="${y0 - 2}" fill="#666" font-size="8">${label}</text>`,
+    ...polyAndRule,
+    `<text x="${x0 - 2}" y="${y0 + 3}" text-anchor="end" fill="#999" font-size="7">${vmaxFmt}</text>`,
+    `<text x="${x0 - 2}" y="${y0 + h}" text-anchor="end" fill="#999" font-size="7">${vminFmt}</text>`,
+  ];
+}
+
+/** Emit the static label/vmin/vmax texts for a sparkline outside a clip group. */
+export function renderSparklineLabels(opts: {
+  x0: number; y0: number; h: number;
+  label: string; vmin: number; vmax: number;
+  vminFmt?: string; vmaxFmt?: string;
+}): string[] {
+  const { x0, y0, h, label, vmin, vmax } = opts;
+  const vmaxFmt = opts.vmaxFmt ?? vmax.toFixed(0);
+  const vminFmt = opts.vminFmt ?? vmin.toFixed(0);
+  return [
+    `<text x="${x0}" y="${y0 - 2}" fill="#666" font-size="8">${label}</text>`,
     `<text x="${x0 - 2}" y="${y0 + 3}" text-anchor="end" fill="#999" font-size="7">${vmaxFmt}</text>`,
     `<text x="${x0 - 2}" y="${y0 + h}" text-anchor="end" fill="#999" font-size="7">${vminFmt}</text>`,
   ];
