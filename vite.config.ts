@@ -17,11 +17,14 @@ export default defineConfig({
     },
     rollupOptions: {
       // Externalize deps you don't want bundled
-      external: ['@jax-js-nonconsuming/jax'],
+      external: ['@hamk-uas/jax-js-nonconsuming'],
       output: {},
     },
   },
   plugins: [
     dts({ insertTypesEntry: true }),
   ],
+  test: {
+    include: ['tests/**/*.test.ts'],
+  },
 });

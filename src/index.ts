@@ -345,7 +345,9 @@ const dlmSmo = async (
     ));
     const s2 = np.mean(np.square(resid));
     const mse = np.mean(np.square(resid2));
-    const mape = np.mean(np.divide(np.abs(resid2), y_1d));
+    // Sign-preserving guard: tiny epsilon prevents NaN when y contains exact
+    // zeros, but preserves sign (negative y → negative MAPE, matching MATLAB).
+    const mape = np.mean(np.divide(np.abs(resid2), np.add(y_1d, np.array(1e-30, { dtype }))));
     
     return {
       x: x_smooth, C: C_smooth,
@@ -426,6 +428,18 @@ export const dlmFit = async (
   const m_base = sys.m;
   const q = X ? X[0].length : 0;
   const m = m_base + q;  // extended state dimension (includes β)
+
+  // Validate covariate matrix dimensions
+  if (X) {
+    if (X.length !== n) {
+      throw new Error(`X must have ${n} rows (one per observation), got ${X.length}`);
+    }
+    for (let t = 0; t < n; t++) {
+      if (X[t].length !== q) {
+        throw new Error(`X[${t}] has ${X[t].length} columns, expected ${q}`);
+      }
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Extend G, W for covariate β states (static: identity in G, zero in W)
