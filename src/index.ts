@@ -1,11 +1,11 @@
 import { DType, numpy as np, lax, jit, tree } from "@hamk-uas/jax-js-nonconsuming";
-import type { DlmSmoResult, DlmFitResult, FloatArray } from "./types";
+import type { DlmSmoResult, DlmFitResult, DlmForecastResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
 import { dlmGenSys } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 
 // Public type exports
-export type { DlmFitResult, FloatArray } from "./types";
+export type { DlmFitResult, DlmForecastResult, FloatArray } from "./types";
 export type { DlmOptions, DlmSystem } from "./dlmgensys";
 export { dlmGenSys, findArInds } from "./dlmgensys";
 export { dlmMLE } from "./mle";
@@ -612,4 +612,161 @@ export const dlmFit = async (
     lik, mse, mape,
     class: 'dlmfit',
   };
+};
+
+/**
+ * Forecast h steps ahead from the end of a fitted DLM.
+ *
+ * Starting from the last smoothed state (`fit.x[:][n-1]`, `fit.C[:][:][-1]`),
+ * iterates the state-space model forward h times with no observations:
+ *
+ *   x_pred(k+1) = G · x_pred(k)                      (state mean)
+ *   C_pred(k+1) = G · C_pred(k) · G' + W              (state covariance)
+ *   yhat(k)     = FF_k · x_pred(k)                    (observation mean)
+ *   ystd(k)     = sqrt(FF_k · C_pred(k) · FF_k' + s²) (observation std)
+ *
+ * This is the standard Kalman prediction step with no measurement update —
+ * equivalent to appending NaN observations and running the filter only.
+ *
+ * All model types are supported: local level/trend, full/trigonometric seasonal,
+ * AR(p), and covariate (β) models. Covariate states (static β blocks in G/W)
+ * are propagated correctly; pass X_forecast for their observation contributions.
+ *
+ * The jittable core uses `lax.scan` over h steps, capturing G and W as
+ * constants. The scan input is a time-varying FF_scan [h,1,m] so that
+ * covariate F rows are included inside the same compiled body.
+ *
+ * @param fit - DlmFitResult from dlmFit (provides G, F, W, last smoothed state)
+ * @param s - Observation noise std dev (scalar, same as used in dlmFit)
+ * @param h - Forecast horizon (number of steps ahead)
+ * @param dtype - Computation precision (should match the dtype used in dlmFit)
+ * @param X_forecast - Optional covariate rows for forecast steps (h rows × q cols).
+ *                     Required if the model was fitted with covariates and you want
+ *                     their contributions reflected in yhat/ystd.
+ * @returns Predicted state means, covariances, and observation predictions for steps 1…h
+ */
+export const dlmForecast = async (
+  fit: DlmFitResult,
+  s: number,
+  h: number,
+  dtype: DType = DType.Float64,
+  X_forecast?: ArrayLike<number>[],
+): Promise<DlmForecastResult> => {
+  const { G: G_data, F: F_data, W: W_data } = fit;
+  const m = G_data.length;
+  const q = fit.XX && (fit.XX as number[][])[0]?.length > 0
+    ? (fit.XX as number[][])[0].length
+    : 0;
+  const n = fit.x[0].length;
+  const FA = getFloatArrayType(dtype);
+
+  // ── Build constant np.Arrays for G and W (captured by jit core) ──────────
+  using G_np = np.array(G_data, { dtype });
+  using W_np = np.array(W_data, { dtype });
+
+  // ── Initial state: last smoothed timestep ─────────────────────────────────
+  const x0_data: number[][] = Array.from({ length: m }, (_, i) => [fit.x[i][n - 1]]);
+  const C0_data: number[][] = Array.from({ length: m }, (_, i) =>
+    Array.from({ length: m }, (_, j) => fit.C[i][j][n - 1])
+  );
+  using x0 = np.array(x0_data, { dtype });
+  using C0 = np.array(C0_data, { dtype });
+
+  // ── FF_scan [h,1,m]: observation matrix for each forecast step ────────────
+  // Base F is always the same; covariate rows are appended from X_forecast.
+  const FF_data: number[][][] = Array.from({ length: h }, (_, k) => {
+    const row = [...F_data];
+    if (q > 0) {
+      const xrow = X_forecast ? X_forecast[k] : null;
+      for (let qi = 0; qi < q; qi++) row.push(xrow ? Number(xrow[qi]) : 0);
+    }
+    return [row];  // shape [1, m]
+  });
+  using FF_scan = np.array(FF_data, { dtype });
+
+  // s² as constant scalar array [1,1]
+  using s2_arr = np.array([[s * s]], { dtype });
+
+  // ── Jittable prediction step (no measurement update) ─────────────────────
+  // carry: { x: [m,1], C: [m,m] }
+  // input: { FF: [1,m] }  — one row per forecast step
+  // output per step: { x: [m,1], C: [m,m], yhat: [1,1], ystd: [1,1] }
+  type PredCarry = { x: np.Array; C: np.Array };
+  type PredInp   = { FF: np.Array };
+  type PredOut   = { x: np.Array; C: np.Array; yhat: np.Array; ystd: np.Array };
+
+  const predStep = (carry: PredCarry, inp: PredInp): [PredCarry, PredOut] => {
+    const { x: xi, C: Ci } = carry;
+    const { FF: FFi } = inp;
+
+    // x_new = G · x  [m,1]
+    const x_new = np.matmul(G_np, xi);
+
+    // C_new = G · C · G' + W  [m,m]
+    const C_new = np.add(
+      np.einsum('ij,jk,lk->il', G_np, Ci, G_np),
+      W_np
+    );
+
+    // yhat = FF · x_new  [1,1]
+    const yhat = np.matmul(FFi, x_new);
+
+    // ystd = sqrt(FF·C_new·FF' + s²)  [1,1]
+    using FCFt = np.einsum('ij,jk,lk->il', FFi, C_new, FFi);
+    const ystd = np.sqrt(np.add(FCFt, s2_arr));
+
+    return [{ x: x_new, C: C_new }, { x: x_new, C: C_new, yhat, ystd }];
+  };
+
+  // ── Jittable core: scan over h steps ─────────────────────────────────────
+  const core = (x0: np.Array, C0: np.Array, FF_scan: np.Array) => {
+    const [finalCarry, outputs] = lax.scan(
+      predStep,
+      { x: x0, C: C0 },
+      { FF: FF_scan }
+    );
+    tree.dispose(finalCarry);
+    return outputs;  // { x: [h,m,1], C: [h,m,m], yhat: [h,1,1], ystd: [h,1,1] }
+  };
+
+  const out = await jit(core)(x0, C0, FF_scan);
+
+  // ── Extract results into TypedArrays ─────────────────────────────────────
+  const x_raw    = await out.x.consumeData()    as ArrayLike<number>;  // [h,m,1]
+  const C_raw    = await out.C.consumeData()    as ArrayLike<number>;  // [h,m,m]
+  const yhat_raw = await out.yhat.consumeData() as ArrayLike<number>;  // [h,1,1]
+  const ystd_raw = await out.ystd.consumeData() as ArrayLike<number>;  // [h,1,1]
+
+  const yhat_out = new FA(h);
+  const ystd_out = new FA(h);
+  for (let k = 0; k < h; k++) {
+    yhat_out[k] = yhat_raw[k] as number;
+    ystd_out[k] = ystd_raw[k] as number;
+  }
+
+  // x[i][k] = x_raw[k * m + i]
+  const x_out: FloatArray[] = Array.from({ length: m }, (_, i) => {
+    const arr = new FA(h);
+    for (let k = 0; k < h; k++) arr[k] = x_raw[k * m + i] as number;
+    return arr;
+  });
+
+  // C[i][j][k] = C_raw[k * m * m + i * m + j]
+  const C_out: FloatArray[][] = Array.from({ length: m }, (_, i) =>
+    Array.from({ length: m }, (_, j) => {
+      const arr = new FA(h);
+      for (let k = 0; k < h; k++) arr[k] = C_raw[k * m * m + i * m + j] as number;
+      return arr;
+    })
+  );
+
+  // xstd[k][i] = sqrt(|C[i][i][k]|)
+  const xstd_out: FloatArray[] = Array.from({ length: h }, (_, k) => {
+    const arr = new FA(m);
+    for (let i = 0; i < m; i++)
+      arr[i] = Math.sqrt(Math.abs(C_raw[k * m * m + i * m + i] as number));
+    return arr;
+  });
+
+  return { yhat: yhat_out, ystd: ystd_out, x: x_out, C: C_out, xstd: xstd_out, h, m };
 };

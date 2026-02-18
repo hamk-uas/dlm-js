@@ -11,23 +11,27 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 62.19 ms, warm run 23.13 ms. Regenerate with `pnpm run gen:svg`.*
+*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 70.41 ms, warm run 27.32 ms. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave" src="assets/kaisaniemi.svg" />
 
-*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 63.74 ms, warm run 22.95 ms. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 70.71 ms, warm run 27.90 ms. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy demand demo with seasonal + AR model: smoothed level, seasonal, AR state, and combined signal from dlm-js and MATLAB/Octave" src="assets/trigar.svg" />
 
-*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 65.66 ms, warm run 32.76 ms. Regenerate with `pnpm run gen:svg`.*
+*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 69.62 ms, warm run 27.13 ms. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim.svg" />
 
-*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 88 iterations / 2.9 s on the `wasm` backend (Adam b2=0.9). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 88 iterations / 2891 ms on the `wasm` backend (Adam b2=0.9). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy MLE optimization with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
 
-*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 295 iterations / 6.9 s on the `wasm` backend (Adam b2=0.9). Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.52 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 295 iterations / 6.9 s on the `wasm` backend (Adam b2=0.9). Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
+
+*Stratospheric ozone demo (Laine, Latva-Pukkila & Kyrölä 2014, replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
@@ -134,6 +138,40 @@ The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(
 
 For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter estimation (Nelder-Mead, MCMC), see the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md).
 
+### h-step-ahead forecasting
+
+Propagate the last smoothed state h steps forward with no new observations:
+
+```js
+import { dlmFit, dlmForecast } from "dlm-js";
+import { DType } from "@hamk-uas/jax-js-nonconsuming";
+
+const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
+
+// Fit a local linear trend model
+const fit = await dlmFit(y, 120, [40, 10], DType.Float64, { order: 1 });
+
+// Forecast 12 steps ahead
+const fc = await dlmForecast(fit, 120, 12, DType.Float64);
+
+console.log(fc.yhat);  // predicted means [h]
+console.log(fc.ystd);  // prediction std devs [h] — grows monotonically
+console.log(fc.x);     // state trajectories [m][h]
+console.log(fc.h);     // 12
+console.log(fc.m);     // 2 (state dimension)
+```
+
+With covariates, pass `X_forecast` rows for each forecast step:
+
+```js
+// Forecast 3 steps ahead with known future covariate values
+const fc = await dlmForecast(fit, 120, 3, DType.Float64, [
+  [solarProxy[n], qbo1[n], qbo2[n]],    // step n+1
+  [solarProxy[n+1], qbo1[n+1], qbo2[n+1]], // step n+2
+  [solarProxy[n+2], qbo1[n+2], qbo2[n+2]], // step n+3
+]);
+```
+
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
 
@@ -148,6 +186,7 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
 | MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). optax Adam optimizer, fully `jit()`-compiled. |
+| h-step-ahead forecasting | ✅ | ❌ | `dlmForecast`: propagate the last smoothed state h steps forward with no new observations. Returns `yhat` [h], `ystd` [h] (growing uncertainty), and full state+covariance trajectories. Supports all model types and covariates. |
 | float32 computation | ✅ | ❌ | Configurable dtype. Float32 is numerically stable for m ≤ 2; higher dimensions may diverge. GPU/WASM backends available. |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
@@ -207,7 +246,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── gen-energy-mle-anim-svg.ts  # Energy MLE animation SVG generator (with AR coefficient estimation)
 │   └── gen-ozone-svg.ts             # Stratospheric ozone trend analysis SVG generator
 ├── src/                 # Library TypeScript sources
-│   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
+│   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmForecast` (h-step-ahead forecast), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
 │   ├── mle.ts               # `dlmMLE`: MLE parameter estimation via autodiff (valueAndGrad + lax.scan + optax Adam)
 │   └── types.ts             # TypeScript type definitions and helpers
@@ -231,6 +270,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── mle.test.ts          # MLE parameter estimation tests (s/w and AR coefficient estimation on WASM)
 │   ├── covariate.test.ts    # Covariate (X parameter) regression tests — β recovery and XX field
 │   ├── ozone.test.ts        # Ozone demo smoke tests — dlmFit with covariates on real satellite data
+│   ├── forecast.test.ts     # dlmForecast tests — h-step predictions, monotone ystd, covariate support
 │   └── utils.ts             # Test utility functions
 ├── mle-comparison.md    # Comparison of dlm-js MLE vs original MATLAB DLM parameter estimation
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)

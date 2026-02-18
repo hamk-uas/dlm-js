@@ -36,8 +36,6 @@ export interface DlmMleResult {
  *
  * @internal
  */
-// AD-traced: array lifetimes managed by the tracer, not `using`
-/* eslint-disable jax-js/require-using */
 const buildDiagW = (
   expTheta: np.Array, m: number, dtype: DType, nTheta: number,
   /** Index in theta where the w entries start (0 when s is fixed, 1 otherwise). */
@@ -47,16 +45,17 @@ const buildDiagW = (
   for (let i = 0; i < m; i++) {
     const maskData = new Array(nTheta).fill(0);
     maskData[wOffset + i] = 1;
-    const mask = np.array(maskData, { dtype });
-    const wi = np.dot(expTheta, mask);
-    const wi2 = np.square(wi);
+    using mask = np.array(maskData, { dtype });
+    using wi = np.dot(expTheta, mask);
+    using wi2 = np.square(wi);
 
     const eiData = Array.from({ length: m }, (_, j) => j === i ? [1] : [0]);
-    const ei = np.array(eiData, { dtype });
-    const eit = np.transpose(ei);
-    const outer = np.matmul(ei, eit);
-    const scaled = np.multiply(np.reshape(wi2, [1, 1]), outer);
+    using ei = np.array(eiData, { dtype });
+    using eit = np.transpose(ei);
+    using outer = np.matmul(ei, eit);
+    using scaled = np.multiply(np.reshape(wi2, [1, 1]), outer);
     // Accumulator pattern: transfer ownership from old W to new W
+    // jax-js-lint: allow-non-using
     const W_new = np.add(W, scaled);
     W.dispose();
     W = W_new;
@@ -88,16 +87,17 @@ const buildG = (
     // Extract arphi[i] from theta (NOT exp-transformed) via mask
     const maskData = new Array(nTheta).fill(0);
     maskData[nSwParams + i] = 1;
-    const mask = np.array(maskData, { dtype });
-    const phi_i = np.dot(theta, mask);
+    using mask = np.array(maskData, { dtype });
+    using phi_i = np.dot(theta, mask);
 
     // Rank-1 update at G[arInds[i], arCol]
     const eiData = Array.from({ length: m }, (_, j) => j === arInds[i] ? [1] : [0]);
     const ejData = Array.from({ length: m }, (_, j) => [j === arCol ? 1 : 0]);
-    const ei = np.array(eiData, { dtype });     // [m, 1]
-    const ejt = np.transpose(np.array(ejData, { dtype })); // [1, m]
-    const outer = np.matmul(ei, ejt);            // [m, m]
-    const scaled = np.multiply(np.reshape(phi_i, [1, 1]), outer);
+    using ei = np.array(eiData, { dtype });     // [m, 1]
+    using ejt = np.transpose(np.array(ejData, { dtype })); // [1, m]
+    using outer = np.matmul(ei, ejt);            // [m, m]
+    using scaled = np.multiply(np.reshape(phi_i, [1, 1]), outer);
+    // jax-js-lint: allow-non-using
     const newContrib = np.add(arContrib, scaled);
     arContrib.dispose();
     arContrib = newContrib;
@@ -137,7 +137,7 @@ const makeKalmanLoss = (
   const nSwParams = (fixS ? 0 : 1) + m;
   const nTheta = nSwParams + nar;
 
-  return (theta: np.Array): np.Array => { // AD-traced
+  return (theta: np.Array): np.Array => {
     // Build effective G: constant if no AR fitting, theta-dependent if fitting
     const G = nar > 0
       ? buildG(G_base, theta, arInds, m, nSwParams, nTheta, dtype)
@@ -152,34 +152,34 @@ const makeKalmanLoss = (
       const { y: yi, V2: V2i, W } = inp;
 
       // Innovation: v = y - F·x  [1,1]
-      const v = np.subtract(yi, np.matmul(F, x));
+      using v = np.subtract(yi, np.matmul(F, x));
 
       // C·Fᵀ: [m,m]@[m,1] → [m,1]
-      const CFt = np.matmul(C, Ft);
+      using CFt = np.matmul(C, Ft);
 
       // Innovation covariance: Cp = F·(C·Fᵀ) + V²  [1,1]
       const Cp = np.add(np.matmul(F, CFt), V2i);
 
       // Kalman gain: K = G·(C·Fᵀ) / Cp  [m,1]
-      const K = np.divide(np.matmul(G, CFt), Cp);
+      using K = np.divide(np.matmul(G, CFt), Cp);
 
       // Next state: x_next = G·x + K·v  [m,1]
       const x_next = np.add(np.matmul(G, x), np.matmul(K, v));
 
       // L = G - K·F  [m,m]
-      const L = np.subtract(G, np.matmul(K, F));
-      const Lt = np.transpose(L);
+      using L = np.subtract(G, np.matmul(K, F));
+      using Lt = np.transpose(L);
 
       // Next covariance: C_next = G·(C·Lᵀ) + W  [m,m]
-      const CLt = np.matmul(C, Lt);
+      using CLt = np.matmul(C, Lt);
       const C_next = np.add(np.matmul(G, CLt), W);
 
       // Per-step -2·loglik: v²/Cp + log(Cp)
-      const lik_t = np.add(np.divide(np.square(v), Cp), np.log(Cp));
+      using lik_t = np.add(np.divide(np.square(v), Cp), np.log(Cp));
       return [{ x: x_next, C: C_next }, np.squeeze(lik_t)];
     };
 
-    const expTheta = np.exp(theta);
+    using expTheta = np.exp(theta);
 
     // V2_arr: either fixed (known per-timestep σ²) or estimated from theta[0]
     let V2_arr: np.Array;
@@ -188,9 +188,9 @@ const makeKalmanLoss = (
       V2_arr = fixedV2_arr!;
     } else {
       // s = exp(theta[0]) via dot mask
-      const mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
-      const sVal = np.dot(expTheta, mask_s);
-      const V2 = np.reshape(np.square(sVal), [1, 1]);
+      using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
+      using sVal = np.dot(expTheta, mask_s);
+      using V2 = np.reshape(np.square(sVal), [1, 1]);
       V2_arr = np.multiply(
         np.ones([n, 1, 1], { dtype }),
         np.reshape(V2, [1, 1, 1]),
@@ -198,10 +198,10 @@ const makeKalmanLoss = (
     }
 
     // W = diag(w²) from theta[0..m-1] (fixS) or theta[1..m] (estimating s)
-    const W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
+    using W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
 
     // Broadcast W to [n, ...] for scan
-    const W_arr = np.multiply(
+    using W_arr = np.multiply(
       np.ones([n, 1, 1], { dtype }),
       np.reshape(W, [1, m, m]),
     );
@@ -217,7 +217,6 @@ const makeKalmanLoss = (
     return total;
   };
 };
-/* eslint-enable jax-js/require-using */
 
 /**
  * Estimate DLM parameters (s, w, and optionally arphi) by maximum likelihood

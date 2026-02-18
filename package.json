@@ -8,7 +8,7 @@
     "dist"
   ],
   "dependencies": {
-    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#v0.4.0"
+    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#767bd260d52ced630d99654edcbb50591f4dc2ac"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

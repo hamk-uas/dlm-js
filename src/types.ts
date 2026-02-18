@@ -119,6 +119,43 @@ export interface DlmFitResult {
 }
 
 /**
+ * Result from dlmForecast: h-step-ahead predictions with uncertainty.
+ *
+ * All arrays have length h (the forecast horizon).
+ */
+export interface DlmForecastResult {
+  /**
+   * Predicted observation means (h×1).
+   * yhat[k] = F · x_pred[k]
+   */
+  yhat: FloatArray;
+  /**
+   * Predicted observation standard deviations (h×1).
+   * ystd[k] = sqrt(F · C_pred[k] · F' + s²)
+   */
+  ystd: FloatArray;
+  /**
+   * Predicted state means (state_dim × h).
+   * x[i][k] = i-th state component at forecast step k+1.
+   */
+  x: FloatArray[];
+  /**
+   * Predicted state covariances (state_dim × state_dim × h).
+   * C[i][j][k] = covariance between states i and j at forecast step k+1.
+   */
+  C: FloatArray[][];
+  /**
+   * Predicted state standard deviations (h × state_dim).
+   * xstd[k][i] = sqrt(C[i][i][k])
+   */
+  xstd: FloatArray[];
+  /** Forecast horizon */
+  h: number;
+  /** State dimension */
+  m: number;
+}
+
+/**
  * Get the appropriate TypedArray constructor based on DType.
  */
 export function getFloatArrayType(dtype: DType): FloatArrayConstructor {
