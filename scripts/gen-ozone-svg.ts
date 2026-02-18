@@ -24,7 +24,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { dlmFit } from "../src/index.ts";
+import { dlmFit, dlmForecast } from "../src/index.ts";
 import { defaultDevice, DType } from "@hamk-uas/jax-js-nonconsuming";
 
 defaultDevice("wasm");
@@ -108,6 +108,29 @@ console.log(`  β_solar=${(beta_solar_f * ys).toExponential(3)}`);
 console.log(`  β_qbo1 =${(beta_qbo1_f  * ys).toExponential(3)}`);
 console.log(`  β_qbo2 =${(beta_qbo2_f  * ys).toExponential(3)}`);
 
+// ── h-step-ahead forecast ─────────────────────────────────────────────────
+// Forecast 36 months (3 years) ahead with no covariate information (X_forecast = zero rows).
+// This shows the pure trend + seasonal component extrapolation.
+// Use median of s_filled as the representative scalar observation noise std.
+const s_median = [...s_filled].sort((a, b) => a - b)[Math.floor(s_filled.length / 2)];
+const H_FORE = 36;
+const X_forecast_zero = Array.from({ length: H_FORE }, () => [0, 0, 0]);
+const fore = await dlmForecast(fit, s_median, H_FORE, DType.Float64, X_forecast_zero);
+
+// Build forecast time axis (monthly steps from end of data)
+const dt = 1 / 12;  // one month in decimal years
+const foreTime: number[] = Array.from({ length: H_FORE }, (_, k) => time[N - 1] + (k + 1) * dt);
+
+// Forecast level (state 0) and observation band (back-scaled)
+const fore_level: number[] = Array.from(fore.x[0]).map(v => v * ys);
+const fore_level_std: number[] = fore.xstd.map(row => row[0] * ys);
+const fore_yhat: number[] = Array.from(fore.yhat).map(v => v * ys);
+const fore_ystd: number[] = Array.from(fore.ystd).map(v => v * ys);
+const fore_upper = fore_yhat.map((v, i) => v + 2 * fore_ystd[i]);
+const fore_lower = fore_yhat.map((v, i) => v - 2 * fore_ystd[i]);
+
+console.log(`  Forecast ${H_FORE} months: yhat[0]=${fore_yhat[0].toExponential(3)} ystd[0]=${fore_ystd[0].toExponential(3)} ystd[-1]=${fore_ystd[H_FORE-1].toExponential(3)}`);
+
 // Back-scale level and band
 const mu_upper = mu_hat.map((v, i) => v + 2 * mu_std[i]);
 const mu_lower = mu_hat.map((v, i) => v - 2 * mu_std[i]);
@@ -144,14 +167,15 @@ const panelH = 230;
 const H = margin.top + panelH + panelGap + panelH + margin.bottom;
 const plotW = W - margin.left - margin.right;
 
-const sx = makeLinearScale(time[0], time[N - 1], margin.left, margin.left + plotW);
+// x-axis extends to end of forecast period
+const xEnd = foreTime[H_FORE - 1];
+const sx = makeLinearScale(time[0], xEnd, margin.left, margin.left + plotW);
 
-// x-axis ticks: every 2 years, show year as integer
+// x-axis ticks: every 2 years including forecast years
 const xTickYears: number[] = [];
-for (let yr = Math.ceil(time[0]); yr <= Math.floor(time[N - 1]); yr++) {
+for (let yr = Math.ceil(time[0]); yr <= Math.floor(xEnd); yr++) {
   if ((yr - 1984) % 2 === 0) xTickYears.push(yr);
 }
-// Convert integer years to decimal (approx mid-year) but tick at Jan of that year
 const xTickObjs = xTickYears.map(yr => ({ val: yr, label: `${yr}` }));
 
 // ── Panel 1: observations + smoothed level ────────────────────────────────
@@ -167,8 +191,8 @@ function finiteSegments(xs: number[], ys_: number[]): string {
   return pts.join(" ");
 }
 
-// Y range from observations + both bands
-const allP1 = [...y_sc.filter(isFinite), ...mu_upper, ...mu_lower, ...m_level_upper, ...m_level_lower];
+// Y range from observations + both bands + forecast
+const allP1 = [...y_sc.filter(isFinite), ...mu_upper, ...mu_lower, ...m_level_upper, ...m_level_lower, ...fore_upper, ...fore_lower];
 const y1Min = Math.floor(Math.min(...allP1) / 2e9) * 2e9;
 const y1Max = Math.ceil(Math.max(...allP1)  / 2e9) * 2e9;
 const sy1 = makeLinearScale(y1Min, y1Max, p1Bot, p1Top);
@@ -207,6 +231,11 @@ const svg: string[] = [
 // ── Panel 1 ──────────────────────────────────────────────────────────────
 svg.push(...renderGridLines(yTicks1Raw, sy1, margin.left, margin.left + plotW));
 
+// Shaded forecast region (light grey background)
+const xForeStart = r(sx(time[N - 1]));
+const xForeEnd   = r(sx(foreTime[H_FORE - 1]));
+svg.push(`<rect x="${xForeStart}" y="${p1Top}" width="${xForeEnd - xForeStart}" height="${panelH}" fill="#f3f4f6" fill-opacity="0.7"/>`);
+
 // ±2σ band — dlm-js (blue)
 svg.push(`<path d="${bandPathD(time, mu_upper, mu_lower, sx, sy1)}" fill="#3b82f6" fill-opacity="0.15" stroke="none"/>`);
 
@@ -226,6 +255,16 @@ svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fi
 // MATLAB smoothed level — dashed red (drawn last, always visible)
 svg.push(`<polyline points="${polylinePoints(time, m_level, sx, sy1)}" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 3"/>`);
 
+// ── Forecast rendering ───────────────────────────────────────────────────
+// Growing ±2σ observation prediction band (green tint)
+svg.push(`<path d="${bandPathD(foreTime, fore_upper, fore_lower, sx, sy1)}" fill="#22c55e" fill-opacity="0.18" stroke="none"/>`);
+// Forecast mean — dashed green
+svg.push(`<polyline points="${polylinePoints(foreTime, fore_yhat, sx, sy1)}" fill="none" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3"/>`);
+// Vertical end-of-data marker
+svg.push(`<line x1="${xForeStart}" y1="${p1Top}" x2="${xForeStart}" y2="${p1Bot}" stroke="#6b7280" stroke-width="1" stroke-dasharray="3 2"/>`);
+// "Forecast →" label
+svg.push(`<text x="${xForeStart + 4}" y="${p1Top + 13}" fill="#374151" font-size="10">${time[N-1].toFixed(1)} →</text>`);
+
 // Axes
 svg.push(...renderYAxis(yTicks1Raw, sy1, margin.left, fmt1));
 svg.push(...renderXAxis(xTickObjs, sx, p1Bot));
@@ -242,9 +281,11 @@ svg.push(`<line x1="${l1x}" y1="${l1y+15}" x2="${l1x+22}" y2="${l1y+15}" stroke=
 svg.push(`<text x="${l1x+27}" y="${l1y+19}" fill="#374151" font-size="11">dlm-js smoothed level ±2σ</text>`);
 svg.push(`<line x1="${l1x}" y1="${l1y+30}" x2="${l1x+22}" y2="${l1y+30}" stroke="#dc2626" stroke-width="1.8" stroke-dasharray="5 3"/>`);
 svg.push(`<text x="${l1x+27}" y="${l1y+34}" fill="#374151" font-size="11">MATLAB/Octave reference ±2σ</text>`);
+svg.push(`<line x1="${l1x}" y1="${l1y+45}" x2="${l1x+22}" y2="${l1y+45}" stroke="#16a34a" stroke-width="1.8" stroke-dasharray="5 3"/>`);
+svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">36-month forecast ±2σ (no proxies)</text>`);
 
 // Title
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N): trend extraction</text>`);
+svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N): trend extraction + forecast</text>`);
 
 // ── Panel 2 ──────────────────────────────────────────────────────────────
 svg.push(...renderGridLines(yTicks2Raw, sy2, margin.left, margin.left + plotW));
