@@ -1,7 +1,6 @@
-import { checkLeaks } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys } from '../src/index';
-import { deepAlmostEqual } from './utils';
+import { deepAlmostEqual, withLeakCheck } from './utils';
 import { getTestConfigs, applyConfig, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
@@ -151,15 +150,6 @@ interface ModelCase {
   referenceFile: string;
   options: DlmOptions;
 }
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop();
-  }
-};
 
 const modelCases: ModelCase[] = [
   {

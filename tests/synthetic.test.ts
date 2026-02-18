@@ -12,10 +12,11 @@
  * 3. Smoother RMSE < observation RMSE (smoother reduces noise)
  * 4. True states fall within posterior credible intervals at nominal rate
  */
-import { checkLeaks, DType } from '@hamk-uas/jax-js-nonconsuming';
+import { DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys } from '../src/index';
 import { getTestConfigs, applyConfig, assertAllFinite } from './test-matrix';
+import { withLeakCheck } from './utils';
 import type { DlmOptions } from '../src/dlmgensys';
 
 // ─── Deterministic PRNG (Mulberry32 + Box-Muller) ───────────────────────────
@@ -165,15 +166,6 @@ interface SyntheticCase {
   /** Minimum 95%-CI coverage after warmup (generous for finite n + two-pass init) */
   minCoverage: number;
 }
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop();
-  }
-};
 
 const syntheticCases: SyntheticCase[] = [
   {

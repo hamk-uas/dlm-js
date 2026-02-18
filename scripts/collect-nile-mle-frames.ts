@@ -12,6 +12,7 @@ import { dlmFit } from "../src/index.ts";
 import { dlmMLE } from "../src/mle.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { withLeakCheck } from "./lib/leak-utils.ts";
 
 defaultDevice("wasm");
 
@@ -35,14 +36,16 @@ console.log("Phase 1: Full optimization (capturing theta at every iteration)..."
 
 const thetaHistory: number[][] = [];
 
-const mle = await dlmMLE(y, options, undefined, maxIter, lr, tol, dtype, {
-  onInit: (theta) => {
-    thetaHistory.push(Array.from(theta));
-  },
-  onIteration: (_iter, theta, _lik) => {
-    thetaHistory.push(Array.from(theta));
-  },
-});
+const mle = await withLeakCheck(() =>
+  dlmMLE(y, options, undefined, maxIter, lr, tol, dtype, {
+    onInit: (theta) => {
+      thetaHistory.push(Array.from(theta));
+    },
+    onIteration: (_iter, theta, _lik) => {
+      thetaHistory.push(Array.from(theta));
+    },
+  })
+);
 
 const elapsed = mle.elapsed;
 const totalIters = mle.iterations;
@@ -88,7 +91,7 @@ for (const idx of sampleIndices) {
   const w = Array.from({ length: m }, (_, i) => Math.exp(td[1 + i]));
   const lik = idx === 0 ? null : likHistory[idx - 1];
 
-  const fit = await dlmFit(yArr, s, w, dtype, options);
+  const fit = await withLeakCheck(() => dlmFit(yArr, s, w, dtype, options));
   const level = Array.from(fit.x[0]);
   const std = fit.xstd.map((row: any) => row[0] as number);
   const ystd = Array.from(fit.ystd as ArrayLike<number>);

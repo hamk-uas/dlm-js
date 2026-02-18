@@ -34,6 +34,7 @@ import {
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
   yTicksFromRange,
 } from "./lib/svg-helpers.ts";
+import { withLeakCheck } from "./lib/leak-utils.ts";
 
 // ── Load data ─────────────────────────────────────────────────────────────
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -80,10 +81,12 @@ const w: number[] = Array.from(mInp.w as number[]);
 console.log(`Fitting DLM: N=${N} months (${time[0].toFixed(2)}–${time[N-1].toFixed(2)})`);
 console.log(`  ys=${ys.toExponential(3)}, ym=${ym.toFixed(4)}, w=[${w.map(v=>v.toExponential(2)).join(',')}]`);
 
-const fit = await dlmFit(
-  y_filled, s_filled, w, DType.Float64,
-  { order: 1, trig: 2 },
-  X,
+const fit = await withLeakCheck(() =>
+  dlmFit(
+    y_filled, s_filled, w, DType.Float64,
+    { order: 1, trig: 2 },
+    X,
+  )
 );
 
 // State layout (order=1, trig=2, q=3):
@@ -115,7 +118,9 @@ console.log(`  β_qbo2 =${(beta_qbo2_f  * ys).toExponential(3)}`);
 const s_median = [...s_filled].sort((a, b) => a - b)[Math.floor(s_filled.length / 2)];
 const H_FORE = 180;  // 15 years
 const X_forecast_zero = Array.from({ length: H_FORE }, () => [0, 0, 0]);
-const fore = await dlmForecast(fit, s_median, H_FORE, DType.Float64, X_forecast_zero);
+const fore = await withLeakCheck(() =>
+  dlmForecast(fit, s_median, H_FORE, DType.Float64, X_forecast_zero)
+);
 
 // Build forecast time axis (monthly steps from end of data)
 const dt = 1 / 12;  // one month in decimal years

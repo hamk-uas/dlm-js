@@ -2,6 +2,24 @@
  * Test utility functions for dlm-js
  */
 
+import { checkLeaks } from '@hamk-uas/jax-js-nonconsuming';
+
+/**
+ * Run `fn` inside a checkLeaks guard. Throws if any np.Array objects leak.
+ * Use this to wrap every `dlmFit`/`dlmSmo`/`dlmForecast`/`dlmMLE` call in tests.
+ *
+ * @example
+ * const result = await withLeakCheck(() => dlmFit(y, s, w, dtype));
+ */
+export const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const guard = checkLeaks.start();
+  try {
+    return await fn();
+  } finally {
+    checkLeaks.stop(guard);
+  }
+};
+
 /**
  * Filter object by allowed keys (shallow)
  */

@@ -7,7 +7,7 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { checkLeaks, DType } from "@hamk-uas/jax-js-nonconsuming";
+import { DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -15,6 +15,7 @@ import {
   r, makeLinearScale, polylinePoints, bandPathD,
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
 } from "./lib/svg-helpers.ts";
+import { withLeakCheck } from "./lib/leak-utils.ts";
 
 // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -26,15 +27,6 @@ const t: number[] = input.t;        // years 1871–1970
 const y: number[] = input.y;        // observations
 const s: number = input.s;          // observation noise std
 const w: number[] = input.w;        // state noise stds
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop();
-  }
-};
 
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 

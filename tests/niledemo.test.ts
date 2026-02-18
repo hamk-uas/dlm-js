@@ -1,7 +1,6 @@
-import { checkLeaks } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it } from 'vitest';
 import { dlmFit } from '../src/index';
-import { filterKeys, deepAlmostEqual } from './utils';
+import { filterKeys, deepAlmostEqual, withLeakCheck } from './utils';
 import { getTestConfigs, applyConfig, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -22,15 +21,6 @@ const keysFile = path.join(__dirname, 'niledemo-keys.json');
 const compareKeys: string[] | null = fs.existsSync(keysFile)
   ? JSON.parse(fs.readFileSync(keysFile, 'utf-8'))
   : null;
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop();
-  }
-};
 
 const runTest = async (config: TestConfig) => {
   applyConfig(config);

@@ -8,7 +8,7 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { checkLeaks, DType } from "@hamk-uas/jax-js-nonconsuming";
+import { DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -16,6 +16,7 @@ import {
   r, makeLinearScale, polylinePoints, bandPathD, yTicksFromRange,
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
 } from "./lib/svg-helpers.ts";
+import { withLeakCheck } from "./lib/leak-utils.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const input = JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-in.json"), "utf8"));
@@ -26,15 +27,6 @@ const y: number[] = input.y;
 const s: number = input.s;
 const w: number[] = input.w;
 const options = input.options;
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop();
-  }
-};
 
 const timedFit = async () => {
   const t0 = performance.now();

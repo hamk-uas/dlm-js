@@ -9,9 +9,10 @@
  * Uses WASM backend + Float64 for all tests.
  * Synthetic data from a deterministic PRNG guarantees reproducibility.
  */
-import { checkLeaks, defaultDevice, DType } from '@hamk-uas/jax-js-nonconsuming';
+import { defaultDevice, DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmMLE, dlmGenSys, findArInds } from '../src/index';
+import { withLeakCheck } from './utils';
 
 // ─── Deterministic PRNG (same as synthetic.test.ts) ─────────────────────────
 
@@ -76,9 +77,9 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    checkLeaks.start();
-    const result = await dlmMLE(y, options, { s: s_true, w: w_true }, 200, 0.05, 1e-6, dtype);
-    checkLeaks.stop();
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, options, { s: s_true, w: w_true }, 200, 0.05, 1e-6, dtype)
+    );
 
     // MLE should converge
     expect(result.iterations).toBeLessThan(200);
@@ -110,13 +111,13 @@ describe('dlmMLE', async () => {
 
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    checkLeaks.start();
-    const result = await dlmMLE(
-      y, options,
-      { s: s_true, w: w_true, arphi: [0.5] }, // init arphi away from true
-      200, 0.02, 1e-6, dtype,
+    const result = await withLeakCheck(() =>
+      dlmMLE(
+        y, options,
+        { s: s_true, w: w_true, arphi: [0.5] }, // init arphi away from true
+        200, 0.02, 1e-6, dtype,
+      )
     );
-    checkLeaks.stop();
 
     // arphi should be returned
     expect(result.arphi).toBeDefined();
@@ -144,9 +145,9 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    checkLeaks.start();
-    const result = await dlmMLE(y, options, undefined, 100, 0.02, 1e-6, dtype);
-    checkLeaks.stop();
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, options, undefined, 100, 0.02, 1e-6, dtype)
+    );
 
     // arphi should NOT be returned (not fitted)
     expect(result.arphi).toBeUndefined();

@@ -9,10 +9,11 @@
  * 5. Covariate model               — X_forecast rows affect yhat linearly
  * 6. Smoke: all device × dtype     — all finite, correct shape
  */
-import { checkLeaks, DType } from '@hamk-uas/jax-js-nonconsuming';
+import { DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { dlmFit, dlmForecast } from '../src/index';
 import { getTestConfigs, applyConfig, assertAllFinite, type TestConfig } from './test-matrix';
+import { withLeakCheck } from './utils';
 
 // ─── Deterministic PRNG ───────────────────────────────────────────────────────
 
@@ -72,11 +73,12 @@ describe('dlmForecast', () => {
     let mu = 5;
     for (let t = 0; t < n; t++) { mu += qW * randn(); obs[t] = mu + s * randn(); }
 
-    checkLeaks.start();
-    const fit = await dlmFit(obs, s, [qW * qW], DType.Float64, { order: 0 });
     const h = 20;
-    const fc = await dlmForecast(fit, s, h, DType.Float64);
-    checkLeaks.stop();
+    const { fc } = await withLeakCheck(async () => {
+      const fit = await dlmFit(obs, s, [qW * qW], DType.Float64, { order: 0 });
+      const fc = await dlmForecast(fit, s, h, DType.Float64);
+      return { fc };
+    });
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -101,11 +103,12 @@ describe('dlmForecast', () => {
       v += 0.01 * randn(); mu += v + 0.05 * randn(); obs[t] = mu + s * randn();
     }
 
-    checkLeaks.start();
-    const fit = await dlmFit(obs, s, [0.01, 0.0025], DType.Float64, { order: 1 });
     const h = 15;
-    const fc = await dlmForecast(fit, s, h, DType.Float64);
-    checkLeaks.stop();
+    const { fc } = await withLeakCheck(async () => {
+      const fit = await dlmFit(obs, s, [0.01, 0.0025], DType.Float64, { order: 1 });
+      const fc = await dlmForecast(fit, s, h, DType.Float64);
+      return { fc };
+    });
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -128,13 +131,14 @@ describe('dlmForecast', () => {
     for (let t = 0; t < n; t++)
       obs[t] = 3 * Math.sin(2 * Math.PI * t / ns) + s * randn();
 
-    checkLeaks.start();
-    const fit = await dlmFit(obs, s, new Array(nW).fill(0.01), DType.Float64, {
-      order: 0, trig: nHarmonics, ns,
-    });
     const h = ns * 2;
-    const fc = await dlmForecast(fit, s, h, DType.Float64);
-    checkLeaks.stop();
+    const { fc } = await withLeakCheck(async () => {
+      const fit = await dlmFit(obs, s, new Array(nW).fill(0.01), DType.Float64, {
+        order: 0, trig: nHarmonics, ns,
+      });
+      const fc = await dlmForecast(fit, s, h, DType.Float64);
+      return { fc };
+    });
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -160,11 +164,12 @@ describe('dlmForecast', () => {
       obs[t] = x + s * randn();
     }
 
-    checkLeaks.start();
-    const fit = await dlmFit(obs, s, [0.09, 0], DType.Float64, { order: 0, arphi: phi });
     const h = 20;
-    const fc = await dlmForecast(fit, s, h, DType.Float64);
-    checkLeaks.stop();
+    const { fc } = await withLeakCheck(async () => {
+      const fit = await dlmFit(obs, s, [0.09, 0], DType.Float64, { order: 0, arphi: phi });
+      const fc = await dlmForecast(fit, s, h, DType.Float64);
+      return { fc };
+    });
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -186,15 +191,15 @@ describe('dlmForecast', () => {
     for (let t = 0; t < n; t++)
       obs[t] = 3 + beta_true * (X_train[t] as number[])[0] + s * randn();
 
-    checkLeaks.start();
-    const fit = await dlmFit(obs, s, [0.01], DType.Float64, { order: 0 }, X_train);
-
     const h = 10;
     const X_low  = Array.from({ length: h }, () => [-1.0] as ArrayLike<number>);
     const X_high = Array.from({ length: h }, () => [+1.0] as ArrayLike<number>);
-    const fc_low  = await dlmForecast(fit, s, h, DType.Float64, X_low);
-    const fc_high = await dlmForecast(fit, s, h, DType.Float64, X_high);
-    checkLeaks.stop();
+    const { fc_low, fc_high } = await withLeakCheck(async () => {
+      const fit = await dlmFit(obs, s, [0.01], DType.Float64, { order: 0 }, X_train);
+      const fc_low  = await dlmForecast(fit, s, h, DType.Float64, X_low);
+      const fc_high = await dlmForecast(fit, s, h, DType.Float64, X_high);
+      return { fc_low, fc_high };
+    });
 
     assertAllFinite(fc_low.yhat);
     assertAllFinite(fc_high.yhat);
@@ -216,8 +221,11 @@ describe('dlmForecast', () => {
 
     for (const cfg of configs) {
       applyConfig(cfg);
-      const fit = await dlmFit(obs, s, [0.01], cfg.dtype, { order: 0 });
-      const fc  = await dlmForecast(fit, s, h, cfg.dtype);
+      const { fit, fc } = await withLeakCheck(async () => {
+        const fit = await dlmFit(obs, s, [0.01], cfg.dtype, { order: 0 });
+        const fc  = await dlmForecast(fit, s, h, cfg.dtype);
+        return { fit, fc };
+      });
 
       expect(fc.h, `${cfg.label}: h`).toBe(h);
       expect(fc.m, `${cfg.label}: m`).toBe(1);

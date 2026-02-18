@@ -12,10 +12,9 @@
  * State layout (m=9, order=1+trig=2+q=3):
  *   x[0]=level, x[1]=slope, x[2..5]=4 trig states, x[6]=β_solar, x[7]=β_qbo1, x[8]=β_qbo2
  */
-import { checkLeaks } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it } from 'vitest';
 import { dlmFit } from '../src/index';
-import { deepAlmostEqual } from './utils';
+import { deepAlmostEqual, withLeakCheck } from './utils';
 import { getTestConfigs, applyConfig, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -39,15 +38,6 @@ const X_rows: number[][] = (inp.X as number[][]).map(row => Array.from(row));
 
 // Keys to compare: smoothed states + their std devs + predicted obs
 const COMPARE_KEYS = ['x', 'xstd', 'yhat'];
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  const guard = checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop(guard);
-  }
-};
 
 const runTest = async (config: TestConfig) => {
   applyConfig(config);

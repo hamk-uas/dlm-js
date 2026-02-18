@@ -46,7 +46,7 @@ Testing & tolerance details (important for PRs) ✅
 - Test artifacts: failing runs write `tests/out/` — inspect JSON files there.
 - When adding features: include tests that run in all three modes (`for`, `scan`, `jit`) and add keys to `niledemo-keys.json` if the change is a partial implementation.
 - **Float32 + m > 2**: numerically unstable (covariance goes negative → NaN). These combinations are skipped in both `gensys.test.ts` and `synthetic.test.ts`.
-- **Leak detection**: Wrap jax-js-nonconsuming code in tests with `checkLeaks.start()` before and `checkLeaks.stop()` after to verify no `np.Array` objects are leaked. This catches missing `using`/`dispose` calls at runtime.
+- **Leak detection**: Wrap jax-js-nonconsuming code in tests with the `withLeakCheck` helper from `tests/utils.ts` (scripts use `scripts/lib/leak-utils.ts`). This helper guards with `checkLeaks.start()`/`checkLeaks.stop()` internally and catches missing `using`/`dispose` calls at runtime. Import: `import { withLeakCheck } from './utils';`. Usage: `const result = await withLeakCheck(() => dlmFit(...));`.
 - **Eager-first development**: When writing new jax-js-nonconsuming code, always get it working in eager mode first (no `jit()` wrapper). Only wrap with `jit()` after the eager version is correct and leak-free. JIT adds tracing complexity that makes debugging harder.
 
 Troubleshooting checklist (fast) 🩺
@@ -66,7 +66,7 @@ PR checklist (what an AI should do before opening a PR) 📋
 
 Example prompts for agents (use these exact templates) ✍️
 - "Add `mode: 'vectorized'` to `dlmFit` implemented via a new helper in `src/index.ts`; add unit tests exercising the new mode and ensure existing `for`/`scan`/`jit` tests still pass. Update README and add entries to `tests/niledemo-keys.json` if output keys change."  
-- "Fix a memory leak: find np.Array objects in `src/index.ts` not disposed in all branches and add `using`/`tree.dispose()` with a focused unit test using `checkLeaks.start()`/`.stop()` to verify."  
+- "Fix a memory leak: find np.Array objects in `src/index.ts` not disposed in all branches and add `using`/`tree.dispose()` with a focused unit test using `withLeakCheck` from `tests/utils.ts` to verify."  
 - "Investigate `jit` mismatch on WASM: run the `jit` test twice, capture `tests/out/niledemo-out-jit.json`, and produce a minimal reproducer that highlights the first differing tensor and its path." 
 
 Where agents should open files first (order matters) ▶️

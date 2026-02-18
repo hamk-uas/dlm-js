@@ -16,7 +16,7 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { checkLeaks, DType } from "@hamk-uas/jax-js-nonconsuming";
+import { DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -24,6 +24,7 @@ import {
   r, polylinePoints, bandPathD, yTicksFromRange,
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
 } from "./lib/svg-helpers.ts";
+import { withLeakCheck } from "./lib/leak-utils.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const input = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "utf8"));
@@ -43,15 +44,6 @@ const trueLevel: number[] = octave.x_true[0];
 const trueSeasonal: number[] = octave.x_true[2];
 const trueAR: number[] = octave.x_true[4];
 const trueCombined = trueLevel.map((v, i) => v + trueSeasonal[i] + trueAR[i]);
-
-const withLeakCheck = async <T>(fn: () => Promise<T>): Promise<T> => {
-  checkLeaks.start();
-  try {
-    return await fn();
-  } finally {
-    checkLeaks.stop();
-  }
-};
 
 const timedFit = async () => {
   const t0 = performance.now();
