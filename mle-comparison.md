@@ -93,7 +93,7 @@ The MATLAB DLM has a second estimation mode (`options.mcmc=1`) that uses Adaptiv
 2. **Full JIT compilation** — the entire optimization step (forward filter + AD + parameter update) compiles to a single fused kernel. JIT overhead currently dominates for small datasets (n=100); the advantage grows with larger n or more complex models.
 3. **WASM backend** — runs in Node.js and the browser without native dependencies.
 4. **Robust in higher dimensions** — gradient-based optimization handles 4+ parameters where Nelder-Mead diverges.
-5. **Joint AR coefficient fitting** — `fitar: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
+5. **Joint AR coefficient estimation** — `fitar: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
 
 ## What MATLAB DLM does that dlm-js doesn't (yet)
 

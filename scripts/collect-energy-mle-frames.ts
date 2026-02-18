@@ -1,5 +1,5 @@
 /**
- * Collect per-frame data for the animated energy MLE + AR fitting SVG.
+ * Collect per-frame data for the animated energy MLE SVG (with AR coefficient estimation).
  *
  * Runs MLE optimization on the synthetic energy data with fitar=true,
  * capturing smoothed states at sampled iterations for animation frames.

@@ -1,5 +1,5 @@
 /**
- * Generate an animated MLE + AR fitting SVG from pre-collected energy frames.
+ * Generate an animated MLE SVG (with AR coefficient estimation) from pre-collected energy frames.
  *
  * Reads:   tmp/energy-mle-frames.json   (produced by scripts/collect-energy-mle-frames.ts)
  * Writes:  assets/energy-mle-anim.svg
@@ -241,7 +241,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE + AR fitting (${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s WASM)</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE with AR coefficient estimation (${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s WASM)</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 

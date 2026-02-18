@@ -25,9 +25,9 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy MLE optimization with AR fitting: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
+<img alt="Energy MLE optimization with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
 
-*Energy MLE + AR fitting demo: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.70, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 300 iterations / 7.1 s on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.70, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 300 iterations / 7.1 s on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
@@ -191,7 +191,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── trigar.svg           # Energy demand demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── nile-mle-anim.svg    # Nile MLE optimization animation (regenerate with `pnpm run gen:svg`)
 │   ├── nile-mle.svg         # Nile MLE optimization plot (static, regenerate with `pnpm run gen:svg`)
-│   └── energy-mle-anim.svg  # Energy MLE + AR fitting animation (regenerate with `pnpm run gen:svg`)
+│   └── energy-mle-anim.svg  # Energy MLE animation with AR coefficient estimation (regenerate with `pnpm run gen:svg`)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
@@ -200,9 +200,10 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── gen-kaisaniemi-svg.ts        # Kaisaniemi seasonal demo SVG generator
 │   ├── gen-trigar-svg.ts            # Energy demand demo SVG generator
 │   ├── gen-nile-mle-svg.ts         # Nile MLE before/after optimization SVG generator
+│   ├── collect-nile-mle-frames.ts   # Nile MLE frame data collector (→ tmp/mle-frames.json)
 │   ├── gen-nile-mle-anim-svg.ts    # Nile MLE animated convergence SVG generator
 │   ├── collect-energy-mle-frames.ts # Energy MLE frame data collector (→ tmp/energy-mle-frames.json)
-│   └── gen-energy-mle-anim-svg.ts  # Energy MLE + AR fitting animation SVG generator
+│   └── gen-energy-mle-anim-svg.ts  # Energy MLE animation SVG generator (with AR coefficient estimation)
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -225,7 +226,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
 │   ├── {order0,order2,seasonal,trig,trigar,level,energy,ar2}-{in,out-m}.json  # Test data (see below)
-│   ├── mle.test.ts          # MLE parameter estimation tests (s/w and AR fitting on WASM)
+│   ├── mle.test.ts          # MLE parameter estimation tests (s/w and AR coefficient estimation on WASM)
 │   └── utils.ts             # Test utility functions
 ├── mle-comparison.md    # Comparison of dlm-js MLE vs original MATLAB DLM parameter estimation
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)

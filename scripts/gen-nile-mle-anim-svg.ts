@@ -1,7 +1,7 @@
 /**
  * Generate an animated MLE optimization SVG from pre-collected frame data.
  *
- * Reads:   tmp/mle-frames.json   (produced by tmp/collect-mle-frames.ts)
+ * Reads:   tmp/mle-frames.json   (produced by scripts/collect-nile-mle-frames.ts)
  * Writes:  assets/nile-mle-anim.svg
  *
  * Animation: SMIL <animate> on the level polyline + confidence band path.

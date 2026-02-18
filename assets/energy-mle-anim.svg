@@ -172,7 +172,7 @@
 <text x="780.0" y="348" text-anchor="middle" fill="#333">10y</text>
 <text x="422.5" y="375" text-anchor="middle" fill="#333" font-size="13">Month</text>
 <text x="14" y="180" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,180)">Energy demand</text>
-<text x="422.5" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE + AR fitting (300 iters, 7.1 s WASM)</text>
+<text x="422.5" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE with AR coefficient estimation (300 iters, 7.1 s WASM)</text>
 <rect x="375" y="38" width="400" height="72" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>
 <circle cx="389" cy="52" r="2.5" fill="#555" opacity="0.5"/>
 <text x="399" y="52" dominant-baseline="middle" fill="#333" font-size="11">Observations</text>
