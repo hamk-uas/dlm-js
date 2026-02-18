@@ -265,8 +265,6 @@ svg.push(`<path d="${bandPathD(foreTime, fore_upper, fore_lower, sx, sy1)}" fill
 svg.push(`<polyline points="${polylinePoints(foreTime, fore_level, sx, sy1)}" fill="none" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3"/>`);
 // Vertical end-of-data marker
 svg.push(`<line x1="${xForeStart}" y1="${p1Top}" x2="${xForeStart}" y2="${p1Bot}" stroke="#6b7280" stroke-width="1" stroke-dasharray="3 2"/>`);
-// "Forecast →" label
-svg.push(`<text x="${xForeStart + 4}" y="${p1Top + 13}" fill="#374151" font-size="10">${time[N-1].toFixed(1)} →</text>`);
 
 // Axes
 svg.push(...renderYAxis(yTicks1Raw, sy1, margin.left, fmt1));
