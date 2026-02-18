@@ -58,7 +58,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Compilation** | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) |
 | **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
 | **Adam defaults** | N/A | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) |
-| **WASM performance** | N/A | ~2 s for 300 iterations (Nile, n=100, m=2, b2=0.9); default `maxIter` is 200 |
+| **WASM performance** | N/A | ~1.6 s for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing-always-use-checkpoint-false) |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
@@ -76,18 +76,41 @@ If MCMC-like regularisation is needed, the recommended approach is MAP estimatio
 
 ## Benchmark: same machine, same data
 
-All timings measured on the same machine. The MATLAB DLM toolbox was run under Octave with `fminsearch` (Nelder-Mead, `maxfuneval=400` for Nile models, `maxfuneval=800` for Kaisaniemi). dlm-js uses `dlmMLE` (Adam + autodiff, `maxIter=300`, `b2=0.9` default, `wasm` backend). Octave timings are median of 5 runs after 1 warmup; dlm-js timings are median of 3 runs after 1 warmup.
+All timings measured on the same machine. The MATLAB DLM toolbox was run under Octave with `fminsearch` (Nelder-Mead, `maxfuneval=400` for Nile models, `maxfuneval=800` for Kaisaniemi). dlm-js uses `dlmMLE` (Adam + autodiff, `maxIter=300`, `b2=0.9` default, `checkpoint: false`, `wasm` backend). Octave timings are median of 5 runs after 1 warmup; dlm-js timings are single fresh-run wall-clock times (including first-call JIT overhead).
 
 | Model | $n$ | $m$ | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | $-2\log L$ (Octave) | $-2\log L$ (dlm-js) |
 |-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 2730 ms | 1104.6 | 1105.0 |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 2174 ms | 1104.6 | 1105.0 |
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1970 ms | 1095.8 | 1095.8 |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | 3509 ms | — | 330.8 |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | 6900 ms | — | 443.1 |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1970 ms¹ | 1095.8 | 1095.8 |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | 3509 ms¹ | — | 330.8 |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | 5878 ms | — | 443.1 |
+
+¹ Measured before `checkpoint: false` was adopted; expect ~25–30% lower with current code.
 
 **Key observations:**
 - **Nile (n=100, m=2):** Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.
+
+### Gradient checkpointing: always use `checkpoint: false`
+
+`lax.scan` supports gradient checkpointing on the backward (AD) pass, controlled by a `checkpoint` option:
+
+- **`true` (default):** √N segment checkpointing — stores only O(√N) intermediate carry values and re-runs the forward pass over each segment to reconstruct the rest during backprop. This trades ~2× computation for O(√N) memory.
+- **`false`:** stores all N intermediate carry values — no recomputation on the backward pass.
+- **number:** explicit segment size.
+
+For typical DLM dataset sizes (n ≲ a few hundred), the carry at each time step is just an m-vector and an m×m matrix — negligible memory. Storing all N carries and skipping recomputation is therefore always faster.
+
+**Benchmark (WASM, Float64, 60 iterations, 4 timed runs after 1 warmup):**
+
+| Dataset | n | m | `checkpoint: false` | `checkpoint: true` (√N) | speedup |
+|---------|---|---|--------------------|-----------------------|---------|
+| Nile, order=1 | 100 | 2 | 1603 ms | 2116 ms | +32% |
+| Energy, order=1+trig1+ar1 | 120 | 5 | 2147 ms | 2710 ms | +26% |
+
+All explicit segment sizes (5, 11, 20, 40) performed similarly to `true`, confirming the penalty is purely from extra recomputation (not memory pressure). Setting `seg=n` is equivalent to `false` and produces the same fast result.
+
+**Conclusion:** `dlmMLE` now unconditionally uses `checkpoint: false` for the `lax.scan` inside `makeKalmanLoss`. For very long series (n ≫ 1000) where per-carry memory could become a concern, an explicit segment size could be re-introduced at that time.
 - **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~0.4), consistent with matching likelihood formulations under different optimization details.
 - **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in 107 iterations (3.5 s, b2=0.9). This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead. Note: b2=0.9 also found a better optimum (−2logL=330.8) than b2=0.999 (341.6), suggesting the prior default was getting stuck in a plateau.
 - **Joint $s+w$ fitting:** dlm-js `dlmMLE` always fits both $s$ and $w$ together, while the MATLAB DLM toolbox (run under Octave) can fit $w$ only (`fitv=0`), which is faster when $s$ is known.

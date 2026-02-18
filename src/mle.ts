@@ -130,6 +130,12 @@ const makeKalmanLoss = (
   arInds: number[] = [],
   /** When provided, V² is taken from this array and s is NOT in theta. */
   fixedV2_arr?: np.Array,
+  /** Gradient checkpointing for lax.scan backward pass.
+   * - `true` (default): √N segment checkpointing (O(√N) memory, ~2× compute).
+   * - `false`: store all N carries (O(N) memory, fastest backward pass).
+   * - number: explicit segment size.
+   */
+  checkpoint?: boolean | number,
 ) => {
   const nar = arInds.length;
   // When s is fixed, theta = [w₀…w_{m-1}, arphi…]  (no leading s slot)
@@ -210,6 +216,7 @@ const makeKalmanLoss = (
       step,
       { x: x0, C: C0 },
       { y: y_arr, V2: V2_arr, W: W_arr },
+      checkpoint !== undefined ? { checkpoint } : undefined,
     );
     tree.dispose(fc);
     const total = np.sum(likTerms);
@@ -345,7 +352,10 @@ export const dlmMLE = async (
   // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
   // Traces once, then every iteration is compiled.
 
-  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr);
+  // checkpoint: false stores all N carries — no recomputation on backward pass.
+  // Benchmarks show ~25–30% speedup over default √N checkpointing for typical
+  // DLM dataset sizes (n ≲ few hundred), where carry memory is negligible.
+  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false);
   const optimizer = adam(lr, { b2: 0.9, ...adamOpts });
 
   const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
