@@ -53,12 +53,13 @@ const qbo1   = rows.map(r => r[4]);  // QBO component 1
 const qbo2   = rows.map(r => r[5]);  // QBO component 2
 const N      = time.length;
 
-// Scale y for numerical stability (MATLAB: yy = y./ys, ss = s./ys)
-const y_valid = y_raw.filter(v => isFinite(v));
-const ys = Math.sqrt(y_valid.reduce((s, v) => s + v * v, 0) / y_valid.length -
-           Math.pow(y_valid.reduce((s, v) => s + v, 0) / y_valid.length, 2));
-const yy = y_raw.map(v => v / ys);
-const ss = s_raw.map(v => v / ys);
+// Load scaled yy / ss exactly as Octave prepared them (same stdnan scaling,
+// same missing-data fill: y→ym, s→ss_med).  This ensures dlm-js and MATLAB
+// run the identical numerical problem so their outputs are directly comparable.
+const ys: number = mInp.ys;
+const ym: number = mInp.ym;
+const y_filled: number[] = Array.from(mInp.yy as number[]);
+const s_filled: number[] = Array.from(mInp.ss as number[]);
 
 // Covariates matrix: X[t] = [solar(t), qbo1(t), qbo2(t)] — proxies always observed
 const X: number[][] = time.map((_, i) => [solar[i], qbo1[i], qbo2[i]]);
@@ -70,28 +71,11 @@ const X: number[][] = time.map((_, i) => [solar[i], qbo1[i], qbo2[i]]);
 // 3 proxy covariates → 3 static β states
 // Total state dimension: 2 + 4 + 3 = 9
 
-// wtrend = |ym|*0.00005, wseas = |ym|*0.015  (MATLAB ozonedemo defaults)
-const ym = yy.filter(v => isFinite(v)).reduce((a, v) => a + v, 0) /
-           yy.filter(v => isFinite(v)).length;
-const wtrend = Math.abs(ym) * 0.00005;
-const wseas  = Math.abs(ym) * 0.015;
-
 // w = [level_std=0, trend_std, seas1_std, seas1*_std, seas2_std, seas2*_std]
-// (no evolution noise on the level itself, trend and seasonal states have noise)
-const w = [0, wtrend, wseas, wseas, wseas, wseas];
-
-// Per-observation standard deviations — use ss[t], fall back to mean ss for NaN obs
-const ss_mean = ss.filter(v => isFinite(v)).reduce((a, v) => a + v, 0) /
-                ss.filter(v => isFinite(v)).length;
-const s_vec = ss.map(v => (isFinite(v) ? v : ss_mean));
-
-// Replace NaN observations with 0 for the solver — they are masked by large V
-// dlm-js handles per-time V via the s parameter array
-const y_filled = yy.map(v => (isFinite(v) ? v : 0));
-const s_filled = yy.map((v, i) => (isFinite(v) ? s_vec[i] : 1e6));  // huge σ for missing
+const w: number[] = Array.from(mInp.w as number[]);
 
 console.log(`Fitting DLM: N=${N} months (${time[0].toFixed(2)}–${time[N-1].toFixed(2)})`);
-console.log(`  ym=${ym.toFixed(4)}, wtrend=${wtrend.toExponential(2)}, wseas=${wseas.toFixed(4)}`);
+console.log(`  ys=${ys.toExponential(3)}, ym=${ym.toFixed(4)}, w=[${w.map(v=>v.toExponential(2)).join(',')}]`);
 
 const fit = await dlmFit(
   y_filled, s_filled, w, DType.Float64,
@@ -131,8 +115,8 @@ const contrib_qbo1:  number[] = time.map((_, i) => beta_qbo1[i]  * qbo1[i]  * ys
 const contrib_qbo2:  number[] = time.map((_, i) => beta_qbo2[i]  * qbo2[i]  * ys);
 const contrib_qbo:   number[] = contrib_qbo1.map((v, i) => v + contrib_qbo2[i]);
 
-// Observations (back-scaled, NaN where missing)
-const y_sc = yy.map((v, i) => (isFinite(v) ? v * ys : NaN));
+// Observations (back-scaled, NaN where missing — use raw y_raw for NaN mask)
+const y_sc = y_raw.map(v => (isFinite(v) ? v : NaN));
 
 // ── MATLAB reference curves (back-scaled) ────────────────────────────────
 // mRef.x is [m][N] (MATLAB row-major: m states × N timesteps)
