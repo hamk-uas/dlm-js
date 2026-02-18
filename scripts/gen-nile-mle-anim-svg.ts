@@ -241,10 +241,10 @@ push(`<text x="${legX + 24}" y="${legY + 14}" dominant-baseline="middle" fill="#
 // MLE fit
 push(`<line x1="${legX + 8}" y1="${legY + 32}" x2="${legX + 20}" y2="${legY + 32}" stroke="${lineColor}" stroke-width="2"/>`);
 push(`<rect x="${legX + 8}" y="${legY + 27}" width="12" height="10" fill="${bandColor}" stroke="none"/>`);
-push(`<text x="${legX + 24}" y="${legY + 32}" dominant-baseline="middle" fill="#333" font-size="11">MLE: s=${finalFrame.s.toFixed(1)}, w=[${finalFrame.w.map((v: number) => v.toFixed(1)).join(",")}]</text>`);
+push(`<text x="${legX + 24}" y="${legY + 32}" dominant-baseline="middle" fill="#333" font-size="11">MLE: final s=${finalFrame.s.toFixed(1)}, w=[${finalFrame.w.map((v: number) => v.toFixed(1)).join(",")}]</text>`);
 
 // Lik value
-push(`<text x="${legX + 24}" y="${legY + 48}" dominant-baseline="middle" fill="#666" font-size="10">final −2·logL: ${finalLik.toFixed(2)}</text>`);
+push(`<text x="${legX + 24}" y="${legY + 48}" dominant-baseline="middle" fill="#666" font-size="10">−2·logL: ${finalLik.toFixed(2)}</text>`);
 
 // ── Convergence miniplot (right half of legend) ────────────────────────────
 

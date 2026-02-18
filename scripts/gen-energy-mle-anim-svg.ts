@@ -254,7 +254,7 @@ push(`<text x="${legX + 24}" y="${legY + 14}" dominant-baseline="middle" fill="#
 // MLE fit line
 push(`<line x1="${legX + 8}" y1="${legY + 30}" x2="${legX + 20}" y2="${legY + 30}" stroke="${lineColor}" stroke-width="2"/>`);
 push(`<rect x="${legX + 8}" y="${legY + 25}" width="12" height="10" fill="${bandColor}" stroke="none"/>`);
-push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#333" font-size="11">MLE: s=${finalFrame.s.toFixed(1)}, \u03c6=${finalArphi.toFixed(2)}</text>`);
+push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#333" font-size="11">MLE: final s=${finalFrame.s.toFixed(1)}, \u03c6=${finalArphi.toFixed(2)}</text>`);
 
 // Lik + arphi values
 push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#666" font-size="10">−2·logL = ${finalLik.toFixed(1)}</text>`);
