@@ -7,7 +7,7 @@ import type { DlmOptions } from "./dlmgensys";
 // Public type exports
 export type { DlmFitResult, FloatArray } from "./types";
 export type { DlmOptions, DlmSystem } from "./dlmgensys";
-export { dlmGenSys } from "./dlmgensys";
+export { dlmGenSys, findArInds } from "./dlmgensys";
 export { dlmMLE } from "./mle";
 export type { DlmMleResult } from "./mle";
 

@@ -16,7 +16,7 @@ where $v_t = y_t - F x_{t|t-1}$ is the innovation and $C_p^{(t)} = F C_{t|t-1} F
 |--------|-----------|--------|
 | Observation noise `s` | Optionally fitted as a multiplicative factor `V·exp(θ_v)` (controlled by `options.fitv`) | Always fitted: `s = exp(θ_s)` |
 | State noise `w` | `W(i,i) = exp(θ_{w,i})²` | `W(i,i) = exp(θ_{w,i})²` via `buildDiagW` |
-| AR coefficients | Directly optimized (not log-transformed): `G(arinds) = θ_g` | Not yet optimized (AR phis are fixed) |
+| AR coefficients | Directly optimized (not log-transformed): `G(arinds) = θ_g` | Directly optimized (not log-transformed): `G(arInds) = θ_φ` via `buildG` rank-1 update (AD-safe) |
 | Parameter grouping | `options.winds` maps W diag entries to shared parameters (e.g., `winds=[1,1,2,2]` ties states 1&2 and 3&4) | Each `W(i,i)` is an independent parameter |
 
 Both use the same positivity enforcement: log-space for variance parameters, then `exp()` to map back. The MATLAB version has an extra feature — `winds` — that lets you **tie** W diagonal entries to shared parameters, reducing the optimization dimension when multiple states should share the same noise variance.
@@ -46,6 +46,7 @@ All timings measured on the same machine. MATLAB DLM uses Octave `fminsearch` (N
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
 | Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1412 ms | 1095.8 | 1095.9 |
 | Kaisaniemi, trig, fit w | 117 | 4 | 4 | **failed** (NaN/Inf) | 6230 ms | — | 341.6 |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | 7100 ms | — | 443.8 |
 
 **Key observations:**
 - On the Nile data, Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.
@@ -76,7 +77,7 @@ The MATLAB DLM has a second estimation mode (`options.mcmc=1`) that uses Adaptiv
 | JIT compilation of optimizer | ❌ | ✅ |
 | Fit observation noise `s` | ✅ (optional via `fitv`) | ✅ (always) |
 | Fit state noise `w` | ✅ | ✅ |
-| Fit AR coefficients `arphi` | ✅ | ❌ (not yet) |
+| Fit AR coefficients `arphi` | ✅ | ✅ (`fitar: true`) |
 | Tie W parameters (`winds`) | ✅ | ❌ (each W entry independent) |
 | Custom cost function | ✅ (`options.fitfun`) | ❌ |
 | MCMC posterior sampling | ✅ (Adaptive Metropolis via `mcmcrun`) | ❌ |
@@ -92,11 +93,11 @@ The MATLAB DLM has a second estimation mode (`options.mcmc=1`) that uses Adaptiv
 2. **Full JIT compilation** — the entire optimization step (forward filter + AD + parameter update) compiles to a single fused kernel. JIT overhead currently dominates for small datasets (n=100); the advantage grows with larger n or more complex models.
 3. **WASM backend** — runs in Node.js and the browser without native dependencies.
 4. **Robust in higher dimensions** — gradient-based optimization handles 4+ parameters where Nelder-Mead diverges.
+5. **Joint AR coefficient fitting** — `fitar: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
 
 ## What MATLAB DLM does that dlm-js doesn't (yet)
 
 1. **MCMC posterior sampling** — full Bayesian uncertainty quantification with priors.
-2. **AR coefficient optimization** — `options.fitar` optimizes the autoregressive phis directly.
-3. **Parameter tying** (`winds`) — reduces optimization dimension for structured models.
-4. **Custom fit functions** (`options.fitfun`) — user-supplied cost functions.
-5. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
+2. **Parameter tying** (`winds`) — reduces optimization dimension for structured models.
+3. **Custom fit functions** (`options.fitfun`) — user-supplied cost functions.
+4. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).

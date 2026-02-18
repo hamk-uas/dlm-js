@@ -24,6 +24,37 @@ export interface DlmOptions {
   arphi?: number[];
   /** Spline mode: modifies W for order=1 (default: false) */
   spline?: boolean;
+  /** Fit AR coefficients via MLE optimization (default: false) */
+  fitar?: boolean;
+}
+
+/**
+ * Find the indices of AR states in the full state vector.
+ *
+ * These are the row/column positions in G where the AR coefficients
+ * appear (first column of the AR companion block).
+ *
+ * @param options - Model specification with arphi
+ * @returns Array of 0-based state indices, or empty if no AR component
+ */
+export function findArInds(options: DlmOptions): number[] {
+  const arphi = options.arphi ?? [];
+  const nar = arphi.length;
+  if (nar === 0) return [];
+
+  const order = options.order ?? 1;
+  const trig = options.trig ?? 0;
+  const ns = options.ns ?? 12;
+  const fullseas = trig > 0 ? false : (options.fullseas ?? false);
+
+  let offset = order + 1;  // trend block size
+  if (fullseas) {
+    offset += ns - 1;
+  } else if (trig > 0) {
+    offset += Math.min(ns - 1, trig * 2);
+  }
+
+  return Array.from({ length: nar }, (_, i) => offset + i);
 }
 
 /** Generated system matrices */

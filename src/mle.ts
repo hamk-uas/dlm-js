@@ -2,7 +2,7 @@ import { DType, numpy as np, lax, jit, valueAndGrad, tree } from "@hamk-uas/jax-
 import { adam, applyUpdates } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
-import { dlmGenSys } from "./dlmgensys";
+import { dlmGenSys, findArInds } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
 
@@ -13,8 +13,8 @@ export interface DlmMleResult {
   /** Estimated observation noise std dev */
   s: number;
   /** Estimated state noise std devs (diagonal of sqrt(W)) */
-  w: number[];
-  /** -2 · log-likelihood at optimum */
+  w: number[];  /** Estimated AR coefficients (only when fitar=true) */
+  arphi?: number[];  /** -2 · log-likelihood at optimum */
   lik: number;
   /** Number of optimizer iterations */
   iterations: number;
@@ -39,11 +39,11 @@ export interface DlmMleResult {
 // AD-traced: array lifetimes managed by the tracer, not `using`
 /* eslint-disable jax-js/require-using */
 const buildDiagW = (
-  expTheta: np.Array, m: number, dtype: DType,
+  expTheta: np.Array, m: number, dtype: DType, nTheta: number,
 ): np.Array => {
   let W = np.zeros([m, m], { dtype });
   for (let i = 0; i < m; i++) {
-    const maskData = new Array(1 + m).fill(0);
+    const maskData = new Array(nTheta).fill(0);
     maskData[1 + i] = 1;
     const mask = np.array(maskData, { dtype });
     const wi = np.dot(expTheta, mask);
@@ -63,6 +63,50 @@ const buildDiagW = (
 };
 
 /**
+ * Build G matrix with AR coefficients from the theta parameter vector.
+ *
+ * G_effective = G_base + \u03a3\u1d62 arphi[i] \u00b7 e_{arInds[i]} \u00b7 e_{arCol}\u1d40
+ *
+ * G_base has the AR column zeroed; this function adds the trainable
+ * AR coefficients back using rank-1 updates (AD-compatible).
+ *
+ * @internal
+ */
+const buildG = (
+  G_base: np.Array, theta: np.Array,
+  arInds: number[], m: number, nSwParams: number, nTheta: number,
+  dtype: DType,
+): np.Array => {
+  const arCol = arInds[0];
+  const nar = arInds.length;
+
+  // Build AR contribution as a sum of rank-1 updates
+  let arContrib = np.zeros([m, m], { dtype });
+  for (let i = 0; i < nar; i++) {
+    // Extract arphi[i] from theta (NOT exp-transformed) via mask
+    const maskData = new Array(nTheta).fill(0);
+    maskData[nSwParams + i] = 1;
+    const mask = np.array(maskData, { dtype });
+    const phi_i = np.dot(theta, mask);
+
+    // Rank-1 update at G[arInds[i], arCol]
+    const eiData = Array.from({ length: m }, (_, j) => j === arInds[i] ? [1] : [0]);
+    const ejData = Array.from({ length: m }, (_, j) => [j === arCol ? 1 : 0]);
+    const ei = np.array(eiData, { dtype });     // [m, 1]
+    const ejt = np.transpose(np.array(ejData, { dtype })); // [1, m]
+    const outer = np.matmul(ei, ejt);            // [m, m]
+    const scaled = np.multiply(np.reshape(phi_i, [1, 1]), outer);
+    const newContrib = np.add(arContrib, scaled);
+    arContrib.dispose();
+    arContrib = newContrib;
+  }
+
+  // G = G_base + arContrib
+  const G = np.add(G_base, arContrib);
+  return G;
+};
+
+/**
  * Build the Kalman filter log-likelihood loss function.
  *
  * Returns a function θ → -2·log L that can be differentiated with grad().
@@ -79,56 +123,67 @@ const buildDiagW = (
  * @internal
  */
 const makeKalmanLoss = (
-  F: np.Array, G: np.Array, Ft: np.Array,
+  F: np.Array, G_base: np.Array, Ft: np.Array,
   x0: np.Array, C0: np.Array,
   y_arr: np.Array,
   n: number, m: number, dtype: DType,
+  arInds: number[] = [],
 ) => {
-  type Carry = { x: np.Array; C: np.Array };
-  type ScanInp = { y: np.Array; V2: np.Array; W: np.Array };
-
-  const step = (carry: Carry, inp: ScanInp): [Carry, np.Array] => {
-    const { x, C } = carry;
-    const { y: yi, V2: V2i, W } = inp;
-
-    // Innovation: v = y - F·x  [1,1]
-    const v = np.subtract(yi, np.matmul(F, x));
-
-    // C·Fᵀ: [m,m]@[m,1] → [m,1]
-    const CFt = np.matmul(C, Ft);
-
-    // Innovation covariance: Cp = F·(C·Fᵀ) + V²  [1,1]
-    const Cp = np.add(np.matmul(F, CFt), V2i);
-
-    // Kalman gain: K = G·(C·Fᵀ) / Cp  [m,1]
-    const K = np.divide(np.matmul(G, CFt), Cp);
-
-    // Next state: x_next = G·x + K·v  [m,1]
-    const x_next = np.add(np.matmul(G, x), np.matmul(K, v));
-
-    // L = G - K·F  [m,m]
-    const L = np.subtract(G, np.matmul(K, F));
-    const Lt = np.transpose(L);
-
-    // Next covariance: C_next = G·(C·Lᵀ) + W  [m,m]
-    const CLt = np.matmul(C, Lt);
-    const C_next = np.add(np.matmul(G, CLt), W);
-
-    // Per-step -2·loglik: v²/Cp + log(Cp)
-    const lik_t = np.add(np.divide(np.square(v), Cp), np.log(Cp));
-    return [{ x: x_next, C: C_next }, np.squeeze(lik_t)];
-  };
+  const nar = arInds.length;
+  const nSwParams = 1 + m;
+  const nTheta = nSwParams + nar;
 
   return (theta: np.Array): np.Array => { // AD-traced
+    // Build effective G: constant if no AR fitting, theta-dependent if fitting
+    const G = nar > 0
+      ? buildG(G_base, theta, arInds, m, nSwParams, nTheta, dtype)
+      : G_base;
+
+    // Step function defined here so it captures the correct G
+    type Carry = { x: np.Array; C: np.Array };
+    type ScanInp = { y: np.Array; V2: np.Array; W: np.Array };
+
+    const step = (carry: Carry, inp: ScanInp): [Carry, np.Array] => {
+      const { x, C } = carry;
+      const { y: yi, V2: V2i, W } = inp;
+
+      // Innovation: v = y - F·x  [1,1]
+      const v = np.subtract(yi, np.matmul(F, x));
+
+      // C·Fᵀ: [m,m]@[m,1] → [m,1]
+      const CFt = np.matmul(C, Ft);
+
+      // Innovation covariance: Cp = F·(C·Fᵀ) + V²  [1,1]
+      const Cp = np.add(np.matmul(F, CFt), V2i);
+
+      // Kalman gain: K = G·(C·Fᵀ) / Cp  [m,1]
+      const K = np.divide(np.matmul(G, CFt), Cp);
+
+      // Next state: x_next = G·x + K·v  [m,1]
+      const x_next = np.add(np.matmul(G, x), np.matmul(K, v));
+
+      // L = G - K·F  [m,m]
+      const L = np.subtract(G, np.matmul(K, F));
+      const Lt = np.transpose(L);
+
+      // Next covariance: C_next = G·(C·Lᵀ) + W  [m,m]
+      const CLt = np.matmul(C, Lt);
+      const C_next = np.add(np.matmul(G, CLt), W);
+
+      // Per-step -2·loglik: v²/Cp + log(Cp)
+      const lik_t = np.add(np.divide(np.square(v), Cp), np.log(Cp));
+      return [{ x: x_next, C: C_next }, np.squeeze(lik_t)];
+    };
+
     const expTheta = np.exp(theta);
 
     // s = exp(theta[0]) via dot mask
-    const mask_s = np.array([1, ...new Array(m).fill(0)], { dtype });
+    const mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
     const sVal = np.dot(expTheta, mask_s);
     const V2 = np.reshape(np.square(sVal), [1, 1]);
 
     // W = diag(w²) from theta[1..m]
-    const W = buildDiagW(expTheta, m, dtype);
+    const W = buildDiagW(expTheta, m, dtype, nTheta);
 
     // Broadcast to [n, ...] for scan inputs
     const V2_arr = np.multiply(
@@ -154,7 +209,8 @@ const makeKalmanLoss = (
 /* eslint-enable jax-js/require-using */
 
 /**
- * Estimate DLM parameters (s, w) by maximum likelihood via autodiff.
+ * Estimate DLM parameters (s, w, and optionally arphi) by maximum likelihood
+ * via autodiff.
  *
  * The entire optimization step — `valueAndGrad(loss)` (Kalman filter forward
  * pass + AD backward pass) and optax Adam moment/parameter updates — is
@@ -162,10 +218,12 @@ const makeKalmanLoss = (
  *
  * The parameterization maps unconstrained reals → positive values:
  *   s = exp(θ_s),  w[i] = exp(θ_{w,i})
+ * AR coefficients (when `options.fitar = true`) are optimized directly
+ * (unconstrained — not log-transformed, matching MATLAB DLM behavior).
  *
  * @param y - Observations (n×1)
- * @param options - Model specification (order, trig, ns, arphi, etc.)
- * @param init - Initial guess for parameters (optional)
+ * @param options - Model specification (order, trig, ns, arphi, fitar, etc.)
+ * @param init - Initial guess for parameters (optional; arphi defaults to options.arphi)
  * @param maxIter - Maximum optimizer iterations (default: 200)
  * @param lr - Learning rate for Adam (default: 0.05)
  * @param tol - Convergence tolerance on relative lik change (default: 1e-6)
@@ -175,7 +233,7 @@ const makeKalmanLoss = (
 export const dlmMLE = async (
   y: ArrayLike<number>,
   options: DlmOptions = {},
-  init?: { s?: number; w?: number[] },
+  init?: { s?: number; w?: number[]; arphi?: number[] },
   maxIter: number = 200,
   lr: number = 0.05,
   tol: number = 1e-6,
@@ -190,8 +248,22 @@ export const dlmMLE = async (
   const sys = dlmGenSys(options);
   const m = sys.m;
 
+  // AR fitting setup
+  const arphi_orig = options.arphi ?? [];
+  const fitar = !!(options.fitar && arphi_orig.length > 0);
+  const arInds = fitar ? findArInds(options) : [];
+  const nar = arInds.length;
+
+  // Build G: if fitting AR, zero the AR column (those values come from theta)
+  let G_data = sys.G;
+  if (nar > 0) {
+    G_data = sys.G.map(row => [...row]);
+    const arCol = arInds[0];
+    for (const idx of arInds) G_data[idx][arCol] = 0;
+  }
+
   // System matrices (constants — captured by closure, not differentiated)
-  using G = np.array(sys.G, { dtype });
+  using G = np.array(G_data, { dtype });
   using F = np.array([sys.F], { dtype }); // [1, m]
   using Ft = np.transpose(F);
 
@@ -220,9 +292,11 @@ export const dlmMLE = async (
     - (Array.from(yArr).reduce((s, v) => s + v, 0) / n) ** 2;
   const s_init = init?.s ?? (Math.sqrt(Math.abs(variance)) || 1.0);
   const w_init = init?.w ?? new Array(m).fill(s_init * 0.1);
+  const arphi_init = init?.arphi ?? arphi_orig;
   const theta_init = [
     Math.log(s_init),
     ...w_init.map(wi => Math.log(Math.abs(wi) || 0.01)),
+    ...(fitar ? arphi_init : []),  // unconstrained (not log-transformed); only when fitting AR
   ];
 
   // Build loss & JIT the entire optimization step:
@@ -230,7 +304,7 @@ export const dlmMLE = async (
   // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
   // Traces once, then every iteration is compiled.
 
-  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype);
+  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds);
   const optimizer = adam(lr);
 
   const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
@@ -272,15 +346,20 @@ export const dlmMLE = async (
 
   const s_opt = Math.exp(thetaData[0]);
   const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[1 + i]));
+  const arphi_opt = nar > 0
+    ? Array.from({ length: nar }, (_, i) => thetaData[1 + m + i])
+    : undefined;
 
-  // Run full dlmFit with optimized parameters
-  const fit = await dlmFit(yArr, s_opt, w_opt, dtype, options);
+  // Run full dlmFit with optimized parameters (including fitted arphi if applicable)
+  const fitOptions = arphi_opt ? { ...options, arphi: arphi_opt } : options;
+  const fit = await dlmFit(yArr, s_opt, w_opt, dtype, fitOptions);
 
   const elapsed = performance.now() - t0;
 
   return {
     s: s_opt,
     w: w_opt,
+    arphi: arphi_opt,
     lik: prevLik,
     iterations: iter,
     fit,

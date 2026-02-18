@@ -21,13 +21,17 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 65.66 ms, warm run 32.76 ms. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, before (initial guess, orange dashed) vs after (MLE optimum, blue solid)" src="assets/nile-mle.svg" />
+<img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim.svg" />
 
 *Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
+<img alt="Energy MLE optimization with AR fitting: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
+
+*Energy MLE + AR fitting demo: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.70, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 300 iterations / 7.1 s on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
+
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
-For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The MLE demo uses Nile data with our own autodiff-based parameter estimation (see [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md)).
+For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). See the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md) for details.
 
 ## Installation
 
@@ -86,7 +90,7 @@ console.log(sys.m);  // state dimension
 
 ### MLE parameter estimation
 
-Estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff:
+Estimate observation noise `s`, state noise `w`, and optionally AR coefficients by maximizing the Kalman filter log-likelihood via autodiff:
 
 ```js
 import { dlmMLE } from "dlm-js";
@@ -96,6 +100,7 @@ defaultDevice("wasm"); // recommended: ~30× faster than "cpu"
 
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140 /* ... */];
 
+// Basic: estimate s and w
 const mle = await dlmMLE(
   y,
   { order: 1 },           // model: local linear trend (m=2)
@@ -112,9 +117,18 @@ console.log(mle.lik);         // -2·log-likelihood at optimum
 console.log(mle.iterations);  // iterations to convergence
 console.log(mle.elapsed);     // wall-clock ms
 console.log(mle.fit);         // full DlmFitResult with optimized parameters
+
+// With AR fitting: estimate s, w, and AR coefficients jointly
+const mleAR = await dlmMLE(
+  y,
+  { order: 0, arphi: [0.5], fitar: true },  // initial arphi + fitar flag
+  undefined,
+  300, 0.02, 1e-6, DType.Float64,
+);
+console.log(mleAR.arphi);     // estimated AR coefficients (e.g. [0.81])
 ```
 
-The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`.
+The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Noise parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior).
 
 **Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2, 300 iterations) takes ~5 s. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
@@ -133,7 +147,7 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
-| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s` and state noise `w` by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). optax Adam optimizer, fully `jit()`-compiled. |
+| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). optax Adam optimizer, fully `jit()`-compiled. |
 | float32 computation | ✅ | ❌ | Configurable dtype. Float32 is numerically stable for m ≤ 2; higher dimensions may diverge. GPU/WASM backends available. |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
@@ -147,7 +161,7 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | Covariates / proxies | `dlmfit` X argument, `dlmsmo` X argument | Straightforward to add (identity block in G, `kron(X(i,:), eye(p))` in F), but no use case has required it yet. |
 | Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | Biggest remaining lift — affects all matrix dimensions throughout the filter/smoother. dlm-js currently assumes scalar observations (p = 1). |
 | Missing data (NaN handling) | `dlmsmo` `ig = not(isnan(y(i,:)))` | Requires masking innovation updates for NaN timesteps. Moderate effort; also needs `meannan`/`sumnan` utility functions. |
-| ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. See [MLE estimation](#mle-parameter-estimation) below. |
+| ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. Supports `fitar` for AR coefficient estimation. See [MLE estimation](#mle-parameter-estimation) below. |
 | MCMC parameter estimation | `dlmfit` `options.mcmc` | Depends on Marko Laine's external `mcmcrun` MCMC toolbox, which is not included in the dlm repository. Would require porting or replacing the entire MCMC engine. |
 | State sampling (disturbance smoother) | `dlmsmo` `sample` argument | Generates sampled state trajectories for Gibbs sampling. Only useful together with MCMC parameter estimation, so blocked on MCMC. |
 | Covariance symmetry enforcement | `dlmsmo` `triu(C) + triu(C,1)'` | MATLAB forces exact matrix symmetry at each step to counteract asymmetric floating-point rounding. dlm-js relies on algebraic symmetry; adding enforcement is low effort but has not been needed. |
@@ -175,15 +189,20 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── trigar.svg           # Energy demand demo plot (regenerate with `pnpm run gen:svg`)
-│   └── nile-mle.svg         # Nile MLE optimization plot (regenerate with `pnpm run gen:svg`)
+│   ├── nile-mle-anim.svg    # Nile MLE optimization animation (regenerate with `pnpm run gen:svg`)
+│   ├── nile-mle.svg         # Nile MLE optimization plot (static, regenerate with `pnpm run gen:svg`)
+│   └── energy-mle-anim.svg  # Energy MLE + AR fitting animation (regenerate with `pnpm run gen:svg`)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
-├── scripts/             # SVG plot generators
-│   ├── gen-niledemo-svg.ts      # Nile demo SVG generator
-│   ├── gen-kaisaniemi-svg.ts    # Kaisaniemi seasonal demo SVG generator
-│   ├── gen-trigar-svg.ts        # Energy demand demo SVG generator
-│   └── gen-nile-mle-svg.ts     # Nile MLE before/after optimization SVG generator
+├── scripts/             # SVG plot generators and frame collectors
+│   ├── gen-niledemo-svg.ts          # Nile demo SVG generator
+│   ├── gen-kaisaniemi-svg.ts        # Kaisaniemi seasonal demo SVG generator
+│   ├── gen-trigar-svg.ts            # Energy demand demo SVG generator
+│   ├── gen-nile-mle-svg.ts         # Nile MLE before/after optimization SVG generator
+│   ├── gen-nile-mle-anim-svg.ts    # Nile MLE animated convergence SVG generator
+│   ├── collect-energy-mle-frames.ts # Energy MLE frame data collector (→ tmp/energy-mle-frames.json)
+│   └── gen-energy-mle-anim-svg.ts  # Energy MLE + AR fitting animation SVG generator
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -206,6 +225,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
 │   ├── {order0,order2,seasonal,trig,trigar,level,energy,ar2}-{in,out-m}.json  # Test data (see below)
+│   ├── mle.test.ts          # MLE parameter estimation tests (s/w and AR fitting on WASM)
 │   └── utils.ts             # Test utility functions
 ├── mle-comparison.md    # Comparison of dlm-js MLE vs original MATLAB DLM parameter estimation
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)
@@ -327,7 +347,7 @@ or
 pnpm run test:node
 ```
 
-This runs `niledemo.test.ts`, `gensys.test.ts`, and `synthetic.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, and `mle.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 
