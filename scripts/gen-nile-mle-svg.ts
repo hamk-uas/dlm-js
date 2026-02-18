@@ -13,9 +13,13 @@
 import { defaultDevice, DType } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmFit } from "../src/index.ts";
 import { dlmMLE } from "../src/mle.ts";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
+import {
+  r, makeLinearScale, polylinePoints, bandPathD,
+  renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
+} from "./lib/svg-helpers.ts";
 
 defaultDevice("wasm");
 
@@ -80,22 +84,8 @@ const allVals = [
 const yMin = Math.floor(Math.min(...allVals) / 50) * 50;
 const yMax = Math.ceil(Math.max(...allVals) / 50) * 50;
 
-function sx(val: number): number {
-  return margin.left + ((val - tMin) / (tMax - tMin)) * plotW;
-}
-function sy(val: number): number {
-  return margin.top + ((yMax - val) / (yMax - yMin)) * plotH;
-}
-
-function polyline(xs: number[], ys: number[]): string {
-  return xs.map((x, i) => `${sx(x).toFixed(1)},${sy(ys[i]).toFixed(1)}`).join(" ");
-}
-
-function bandPath(xs: number[], upper: number[], lower: number[]): string {
-  const fwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(upper[i]).toFixed(1)}`);
-  const bwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(lower[i]).toFixed(1)}`).reverse();
-  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
-}
+const sx = makeLinearScale(tMin, tMax, margin.left, margin.left + plotW);
+const sy = makeLinearScale(yMin, yMax, margin.top + plotH, margin.top);
 
 // Bands
 const beforeUpper = beforeLevel.map((v, i) => v + 2 * beforeStd[i]);
@@ -124,40 +114,25 @@ push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-famil
 push(`<rect width="${W}" height="${H}" fill="white"/>`);
 
 // Grid
-for (const v of yTicks) {
-  push(`<line x1="${margin.left}" y1="${sy(v).toFixed(1)}" x2="${W - margin.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
-}
+lines.push(...renderGridLines(yTicks, sy, margin.left, W - margin.right));
 
 // Before band + line
-push(`<path d="${bandPath(t, beforeUpper, beforeLower)}" fill="${beforeBand}" stroke="none"/>`);
-push(`<polyline points="${polyline(t, beforeLevel)}" fill="none" stroke="${beforeColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+push(`<path d="${bandPathD(t, beforeUpper, beforeLower, sx, sy)}" fill="${beforeBand}" stroke="none"/>`);
+push(`<polyline points="${polylinePoints(t, beforeLevel, sx, sy)}" fill="none" stroke="${beforeColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 
 // After band + line
-push(`<path d="${bandPath(t, afterUpper, afterLower)}" fill="${afterBand}" stroke="none"/>`);
-push(`<polyline points="${polyline(t, afterLevel)}" fill="none" stroke="${afterColor}" stroke-width="2"/>`);
+push(`<path d="${bandPathD(t, afterUpper, afterLower, sx, sy)}" fill="${afterBand}" stroke="none"/>`);
+push(`<polyline points="${polylinePoints(t, afterLevel, sx, sy)}" fill="none" stroke="${afterColor}" stroke-width="2"/>`);
 
 // Observations
 for (let i = 0; i < n; i++) {
-  push(`<circle cx="${sx(t[i]).toFixed(1)}" cy="${sy(y[i]).toFixed(1)}" r="2.5" fill="${obsColor}" opacity="0.6"/>`);
+  push(`<circle cx="${r(sx(t[i]))}" cy="${r(sy(y[i]))}" r="2.5" fill="${obsColor}" opacity="0.6"/>`);
 }
 
 // Axes
-push(`<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-push(`<line x1="${margin.left}" y1="${H - margin.bottom}" x2="${W - margin.right}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-
-// Y-axis ticks + labels
-for (const v of yTicks) {
-  const yy = sy(v).toFixed(1);
-  push(`<line x1="${margin.left - 5}" y1="${yy}" x2="${margin.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${margin.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
-}
-
-// X-axis ticks + labels
-for (const v of tTicks) {
-  const xx = sx(v).toFixed(1);
-  push(`<line x1="${xx}" y1="${H - margin.bottom}" x2="${xx}" y2="${H - margin.bottom + 5}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${xx}" y="${H - margin.bottom + 18}" text-anchor="middle" fill="#333">${v}</text>`);
-}
+lines.push(...renderAxesBorder(margin.left, margin.top, W - margin.right, H - margin.bottom));
+lines.push(...renderYAxis(yTicks, sy, margin.left));
+lines.push(...renderXAxis(tTicks.map(v => ({ val: v, label: String(v) })), sx, H - margin.bottom));
 
 // Axis labels
 push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fill="#333" font-size="13">Year</text>`);
@@ -192,8 +167,5 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outDir = resolve(root, "assets");
-mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "nile-mle.svg");
-writeFileSync(outPath, lines.join("\n"), "utf8");
-console.log(`\nWritten: ${outPath}`);
+const outPath = resolve(root, "assets", "nile-mle.svg");
+writeSvg(lines, outPath);

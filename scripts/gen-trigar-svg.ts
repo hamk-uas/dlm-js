@@ -17,9 +17,13 @@
 
 import { dlmFit } from "../src/index.ts";
 import { checkLeaks, DType } from "@hamk-uas/jax-js-nonconsuming";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
+import {
+  r, polylinePoints, bandPathD, yTicksFromRange,
+  renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
+} from "./lib/svg-helpers.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const input = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "utf8"));
@@ -143,31 +147,6 @@ function makeSy(yMin: number, yMax: number, panelTop: number) {
   return (val: number): number => panelTop + ((yMax - val) / (yMax - yMin)) * panelH;
 }
 
-function polyline(xs: number[], ys: number[], sy: (v: number) => number): string {
-  return xs.map((x, i) => `${sx(x).toFixed(1)},${sy(ys[i]).toFixed(1)}`).join(" ");
-}
-
-function bandPath(
-  xs: number[],
-  upper: number[],
-  lower: number[],
-  sy: (v: number) => number,
-): string {
-  const fwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(upper[i]).toFixed(1)}`);
-  const bwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(lower[i]).toFixed(1)}`).reverse();
-  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
-}
-
-function yTicksFromRange(min: number, max: number, step?: number): number[] {
-  const span = max - min;
-  const s = step ?? (span > 40 ? 10 : span > 15 ? 5 : span > 6 ? 2 : 1);
-  const ticks: number[] = [];
-  const start = Math.ceil(min / s) * s;
-  const end = Math.floor(max / s) * s;
-  for (let v = start; v <= end; v += s) ticks.push(v);
-  return ticks;
-}
-
 // ── Build SVG ──────────────────────────────────────────────────────────────
 
 const lines: string[] = [];
@@ -256,46 +235,33 @@ for (let p = 0; p < panels.length; p++) {
   const yTicks = yTicksFromRange(yMin, yMax);
 
   // Grid
-  for (const v of yTicks) {
-    push(`<line x1="${outer.left}" y1="${sy(v).toFixed(1)}" x2="${W - outer.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
-  }
+  lines.push(...renderGridLines(yTicks, sy, outer.left, W - outer.right));
 
   // Bands
-  push(`<path d="${bandPath(t, jsUpper, jsLower, sy)}" fill="${jsBandColor}" stroke="none"/>`);
-  push(`<path d="${bandPath(t, octUpper, octLower, sy)}" fill="${octBandColor}" stroke="none"/>`);
+  push(`<path d="${bandPathD(t, jsUpper, jsLower, sx, sy)}" fill="${jsBandColor}" stroke="none"/>`);
+  push(`<path d="${bandPathD(t, octUpper, octLower, sx, sy)}" fill="${octBandColor}" stroke="none"/>`);
 
   // True state (green, thin dashed)
-  push(`<polyline points="${polyline(t, panel.trueMean, sy)}" fill="none" stroke="${trueColor}" stroke-width="1.5" stroke-dasharray="3,3"/>`);
+  push(`<polyline points="${polylinePoints(t, panel.trueMean, sx, sy)}" fill="none" stroke="${trueColor}" stroke-width="1.5" stroke-dasharray="3,3"/>`);
 
   // Smoothed lines
-  push(`<polyline points="${polyline(t, panel.jsMean, sy)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
-  push(`<polyline points="${polyline(t, panel.octMean, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+  push(`<polyline points="${polylinePoints(t, panel.jsMean, sx, sy)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+  push(`<polyline points="${polylinePoints(t, panel.octMean, sx, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 
   // Observations
   if (panel.showObs) {
     for (let i = 0; i < n; i++) {
-      push(`<circle cx="${sx(t[i]).toFixed(1)}" cy="${sy(y[i]).toFixed(1)}" r="2.0" fill="${obsColor}" opacity="0.50"/>`);
+      push(`<circle cx="${r(sx(t[i]))}" cy="${r(sy(y[i]))}" r="2.0" fill="${obsColor}" opacity="0.50"/>`);
     }
   }
 
   // Axes
-  push(`<line x1="${outer.left}" y1="${panelTop}" x2="${outer.left}" y2="${panelTop + panelH}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<line x1="${outer.left}" y1="${panelTop + panelH}" x2="${W - outer.right}" y2="${panelTop + panelH}" stroke="#333" stroke-width="1.5"/>`);
-
-  // Y-axis ticks
-  for (const v of yTicks) {
-    const yy = sy(v).toFixed(1);
-    push(`<line x1="${outer.left - 5}" y1="${yy}" x2="${outer.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
-    push(`<text x="${outer.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
-  }
+  lines.push(...renderAxesBorder(outer.left, panelTop, W - outer.right, panelTop + panelH));
+  lines.push(...renderYAxis(yTicks, sy, outer.left));
 
   // X-axis ticks (bottom panel only)
   if (showXAxis) {
-    for (const tick of xTicks) {
-      const xx = sx(tick.val).toFixed(1);
-      push(`<line x1="${xx}" y1="${panelTop + panelH}" x2="${xx}" y2="${panelTop + panelH + 5}" stroke="#333" stroke-width="1.5"/>`);
-      push(`<text x="${xx}" y="${panelTop + panelH + 18}" text-anchor="middle" fill="#333">${tick.label}</text>`);
-    }
+    lines.push(...renderXAxis(xTicks.map(tick => ({ val: tick.val, label: tick.label })), sx, panelTop + panelH));
   }
 
   // Panel title
@@ -328,12 +294,8 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outDir = resolve(root, "assets");
-mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "trigar.svg");
-writeFileSync(outPath, lines.join("\n"), "utf8");
-
-console.log(`Written: ${outPath}`);
+const outPath = resolve(root, "assets", "trigar.svg");
+writeSvg(lines, outPath);
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`,
 );

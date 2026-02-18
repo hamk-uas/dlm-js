@@ -10,8 +10,15 @@
  * Usage:  npx tsx scripts/gen-energy-mle-anim-svg.ts
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import {
+  r, makeLinearScale, renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
+} from "./lib/svg-helpers.ts";
+import {
+  computeKeyTimes, buildAnimPolylineValues, buildAnimBandValues,
+  sparklinePoints, renderSparkline,
+} from "./lib/svg-anim-helpers.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const data = JSON.parse(readFileSync(resolve(root, "tmp/energy-mle-frames.json"), "utf8"));
@@ -68,16 +75,8 @@ for (const f of frames) {
 const yMin = Math.floor(Math.min(...allVals) / 10) * 10;
 const yMax = Math.ceil(Math.max(...allVals) / 10) * 10;
 
-function sx(val: number): number {
-  return margin.left + ((val - tMin) / (tMax - tMin)) * plotW;
-}
-function sy(val: number): number {
-  return margin.top + ((yMax - val) / (yMax - yMin)) * plotH;
-}
-
-function r(v: number): string {
-  return v.toFixed(1);
-}
+const sx = makeLinearScale(tMin, tMax, margin.left, margin.left + plotW);
+const sy = makeLinearScale(yMin, yMax, margin.top + plotH, margin.top);
 
 // ── Animation timing ───────────────────────────────────────────────────────
 
@@ -85,33 +84,22 @@ const animDuration = elapsedMs / 1000;
 const totalDuration = animDuration + holdSeconds;
 const numFrames = frames.length;
 
-const keyTimes: number[] = [];
-for (let i = 0; i < numFrames; i++) {
-  keyTimes.push((i / (numFrames - 1)) * animDuration / totalDuration);
-}
-keyTimes.push(1.0);
-
+const keyTimes = computeKeyTimes(numFrames, animDuration, totalDuration);
 const keyTimesStr = keyTimes.map(kt => kt.toFixed(4)).join(";");
 
 // ── Pre-compute polyline points and band paths per frame ───────────────────
 
-function makePolyline(vals: number[]): string {
-  return t.map((tv, i) => `${r(sx(tv))},${r(sy(vals[i]))}`).join(" ");
-}
+const polylineValues = buildAnimPolylineValues(
+  frames.map((f: any) => f.combined as number[]), t, sx, sy,
+);
 
-function makeBandPath(vals: number[], stds: number[]): string {
-  const fwd = t.map((tv, i) => `${r(sx(tv))},${r(sy(vals[i] + 2 * stds[i]))}`);
-  const bwd = t
-    .map((tv, i) => `${r(sx(tv))},${r(sy(vals[i] - 2 * stds[i]))}`)
-    .reverse();
-  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
-}
-
-const polylineValues: string[] = frames.map(f => makePolyline(f.combined));
-polylineValues.push(polylineValues[polylineValues.length - 1]);
-
-const bandValues: string[] = frames.map(f => makeBandPath(f.combined, f.combinedStd));
-bandValues.push(bandValues[bandValues.length - 1]);
+const bandValues = buildAnimBandValues(
+  frames.map((f: any) => ({
+    upper: f.combined.map((v: number, i: number) => v + 2 * f.combinedStd[i]),
+    lower: f.combined.map((v: number, i: number) => v - 2 * f.combinedStd[i]),
+  })),
+  t, sx, sy,
+);
 
 // ── Legend layout ──────────────────────────────────────────────────────────
 
@@ -135,22 +123,14 @@ const sparkY2 = sparkY1 + sparkH1 + sparkGap;
 // −2·logL sparkline
 const likMin = Math.min(...likHistory);
 const likMax = Math.max(...likHistory);
-const likRange = likMax - likMin || 1;
 
-function sparkPt(i: number, val: number, sy_: number, sh: number, vmin: number, vrange: number): string {
-  const px = sparkX + (i / (likHistory.length - 1)) * sparkW;
-  const py = sy_ + sh - ((val - vmin) / vrange) * sh;
-  return `${r(px)},${r(py)}`;
-}
-
-const sparkLikPoints = likHistory.map((v, i) => sparkPt(i, v, sparkY1, sparkH1, likMin, likRange)).join(" ");
+const sparkLikPoints = sparklinePoints(likHistory, sparkX, sparkY1, sparkW, sparkH1, likMin, likMax);
 
 // arphi sparkline
 const arphiMin = Math.min(...arphiHistory) * 0.95;
 const arphiMax = Math.max(...arphiHistory) * 1.05;
-const arphiRange = arphiMax - arphiMin || 1;
 
-const sparkArphiPoints = arphiHistory.map((v, i) => sparkPt(i, v, sparkY2, sparkH2, arphiMin, arphiRange)).join(" ");
+const sparkArphiPoints = sparklinePoints(arphiHistory, sparkX, sparkY2, sparkW, sparkH2, arphiMin, arphiMax);
 
 // ── Ticks ──────────────────────────────────────────────────────────────────
 
@@ -195,9 +175,7 @@ push(`  </clipPath>`);
 push(`</defs>`);
 
 // Grid lines
-for (const v of yTicks) {
-  push(`<line x1="${margin.left}" y1="${r(sy(v))}" x2="${W - margin.right}" y2="${r(sy(v))}" stroke="#e5e7eb" stroke-width="1"/>`);
-}
+lines.push(...renderGridLines(yTicks, sy, margin.left, W - margin.right));
 
 // ── Animated elements ──────────────────────────────────────────────────────
 
@@ -222,19 +200,14 @@ for (let i = 0; i < n; i++) {
 
 // ── Axes ───────────────────────────────────────────────────────────────────
 
-push(`<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-push(`<line x1="${margin.left}" y1="${H - margin.bottom}" x2="${W - margin.right}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
+lines.push(...renderAxesBorder(margin.left, margin.top, W - margin.right, H - margin.bottom));
+lines.push(...renderYAxis(yTicks, sy, margin.left));
 
-for (const v of yTicks) {
-  const yy = r(sy(v));
-  push(`<line x1="${margin.left - 5}" y1="${yy}" x2="${margin.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${margin.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
-}
-for (const v of tTicks) {
-  const xx = r(sx(v));
-  push(`<line x1="${xx}" y1="${H - margin.bottom}" x2="${xx}" y2="${H - margin.bottom + 5}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${xx}" y="${H - margin.bottom + 18}" text-anchor="middle" fill="#333">${v === 12 ? "1y" : v === 24 ? "2y" : v === 36 ? "3y" : v === 48 ? "4y" : v === 60 ? "5y" : v === 72 ? "6y" : v === 84 ? "7y" : v === 96 ? "8y" : v === 108 ? "9y" : v === 120 ? "10y" : String(v)}</text>`);
-}
+const xTickLabels = tTicks.map(v => {
+  const yrs = v / 12;
+  return { val: v, label: Number.isInteger(yrs) ? `${yrs}y` : String(v) };
+});
+lines.push(...renderXAxis(xTickLabels, sx, H - margin.bottom));
 
 push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fill="#333" font-size="13">Month</text>`);
 push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${margin.top + plotH / 2})">Energy demand</text>`);
@@ -264,25 +237,30 @@ push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#
 
 // ── Convergence miniplots (right half) ─────────────────────────────────────
 
-// −2·logL sparkline
-push(`<text x="${sparkX}" y="${sparkY1 - 2}" fill="#666" font-size="8">−2·logL</text>`);
+// Both sparklines share the clip
 push(`<g clip-path="url(#spark-clip)">`);
-push(`  <polyline points="${sparkLikPoints}" fill="none" stroke="${sparkLikColor}" stroke-width="1.5" stroke-linejoin="round"/>`);
-push(`</g>`);
-push(`<line x1="${sparkX}" y1="${sparkY1 + sparkH1}" x2="${sparkX + sparkW}" y2="${sparkY1 + sparkH1}" stroke="#eee" stroke-width="0.5"/>`);
-// y labels
-push(`<text x="${sparkX - 2}" y="${sparkY1 + 3}" text-anchor="end" fill="#999" font-size="7">${likMax.toFixed(0)}</text>`);
-push(`<text x="${sparkX - 2}" y="${sparkY1 + sparkH1}" text-anchor="end" fill="#999" font-size="7">${likMin.toFixed(0)}</text>`);
+
+// −2·logL sparkline
+lines.push(...renderSparkline({
+  points: sparkLikPoints,
+  color: sparkLikColor,
+  x0: sparkX, y0: sparkY1, w: sparkW, h: sparkH1,
+  label: "\u22122\u00b7logL",
+  vmin: likMin, vmax: likMax,
+}));
 
 // arphi sparkline
-push(`<text x="${sparkX}" y="${sparkY2 - 2}" fill="#666" font-size="8">\u03c6 (AR)</text>`);
-push(`<g clip-path="url(#spark-clip)">`);
-push(`  <polyline points="${sparkArphiPoints}" fill="none" stroke="${sparkArColor}" stroke-width="1.5" stroke-linejoin="round"/>`);
+lines.push(...renderSparkline({
+  points: sparkArphiPoints,
+  color: sparkArColor,
+  x0: sparkX, y0: sparkY2, w: sparkW, h: sparkH2,
+  label: "\u03c6 (AR)",
+  vmin: arphiMin, vmax: arphiMax,
+  vminFmt: arphiMin.toFixed(2),
+  vmaxFmt: arphiMax.toFixed(2),
+}));
+
 push(`</g>`);
-push(`<line x1="${sparkX}" y1="${sparkY2 + sparkH2}" x2="${sparkX + sparkW}" y2="${sparkY2 + sparkH2}" stroke="#eee" stroke-width="0.5"/>`);
-// y labels
-push(`<text x="${sparkX - 2}" y="${sparkY2 + 3}" text-anchor="end" fill="#999" font-size="7">${arphiMax.toFixed(2)}</text>`);
-push(`<text x="${sparkX - 2}" y="${sparkY2 + sparkH2}" text-anchor="end" fill="#999" font-size="7">${arphiMin.toFixed(2)}</text>`);
 
 // Shared x-axis labels
 const sparkAxisY = sparkY2 + sparkH2 + 8;
@@ -294,11 +272,6 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outDir = resolve(root, "assets");
-mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "energy-mle-anim.svg");
-writeFileSync(outPath, lines.join("\n"), "utf8");
-
-const sizeKb = (Buffer.byteLength(lines.join("\n")) / 1024).toFixed(0);
-console.log(`Written: ${outPath} (${sizeKb} KB)`);
+const outPath = resolve(root, "assets", "energy-mle-anim.svg");
+writeSvg(lines, outPath);
 console.log(`  ${numFrames} frames, ${r(totalDuration)}s cycle (${r(animDuration)}s play + ${holdSeconds}s hold)`);

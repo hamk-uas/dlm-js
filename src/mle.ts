@@ -238,6 +238,12 @@ export const dlmMLE = async (
   lr: number = 0.05,
   tol: number = 1e-6,
   dtype: DType = DType.Float64,
+  callbacks?: {
+    /** Called before iteration 0 with the initial theta. */
+    onInit?: (theta: Float64Array | Float32Array) => void;
+    /** Called after each iteration with the updated theta and lik. */
+    onIteration?: (iter: number, theta: Float64Array | Float32Array, lik: number) => void;
+  },
 ): Promise<DlmMleResult> => {
   const t0 = performance.now();
   const n = y.length;
@@ -318,6 +324,12 @@ export const dlmMLE = async (
   let theta = np.array(theta_init, { dtype });
   let optState: any = optimizer.init(theta);
 
+  // Notify callback with initial theta
+  if (callbacks?.onInit) {
+    const initData = await theta.data() as Float64Array | Float32Array;
+    callbacks.onInit(initData);
+  }
+
   const likHistory: number[] = [];
   let prevLik = Infinity;
   let iter = 0;
@@ -326,6 +338,12 @@ export const dlmMLE = async (
     const [newTheta, newOptState, likVal] = optimStep(theta, optState);
     const likNum = (await likVal.consumeData() as Float64Array | Float32Array)[0];
     likHistory.push(likNum);
+
+    // Notify callback with updated theta
+    if (callbacks?.onIteration) {
+      const td = await newTheta.data() as Float64Array | Float32Array;
+      callbacks.onIteration(iter, td, likNum);
+    }
 
     // Dispose old state
     theta.dispose(); tree.dispose(optState);

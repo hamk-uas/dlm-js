@@ -8,9 +8,13 @@
 
 import { dlmFit } from "../src/index.ts";
 import { checkLeaks, DType } from "@hamk-uas/jax-js-nonconsuming";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
+import {
+  r, makeLinearScale, polylinePoints, bandPathD,
+  renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
+} from "./lib/svg-helpers.ts";
 
 // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -82,23 +86,8 @@ const allVals = [
 const yMin = Math.floor(Math.min(...allVals) / 50) * 50;
 const yMax = Math.ceil(Math.max(...allVals) / 50) * 50;
 
-function sx(val: number): number {
-  return margin.left + ((val - tMin) / (tMax - tMin)) * plotW;
-}
-function sy(val: number): number {
-  return margin.top + ((yMax - val) / (yMax - yMin)) * plotH;
-}
-
-// Helpers
-function polyline(xs: number[], ys: number[]): string {
-  return xs.map((x, i) => `${sx(x).toFixed(1)},${sy(ys[i]).toFixed(1)}`).join(" ");
-}
-
-function bandPath(xs: number[], upper: number[], lower: number[]): string {
-  const fwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(upper[i]).toFixed(1)}`);
-  const bwd = xs.map((x, i) => `${sx(x).toFixed(1)},${sy(lower[i]).toFixed(1)}`).reverse();
-  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
-}
+const sx = makeLinearScale(tMin, tMax, margin.left, margin.left + plotW);
+const sy = makeLinearScale(yMin, yMax, margin.top + plotH, margin.top); // inverted: high values at top
 
 // Confidence bands (smoothed level ± 2σ)
 const jsUpper = jsLevel.map((v, i) => v + 2 * jsLevelStd[i]);
@@ -129,41 +118,26 @@ push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-famil
 push(`<rect width="${W}" height="${H}" fill="white"/>`);
 
 // Grid lines
-for (const v of yTicks) {
-  push(`<line x1="${margin.left}" y1="${sy(v).toFixed(1)}" x2="${W - margin.right}" y2="${sy(v).toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`);
-}
+lines.push(...renderGridLines(yTicks, sy, margin.left, W - margin.right));
 
 // 1. dlm-js confidence band (blue, low alpha)
-push(`<path d="${bandPath(t, jsUpper, jsLower)}" fill="${jsBandColor}" stroke="none"/>`);
+push(`<path d="${bandPathD(t, jsUpper, jsLower, sx, sy)}" fill="${jsBandColor}" stroke="none"/>`);
 // 2. MATLAB/Octave confidence band (red, low alpha)
-push(`<path d="${bandPath(t, octUpper, octLower)}" fill="${octBandColor}" stroke="none"/>`);
+push(`<path d="${bandPathD(t, octUpper, octLower, sx, sy)}" fill="${octBandColor}" stroke="none"/>`);
 // 3. dlm-js smoothed level (blue, full opacity)
-push(`<polyline points="${polyline(t, jsLevel)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+push(`<polyline points="${polylinePoints(t, jsLevel, sx, sy)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
 // 4. MATLAB/Octave smoothed level (red dashed, full opacity)
-push(`<polyline points="${polyline(t, octLevel)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
+push(`<polyline points="${polylinePoints(t, octLevel, sx, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 
 // Observations
 for (let i = 0; i < n; i++) {
-  push(`<circle cx="${sx(t[i]).toFixed(1)}" cy="${sy(y[i]).toFixed(1)}" r="2.5" fill="${obsColor}" opacity="0.6"/>`);
+  push(`<circle cx="${r(sx(t[i]))}" cy="${r(sy(y[i]))}" r="2.5" fill="${obsColor}" opacity="0.6"/>`);
 }
 
 // Axes
-push(`<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-push(`<line x1="${margin.left}" y1="${H - margin.bottom}" x2="${W - margin.right}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-
-// Y-axis ticks + labels
-for (const v of yTicks) {
-  const yy = sy(v).toFixed(1);
-  push(`<line x1="${margin.left - 5}" y1="${yy}" x2="${margin.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${margin.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
-}
-
-// X-axis ticks + labels
-for (const v of tTicks) {
-  const xx = sx(v).toFixed(1);
-  push(`<line x1="${xx}" y1="${H - margin.bottom}" x2="${xx}" y2="${H - margin.bottom + 5}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${xx}" y="${H - margin.bottom + 18}" text-anchor="middle" fill="#333">${v}</text>`);
-}
+lines.push(...renderAxesBorder(margin.left, margin.top, W - margin.right, H - margin.bottom));
+lines.push(...renderYAxis(yTicks, sy, margin.left));
+lines.push(...renderXAxis(tTicks.map(v => ({ val: v, label: String(v) })), sx, H - margin.bottom));
 
 // Axis labels
 push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fill="#333" font-size="13">Year</text>`);
@@ -192,11 +166,8 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outDir = resolve(root, "assets");
-mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "niledemo.svg");
-writeFileSync(outPath, lines.join("\n"), "utf8");
-console.log(`Written: ${outPath}`);
+const outPath = resolve(root, "assets", "niledemo.svg");
+writeSvg(lines, outPath);
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`
 );

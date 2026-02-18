@@ -12,8 +12,15 @@
  * Usage:  npx tsx scripts/gen-nile-mle-anim-svg.ts
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import {
+  r, makeLinearScale, renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
+} from "./lib/svg-helpers.ts";
+import {
+  computeKeyTimes, buildAnimPolylineValues, buildAnimBandValues,
+  sparklinePoints, renderSparkline,
+} from "./lib/svg-anim-helpers.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const data = JSON.parse(readFileSync(resolve(root, "tmp/mle-frames.json"), "utf8"));
@@ -67,17 +74,8 @@ for (const f of frames) {
 const yMin = Math.floor(Math.min(...allVals) / 50) * 50;
 const yMax = Math.ceil(Math.max(...allVals) / 50) * 50;
 
-function sx(val: number): number {
-  return margin.left + ((val - tMin) / (tMax - tMin)) * plotW;
-}
-function sy(val: number): number {
-  return margin.top + ((yMax - val) / (yMax - yMin)) * plotH;
-}
-
-// Round to 1 decimal for compact SVG
-function r(v: number): string {
-  return v.toFixed(1);
-}
+const sx = makeLinearScale(tMin, tMax, margin.left, margin.left + plotW);
+const sy = makeLinearScale(yMin, yMax, margin.top + plotH, margin.top);
 
 // ── Animation timing ───────────────────────────────────────────────────────
 
@@ -85,36 +83,22 @@ const animDuration = elapsedMs / 1000;
 const totalDuration = animDuration + holdSeconds;
 const numFrames = frames.length;
 
-// keyTimes: frames spread across animDuration, then hold at 1.0
-// numFrames values + 1 duplicate for hold = numFrames+1 entries
-const keyTimes: number[] = [];
-for (let i = 0; i < numFrames; i++) {
-  keyTimes.push((i / (numFrames - 1)) * animDuration / totalDuration);
-}
-keyTimes.push(1.0);
-
+const keyTimes = computeKeyTimes(numFrames, animDuration, totalDuration);
 const keyTimesStr = keyTimes.map(t => t.toFixed(4)).join(";");
 
 // ── Pre-compute polyline points and band paths per frame ───────────────────
 
-function makePolyline(level: number[]): string {
-  return t.map((tv, i) => `${r(sx(tv))},${r(sy(level[i]))}`).join(" ");
-}
+const polylineValues = buildAnimPolylineValues(
+  frames.map((f: any) => f.level as number[]), t, sx, sy,
+);
 
-function makeBandPath(level: number[], std: number[]): string {
-  const fwd = t.map((tv, i) => `${r(sx(tv))},${r(sy(level[i] + 2 * std[i]))}`);
-  const bwd = t
-    .map((tv, i) => `${r(sx(tv))},${r(sy(level[i] - 2 * std[i]))}`)
-    .reverse();
-  return `M${fwd.join("L")}L${bwd.join("L")}Z`;
-}
-
-// 41 frame values + 1 duplicate of last for hold
-const polylineValues: string[] = frames.map(f => makePolyline(f.level));
-polylineValues.push(polylineValues[polylineValues.length - 1]);
-
-const bandValues: string[] = frames.map(f => makeBandPath(f.level, f.std));
-bandValues.push(bandValues[bandValues.length - 1]);
+const bandValues = buildAnimBandValues(
+  frames.map((f: any) => ({
+    upper: f.level.map((v: number, i: number) => v + 2 * f.std[i]),
+    lower: f.level.map((v: number, i: number) => v - 2 * f.std[i]),
+  })),
+  t, sx, sy,
+);
 
 // ── Loss sparkline (drawn in legend area) ──────────────────────────────────
 
@@ -134,14 +118,8 @@ const sparkY = legY + sparkMarginTop;
 
 const likMin = Math.min(...likHistory);
 const likMax = Math.max(...likHistory);
-const likRange = likMax - likMin || 1;
 
-function sparkPt(i: number, lik: number): string {
-  const px = sparkX + (i / (likHistory.length - 1)) * sparkW;
-  const py = sparkY + sparkH - ((lik - likMin) / likRange) * sparkH;
-  return `${r(px)},${r(py)}`;
-}
-const sparkPoints = likHistory.map((lik, i) => sparkPt(i, lik)).join(" ");
+const sparkPoints = sparklinePoints(likHistory, sparkX, sparkY, sparkW, sparkH, likMin, likMax);
 
 // ── Ticks ──────────────────────────────────────────────────────────────────
 
@@ -182,9 +160,7 @@ push(`  </clipPath>`);
 push(`</defs>`);
 
 // Grid lines
-for (const v of yTicks) {
-  push(`<line x1="${margin.left}" y1="${r(sy(v))}" x2="${W - margin.right}" y2="${r(sy(v))}" stroke="#e5e7eb" stroke-width="1"/>`);
-}
+lines.push(...renderGridLines(yTicks, sy, margin.left, W - margin.right));
 
 // ── Animated elements (clipped to plot area) ───────────────────────────────
 
@@ -209,19 +185,9 @@ for (let i = 0; i < n; i++) {
 
 // ── Axes ───────────────────────────────────────────────────────────────────
 
-push(`<line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-push(`<line x1="${margin.left}" y1="${H - margin.bottom}" x2="${W - margin.right}" y2="${H - margin.bottom}" stroke="#333" stroke-width="1.5"/>`);
-
-for (const v of yTicks) {
-  const yy = r(sy(v));
-  push(`<line x1="${margin.left - 5}" y1="${yy}" x2="${margin.left}" y2="${yy}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${margin.left - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle" fill="#333">${v}</text>`);
-}
-for (const v of tTicks) {
-  const xx = r(sx(v));
-  push(`<line x1="${xx}" y1="${H - margin.bottom}" x2="${xx}" y2="${H - margin.bottom + 5}" stroke="#333" stroke-width="1.5"/>`);
-  push(`<text x="${xx}" y="${H - margin.bottom + 18}" text-anchor="middle" fill="#333">${v}</text>`);
-}
+lines.push(...renderAxesBorder(margin.left, margin.top, W - margin.right, H - margin.bottom));
+lines.push(...renderYAxis(yTicks, sy, margin.left));
+lines.push(...renderXAxis(tTicks.map(v => ({ val: v, label: String(v) })), sx, H - margin.bottom));
 
 push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fill="#333" font-size="13">Year</text>`);
 push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${margin.top + plotH / 2})">Annual flow</text>`);
@@ -248,20 +214,16 @@ push(`<text x="${legX + 24}" y="${legY + 48}" dominant-baseline="middle" fill="#
 
 // ── Convergence miniplot (right half of legend) ────────────────────────────
 
-// Label
-push(`<text x="${sparkX}" y="${sparkY - 3}" fill="#666" font-size="9">\u22122\u00b7logL</text>`);
-
 // Loss sparkline (with progressive reveal clip)
 push(`<g clip-path="url(#spark-clip)">`);
-push(`  <polyline points="${sparkPoints}" fill="none" stroke="${sparkColor}" stroke-width="1.5" stroke-linejoin="round"/>`);
+lines.push(...renderSparkline({
+  points: sparkPoints,
+  color: sparkColor,
+  x0: sparkX, y0: sparkY, w: sparkW, h: sparkH,
+  label: "\u22122\u00b7logL",
+  vmin: likMin, vmax: likMax,
+}));
 push(`</g>`);
-
-// Sparkline axis line (full, thin)
-push(`<line x1="${sparkX}" y1="${sparkY + sparkH}" x2="${sparkX + sparkW}" y2="${sparkY + sparkH}" stroke="#ddd" stroke-width="0.5"/>`);
-
-// Sparkline y markers
-push(`<text x="${sparkX - 2}" y="${sparkY + 4}" text-anchor="end" fill="#999" font-size="7">${likMax.toFixed(0)}</text>`);
-push(`<text x="${sparkX - 2}" y="${sparkY + sparkH}" text-anchor="end" fill="#999" font-size="7">${likMin.toFixed(0)}</text>`);
 
 // Sparkline iteration axis labels: "0", "iters", "199"
 const sparkAxisY = sparkY + sparkH + 9;
@@ -273,11 +235,6 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outDir = resolve(root, "assets");
-mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "nile-mle-anim.svg");
-writeFileSync(outPath, lines.join("\n"), "utf8");
-
-const sizeKb = (Buffer.byteLength(lines.join("\n")) / 1024).toFixed(0);
-console.log(`Written: ${outPath} (${sizeKb} KB)`);
+const outPath = resolve(root, "assets", "nile-mle-anim.svg");
+writeSvg(lines, outPath);
 console.log(`  ${numFrames} frames, ${r(totalDuration)}s cycle (${r(animDuration)}s play + ${holdSeconds}s hold)`);
