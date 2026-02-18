@@ -390,7 +390,8 @@ const dlmSmo = async (
  * states beyond w.length.
  *
  * @param y - Observations (n×1 array)
- * @param s - Observation noise standard deviation
+ * @param s - Observation noise standard deviation: scalar (same for all timesteps)
+ *            or array of length n (per-observation sigma, e.g. satellite uncertainty)
  * @param w - State noise standard deviations (diagonal of sqrt(W))
  * @param dtype - Computation precision (default: Float64)
  * @param options - Model specification (default: order=1, no seasonal)
@@ -399,7 +400,7 @@ const dlmSmo = async (
  */
 export const dlmFit = async (
   y: ArrayLike<number>,
-  s: number,
+  s: number | ArrayLike<number>,
   w: number[],
   dtype: DType = DType.Float64,
   options: DlmOptions = {},
@@ -410,8 +411,13 @@ export const dlmFit = async (
 
   // Convert input to TypedArray if needed
   const yArr = y instanceof FA ? y : FA.from(y);
-  // Observation noise std dev (constant for all timesteps)
-  const V_std = new FA(n).fill(s);
+  // Observation noise std dev — scalar or per-observation array
+  const V_std: InstanceType<typeof FA> = (() => {
+    if (typeof s === "number") return new FA(n).fill(s);
+    const arr = new FA(n);
+    for (let i = 0; i < n; i++) arr[i] = (s as ArrayLike<number>)[i];
+    return arr;
+  })();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Generate system matrices from options
