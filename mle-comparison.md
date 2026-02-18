@@ -91,6 +91,10 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 **Key observations:**
 - **Nile (n=100, m=2):** Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.
 
+- **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~0.4), consistent with matching likelihood formulations under different optimization details.
+- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in 107 iterations (3.5 s, b2=0.9). This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead. Note: b2=0.9 also found a better optimum (−2logL=330.8) than b2=0.999 (341.6), suggesting the prior default was getting stuck in a plateau.
+- **Joint $s+w$ fitting:** dlm-js `dlmMLE` always fits both $s$ and $w$ together, while the MATLAB DLM toolbox (run under Octave) can fit $w$ only (`fitv=0`), which is faster when $s$ is known.
+
 ### Gradient checkpointing: always use `checkpoint: false`
 
 `lax.scan` supports gradient checkpointing on the backward (AD) pass, controlled by a `checkpoint` option:
@@ -111,9 +115,7 @@ For typical DLM dataset sizes (n ≲ a few hundred), the carry at each time step
 All explicit segment sizes (5, 11, 20, 40) performed similarly to `true`, confirming the penalty is purely from extra recomputation (not memory pressure). Setting `seg=n` is equivalent to `false` and produces the same fast result.
 
 **Conclusion:** `dlmMLE` now unconditionally uses `checkpoint: false` for the `lax.scan` inside `makeKalmanLoss`. For very long series (n ≫ 1000) where per-carry memory could become a concern, an explicit segment size could be re-introduced at that time.
-- **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~0.4), consistent with matching likelihood formulations under different optimization details.
-- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in 107 iterations (3.5 s, b2=0.9). This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead. Note: b2=0.9 also found a better optimum (−2logL=330.8) than b2=0.999 (341.6), suggesting the prior default was getting stuck in a plateau.
-- **Joint $s+w$ fitting:** dlm-js `dlmMLE` always fits both $s$ and $w$ together, while the MATLAB DLM toolbox (run under Octave) can fit $w$ only (`fitv=0`), which is faster when $s$ is known.
+
 
 ## MCMC (MATLAB DLM toolbox feature, not tested)
 
@@ -173,10 +175,10 @@ This means the sequential `lax.scan` (O(n) depth) could be replaced by `lax.asso
 
 **Production use in Pyro/NumPyro:** This is not just theoretical — Pyro's `GaussianHMM` distribution already uses parallel-scan Kalman filtering for inference, "allowing fast analysis of very long time series" [2]. Their `LinearHMM` (heavy-tailed variant) uses parallel auxiliary variable methods that reduce to `GaussianHMM`, then applies parallel-scan inference. The Pyro forecasting tutorial demonstrates this on BART ridership data (n = 78,888 hourly observations) where sequential filtering would be impractical [2]. NumPyro's HMM enumeration example uses the same approach via `scan()` with parallel semantics, explicitly citing Särkkä & García-Fernández for "reduc[ing] parallel complexity from O(length) to O(log(length))" [3].
 
-**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan formulations, sequential depth can drop from O(n) to O(log n), which can accelerate each optimizer iteration on sufficiently long sequences and parallel hardware. For the energy demo (n=120, 300 iters, ~7.7 s), the theoretical serial depth reduction is from about 120 to about 7 per iteration.
+**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan formulations, sequential depth can drop from O(n) to O(log n), which can accelerate each optimizer iteration on sufficiently long sequences and parallel hardware. For the energy demo (n=120, 295 iters, ~5.9 s), the theoretical serial depth reduction is from about 120 to about 7 per iteration.
 
 **Practical caveats for dlm-js today:**
-- **Short series ($n \approx 100$–$120$):** The depth reduction is real, but parallel scans add constant-factor overhead and GPU kernel dispatch for tiny $m=2$–$5$ matrices may dominate. Pyro's payoff comes from much longer series ($n \approx 79\text{k}$) [2].
+- **Short series ($n \approx 100\text{–}120$):** The depth reduction is real, but parallel scans add constant-factor overhead and GPU kernel dispatch for tiny $m=2\text{–}5$ matrices may dominate. Pyro's payoff comes from much longer series ($n \approx 79\text{k}$) [2].
 - **WebGPU is float32-only:** The extra matrix multiplies in the tree reduction would amplify the existing float32 covariance instability (see numerical precision notes in `src/index.ts`).
 - **`lax.associativeScan` is not yet available** in jax-js-nonconsuming.
 
