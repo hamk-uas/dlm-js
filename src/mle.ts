@@ -1,5 +1,5 @@
 import { DType, numpy as np, lax, jit, valueAndGrad, tree } from "@hamk-uas/jax-js-nonconsuming";
-import { adam, applyUpdates } from "@hamk-uas/jax-js-nonconsuming/optax";
+import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
 import { dlmGenSys, findArInds } from "./dlmgensys";
@@ -40,11 +40,13 @@ export interface DlmMleResult {
 /* eslint-disable jax-js/require-using */
 const buildDiagW = (
   expTheta: np.Array, m: number, dtype: DType, nTheta: number,
+  /** Index in theta where the w entries start (0 when s is fixed, 1 otherwise). */
+  wOffset: number = 1,
 ): np.Array => {
   let W = np.zeros([m, m], { dtype });
   for (let i = 0; i < m; i++) {
     const maskData = new Array(nTheta).fill(0);
-    maskData[1 + i] = 1;
+    maskData[wOffset + i] = 1;
     const mask = np.array(maskData, { dtype });
     const wi = np.dot(expTheta, mask);
     const wi2 = np.square(wi);
@@ -112,10 +114,8 @@ const buildG = (
  * Returns a function θ → -2·log L that can be differentiated with grad().
  *
  * The forward filter uses `lax.scan`, which supports autodiff in
- * jax-js-nonconsuming v0.2.2 with the following AD-compatibility constraints:
+ * jax-js-nonconsuming with the following AD-compatibility constraints:
  *
- * - Use `np.diag(np.ones([m]))` instead of `np.eye(m)` everywhere (np.eye
- *   produces abstract tracer shapes under grad, breaking matmul).
  * - Use `np.dot(vector, mask)` for element extraction from theta.
  * - Use matmul chains where each individual matmul has at least one operand
  *   with exactly 1 column (inner dims can be any size).
@@ -128,9 +128,13 @@ const makeKalmanLoss = (
   y_arr: np.Array,
   n: number, m: number, dtype: DType,
   arInds: number[] = [],
+  /** When provided, V² is taken from this array and s is NOT in theta. */
+  fixedV2_arr?: np.Array,
 ) => {
   const nar = arInds.length;
-  const nSwParams = 1 + m;
+  // When s is fixed, theta = [w₀…w_{m-1}, arphi…]  (no leading s slot)
+  const fixS = fixedV2_arr !== undefined;
+  const nSwParams = (fixS ? 0 : 1) + m;
   const nTheta = nSwParams + nar;
 
   return (theta: np.Array): np.Array => { // AD-traced
@@ -177,19 +181,26 @@ const makeKalmanLoss = (
 
     const expTheta = np.exp(theta);
 
-    // s = exp(theta[0]) via dot mask
-    const mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
-    const sVal = np.dot(expTheta, mask_s);
-    const V2 = np.reshape(np.square(sVal), [1, 1]);
+    // V2_arr: either fixed (known per-timestep σ²) or estimated from theta[0]
+    let V2_arr: np.Array;
+    if (fixS) {
+      // fixedV2_arr is a constant captured by the closure — shape [n,1,1]
+      V2_arr = fixedV2_arr!;
+    } else {
+      // s = exp(theta[0]) via dot mask
+      const mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
+      const sVal = np.dot(expTheta, mask_s);
+      const V2 = np.reshape(np.square(sVal), [1, 1]);
+      V2_arr = np.multiply(
+        np.ones([n, 1, 1], { dtype }),
+        np.reshape(V2, [1, 1, 1]),
+      );
+    }
 
-    // W = diag(w²) from theta[1..m]
-    const W = buildDiagW(expTheta, m, dtype, nTheta);
+    // W = diag(w²) from theta[0..m-1] (fixS) or theta[1..m] (estimating s)
+    const W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
 
-    // Broadcast to [n, ...] for scan inputs
-    const V2_arr = np.multiply(
-      np.ones([n, 1, 1], { dtype }),
-      np.reshape(V2, [1, 1, 1]),
-    );
+    // Broadcast W to [n, ...] for scan
     const W_arr = np.multiply(
       np.ones([n, 1, 1], { dtype }),
       np.reshape(W, [1, m, m]),
@@ -221,6 +232,11 @@ const makeKalmanLoss = (
  * AR coefficients (when `options.fitar = true`) are optimized directly
  * (unconstrained — not log-transformed, matching MATLAB DLM behavior).
  *
+ * When `sFixed` is supplied (a per-timestep σ array, e.g. known measurement
+ * uncertainties), the observation noise is **not estimated** — it is treated as
+ * a known constant.  Only W (and optionally arphi) are optimized.  The
+ * returned `s` field will be `NaN` in this case.
+ *
  * @param y - Observations (n×1)
  * @param options - Model specification (order, trig, ns, arphi, fitar, etc.)
  * @param init - Initial guess for parameters (optional; arphi defaults to options.arphi)
@@ -229,6 +245,11 @@ const makeKalmanLoss = (
  * @param tol - Convergence tolerance on relative lik change (default: 1e-6)
  * @param dtype - Computation precision (default: Float64)
  * @param X - Optional covariate matrix (n rows × q cols), passed through to dlmFit
+ * @param sFixed - Optional per-timestep σ array (length n). When provided, s is fixed
+ *   and not estimated; only W is optimized.
+ * @param adamOpts - Optional Adam hyperparameters (b1, b2, eps). Default: b1=0.9, b2=0.9, eps=1e-8.
+ *   The b2=0.9 default is much faster to adapt than the canonical 0.999 on DLM likelihoods
+ *   (measured: reaches same loss in ~3× fewer iterations on Nile and ozone benchmarks).
  * @returns MLE result with estimated parameters and full DLM fit
  */
 export const dlmMLE = async (
@@ -246,6 +267,8 @@ export const dlmMLE = async (
     onIteration?: (iter: number, theta: Float64Array | Float32Array, lik: number) => void;
   },
   X?: ArrayLike<number>[],  // n×q covariate matrix, passed through to dlmFit
+  sFixed?: ArrayLike<number>, // per-timestep σ (fixes V; s is not estimated)
+  adamOpts?: ScaleByAdamOptions, // Adam b1/b2/eps overrides
 ): Promise<DlmMleResult> => {
   const t0 = performance.now();
   const n = y.length;
@@ -278,7 +301,7 @@ export const dlmMLE = async (
   // Stack observations: [n, 1, 1]
   using y_arr = np.array(Array.from(yArr).map(yi => [[yi]]), { dtype });
 
-  // Initial state — use np.array, NOT np.eye (AD bug in jax-js v0.2.2)
+  // Initial state covariance — diagonal, initialised from data variance
   const ns = options.ns ?? 12;
   let initSum = 0;
   const count = Math.min(ns, n);
@@ -301,8 +324,19 @@ export const dlmMLE = async (
   const s_init = init?.s ?? (Math.sqrt(Math.abs(variance)) || 1.0);
   const w_init = init?.w ?? new Array(m).fill(s_init * 0.1);
   const arphi_init = init?.arphi ?? arphi_orig;
+
+  // Build fixed V2_arr when sFixed is provided
+  const fixS = sFixed !== undefined;
+  let fixedV2_arr: np.Array | undefined;
+  if (fixS) {
+    // V2_t = sFixed[t]² — shape [n, 1, 1]
+    const v2data = Array.from(sFixed!).map(si => [[si * si]]);
+    fixedV2_arr = np.array(v2data, { dtype });
+  }
+
+  // theta = [log(s)?, log(w0).., log(w_{m-1}), arphi..]
   const theta_init = [
-    Math.log(s_init),
+    ...(fixS ? [] : [Math.log(s_init)]),
     ...w_init.map(wi => Math.log(Math.abs(wi) || 0.01)),
     ...(fitar ? arphi_init : []),  // unconstrained (not log-transformed); only when fitting AR
   ];
@@ -312,8 +346,8 @@ export const dlmMLE = async (
   // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
   // Traces once, then every iteration is compiled.
 
-  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds);
-  const optimizer = adam(lr);
+  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr);
+  const optimizer = adam(lr, { b2: 0.9, ...adamOpts });
 
   const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
     const [likVal, grad] = valueAndGrad(lossFn)(theta);
@@ -363,16 +397,20 @@ export const dlmMLE = async (
   // Extract optimized parameters
   const thetaData = await theta.data() as Float64Array | Float32Array;
   theta.dispose(); tree.dispose(optState);
+  fixedV2_arr?.dispose();
 
-  const s_opt = Math.exp(thetaData[0]);
-  const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[1 + i]));
+  const wOffset = fixS ? 0 : 1;
+  const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
+  const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOffset + i]));
   const arphi_opt = nar > 0
-    ? Array.from({ length: nar }, (_, i) => thetaData[1 + m + i])
+    ? Array.from({ length: nar }, (_, i) => thetaData[wOffset + m + i])
     : undefined;
 
   // Run full dlmFit with optimized parameters (including fitted arphi if applicable)
   const fitOptions = arphi_opt ? { ...options, arphi: arphi_opt } : options;
-  const fit = await dlmFit(yArr, s_opt, w_opt, dtype, fitOptions, X);
+  // When s was fixed, pass the original sFixed array to dlmFit; otherwise use scalar s_opt
+  const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
+  const fit = await dlmFit(yArr, sForFit, w_opt, dtype, fitOptions, X);
 
   const elapsed = performance.now() - t0;
 

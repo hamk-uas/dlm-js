@@ -2,8 +2,9 @@
  * Shared SVG plotting helpers used by all SVG generators.
  *
  * Extracted to eliminate duplicate polyline/bandPath/axis/grid code
- * across gen-niledemo-svg.ts, gen-nile-mle-svg.ts, gen-kaisaniemi-svg.ts,
- * gen-trigar-svg.ts, gen-nile-mle-anim-svg.ts, gen-energy-mle-anim-svg.ts.
+ * across gen-niledemo-svg.ts, gen-kaisaniemi-svg.ts,
+ * gen-trigar-svg.ts, gen-nile-mle-anim-svg.ts, gen-energy-mle-anim-svg.ts,
+ * gen-ozone-svg.ts.
  */
 
 import { writeFileSync, mkdirSync } from "node:fs";

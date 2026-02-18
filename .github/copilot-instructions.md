@@ -23,9 +23,9 @@ Files & places to inspect first 📁
 - State space generator: `src/dlmgensys.ts` (polynomial, seasonal, AR component assembly, `findArInds` for AR state indexing).
 - Types & helpers: `src/types.ts` (TypedArray usage, `getFloatArrayType`).
 - Test matrix: `tests/test-matrix.ts` (shared device × dtype configs and tolerances).
-- Tests: `tests/niledemo.test.ts` (Nile demo vs Octave), `tests/gensys.test.ts` (multi-model vs Octave), `tests/synthetic.test.ts` (known true states, statistical assertions), `tests/mle.test.ts` (MLE parameter & AR coefficient estimation on WASM).
+- Tests: `tests/niledemo.test.ts` (Nile demo vs Octave), `tests/gensys.test.ts` (multi-model vs Octave), `tests/synthetic.test.ts` (known true states, statistical assertions), `tests/mle.test.ts` (MLE parameter & AR coefficient estimation on WASM), `tests/covariate.test.ts` (X parameter / β recovery), `tests/ozone.test.ts` (ozone demo smoke tests).
 - Reference generators: `tests/octave/niledemo.m`, `tests/octave/gensys_tests.m`, `tests/octave/kaisaniemi_demo.m` (MATLAB/Octave ground truth).
-- SVG generators: `scripts/gen-niledemo-svg.ts`, `scripts/gen-kaisaniemi-svg.ts`, `scripts/gen-trigar-svg.ts`, `scripts/gen-nile-mle-svg.ts`, `scripts/gen-nile-mle-anim-svg.ts` (+ `scripts/collect-nile-mle-frames.ts`), `scripts/gen-energy-mle-anim-svg.ts` (+ `scripts/collect-energy-mle-frames.ts`).
+- SVG generators: `scripts/gen-niledemo-svg.ts`, `scripts/gen-kaisaniemi-svg.ts`, `scripts/gen-trigar-svg.ts`, `scripts/gen-nile-mle-anim-svg.ts` (+ `scripts/collect-nile-mle-frames.ts`), `scripts/gen-energy-mle-anim-svg.ts` (+ `scripts/collect-energy-mle-frames.ts`), `scripts/gen-ozone-svg.ts`.
 - MLE comparison: `mle-comparison.md` (dlm-js MLE vs MATLAB DLM parameter estimation, with benchmark timings).
 - Upstream issues: `issues/` (precision analysis filed to jax-js-nonconsuming).
 - Build / CI hooks: `package.json`, `vite.config.ts`.
@@ -38,10 +38,10 @@ Project-specific conventions & gotchas ⚠️
 - Memory management: This project uses `@hamk-uas/jax-js-nonconsuming` which has **non-consuming ops** — operations leave inputs intact. Use TC39 `using` keyword for automatic disposal and `tree.dispose()` for bulk cleanup. Do NOT use `.ref` (that is the consuming-ops pattern from a different fork).
 - ESLint plugin: The `@hamk-uas/jax-js-nonconsuming/eslint-plugin` sub-path export enforces correct `using`/disposal patterns. **Always run `pnpm run lint` after editing `src/` files** to catch memory leaks, missing `using` declarations, and use-after-dispose bugs.
 - Dependencies: `@hamk-uas/jax-js-nonconsuming` v0.4.0 (includes the eslint plugin as a sub-path export) is installed from `github:hamk-uas/jax-js-nonconsuming#v0.4.0`.
-- AD workarounds: `np.eye(m)` has an AD bug — use `np.diag(np.ones([m]))` instead. The eslint `require-using` rule must be disabled in AD-traced code (tracers manage lifetimes, not `using`). See `src/mle.ts` for examples.
+- AD notes: The eslint `require-using` rule must be disabled in AD-traced code (tracers manage lifetimes, not `using`). See `src/mle.ts` for examples.
 
 Testing & tolerance details (important for PRs) ✅
-- **Four test suites**: `niledemo.test.ts` (8 tests, Nile data vs Octave), `gensys.test.ts` (47 tests, multi-model vs Octave), `synthetic.test.ts` (24 tests, known true states), `mle.test.ts` (3 tests, MLE parameter & AR coefficient estimation on WASM). Total: 82 tests.
+- **Six test suites**: `niledemo.test.ts` (8 tests, Nile data vs Octave), `gensys.test.ts` (47 tests, multi-model vs Octave), `synthetic.test.ts` (24 tests, known true states), `mle.test.ts` (3 tests, MLE parameter & AR coefficient estimation on WASM), `covariate.test.ts` (5 tests, X parameter / β recovery), `ozone.test.ts` (2 tests, ozone demo smoke). Total: 89 tests.
 - **Tolerances** are defined in `tests/test-matrix.ts`: Float64 relTol=2e-3, absTol=1e-6; Float32 relTol=1e-2, absTol=1e-4. The niledemo test uses tighter ~1e-10 relative tolerance for its specific comparison.
 - Test artifacts: failing runs write `tests/out/` — inspect JSON files there.
 - When adding features: include tests that run in all three modes (`for`, `scan`, `jit`) and add keys to `niledemo-keys.json` if the change is a partial implementation.

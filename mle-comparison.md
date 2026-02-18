@@ -57,26 +57,39 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Typical run budget** | 400 function evaluations (`options.maxfuneval` default) | 200 optimizer iterations (`maxIter` default) |
 | **Compilation** | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) |
 | **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
-| **WASM performance** | N/A | ~5 s for 300 iterations (Nile, n=100, m=2); default `maxIter` is 200 |
+| **Adam defaults** | N/A | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) |
+| **WASM performance** | N/A | ~2 s for 300 iterations (Nile, n=100, m=2, b2=0.9); default `maxIter` is 200 |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
+### MLE vs MCMC: different objectives
+
+Pure MLE minimises $-2 \log L$ without any prior on $W$. On real data such as satellite ozone measurements, this can produce degenerate solutions — e.g. most seasonal noise variances collapse to near-zero while one or two grow large — because the likelihood surface has a wide, nearly flat ridge. MATLAB MCMC uses a normal prior on $\log W$ entries that keeps them symmetric and away from zero, yielding a posterior mean at much higher $-2\log L$ but visually smoother, better-regularised results.
+
+| Point | MATLAB MCMC | dlm-js MLE |
+|-------|------------|------------|
+| Ozone $-2\log L$ at MATLAB posterior W | 435.6 | — |
+| Ozone $-2\log L$ at MLE optimum | — | 203.8 |
+| Ozone trend shape | Smooth, symmetric seasonal noise | Same global trend, but seasonal W values degenerate |
+
+If MCMC-like regularisation is needed, the recommended approach is MAP estimation: add a log-normal penalty on $W$ entries to the loss before differentiating. dlm-js `makeKalmanLoss` is a plain differentiable function and the penalty can be added outside of it before wrapping in `jit(valueAndGrad(...))`.
+
 ## Benchmark: same machine, same data
 
-All timings measured on the same machine. The MATLAB DLM toolbox was run under Octave with `fminsearch` (Nelder-Mead, `maxfuneval=400` for Nile models, `maxfuneval=800` for Kaisaniemi). dlm-js uses `dlmMLE` (Adam + autodiff, `maxIter=300` — above the default of 200 — `wasm` backend). Octave timings are median of 5 runs after 1 warmup; dlm-js timings are median of 3 runs after 1 warmup.
+All timings measured on the same machine. The MATLAB DLM toolbox was run under Octave with `fminsearch` (Nelder-Mead, `maxfuneval=400` for Nile models, `maxfuneval=800` for Kaisaniemi). dlm-js uses `dlmMLE` (Adam + autodiff, `maxIter=300`, `b2=0.9` default, `wasm` backend). Octave timings are median of 5 runs after 1 warmup; dlm-js timings are median of 3 runs after 1 warmup.
 
 | Model | $n$ | $m$ | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | $-2\log L$ (Octave) | $-2\log L$ (dlm-js) |
 |-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 3707 ms | 1104.6 | 1105.0 |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 2730 ms | 1104.6 | 1105.0 |
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1412 ms | 1095.8 | 1095.9 |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | 6230 ms | — | 341.6 |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | 7100 ms | — | 443.8 |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1970 ms | 1095.8 | 1095.8 |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | 3509 ms | — | 330.8 |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | 6900 ms | — | 443.1 |
 
 **Key observations:**
 - **Nile (n=100, m=2):** Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.
 - **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~0.4), consistent with matching likelihood formulations under different optimization details.
-- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in 300 iterations (6.3 s). This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead.
+- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in 107 iterations (3.5 s, b2=0.9). This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead. Note: b2=0.9 also found a better optimum (−2logL=330.8) than b2=0.999 (341.6), suggesting the prior default was getting stuck in a plateau.
 - **Joint $s+w$ fitting:** dlm-js `dlmMLE` always fits both $s$ and $w$ together, while the MATLAB DLM toolbox (run under Octave) can fit $w$ only (`fitv=0`), which is faster when $s$ is known.
 
 ## MCMC (MATLAB DLM toolbox feature, not tested)

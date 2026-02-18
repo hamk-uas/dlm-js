@@ -23,11 +23,11 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim.svg" />
 
-*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 198 iterations / 3.9 s on the `wasm` backend. Estimated observation noise s = 120.9 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 88 iterations / 2.9 s on the `wasm` backend (Adam b2=0.9). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy MLE optimization with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
 
-*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.70, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 300 iterations / 7.1 s on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 295 iterations / 6.9 s on the `wasm` backend (Adam b2=0.9). Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 
@@ -130,7 +130,7 @@ console.log(mleAR.arphi);     // estimated AR coefficients (e.g. [0.81])
 
 The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Noise parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior).
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2, 300 iterations) takes ~5 s. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~88 iterations (~2.7 s) with the default Adam b2=0.9. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
 For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter estimation (Nelder-Mead, MCMC), see the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md).
 
@@ -152,13 +152,14 @@ For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter est
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
 | Synthetic ground-truth tests | ✅ | — | Tests against known true states from a seeded generating process — independent of any reference implementation. |
+| Covariates / proxies (X) | ✅ | ✅ | `dlmFit` X parameter: per-timestep regression matrix X[t] appends static β states to the state vector. Coefficient recovery verified in `covariate.test.ts`. |
 | Plotting | — | ✅ | dlm-js is computation-only. Plotting is not planned. |
 
 ### MATLAB `dlmfit`/`dlmsmo` features not yet ported
 
 | Feature | MATLAB location | Why not yet ported |
 | --- | --- | --- |
-| Covariates / proxies | `dlmfit` X argument, `dlmsmo` X argument | Straightforward to add (identity block in G, `kron(X(i,:), eye(p))` in F), but no use case has required it yet. |
+| ~~Covariates / proxies~~ | `dlmfit` X argument, `dlmsmo` X argument | ✅ **Ported** as `dlmFit` X parameter — appends static β states; tested in `covariate.test.ts`. |
 | Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | Biggest remaining lift — affects all matrix dimensions throughout the filter/smoother. dlm-js currently assumes scalar observations (p = 1). |
 | Missing data (NaN handling) | `dlmsmo` `ig = not(isnan(y(i,:)))` | Requires masking innovation updates for NaN timesteps. Moderate effort; also needs `meannan`/`sumnan` utility functions. |
 | ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. Supports `fitar` for AR coefficient estimation. See [MLE estimation](#mle-parameter-estimation) below. |
@@ -175,7 +176,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 ## TODO
 
 * Test the built library (in `dist/`)
-* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — covariates, multivariate observations, missing data)
+* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — multivariate observations, missing data)
 * Human review the AI-generated DLM port
 
 ## Project structure
@@ -190,8 +191,8 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── trigar.svg           # Energy demand demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── nile-mle-anim.svg    # Nile MLE optimization animation (regenerate with `pnpm run gen:svg`)
-│   ├── nile-mle.svg         # Nile MLE optimization plot (static, regenerate with `pnpm run gen:svg`)
-│   └── energy-mle-anim.svg  # Energy MLE animation with AR coefficient estimation (regenerate with `pnpm run gen:svg`)
+│   ├── energy-mle-anim.svg  # Energy MLE animation with AR coefficient estimation (regenerate with `pnpm run gen:svg`)
+│   └── ozone-demo.svg       # Stratospheric ozone trend analysis demo (regenerate with `pnpm run gen:svg`)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
@@ -203,7 +204,8 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── collect-nile-mle-frames.ts   # Nile MLE frame data collector (→ tmp/mle-frames.json)
 │   ├── gen-nile-mle-anim-svg.ts    # Nile MLE animated convergence SVG generator
 │   ├── collect-energy-mle-frames.ts # Energy MLE frame data collector (→ tmp/energy-mle-frames.json)
-│   └── gen-energy-mle-anim-svg.ts  # Energy MLE animation SVG generator (with AR coefficient estimation)
+│   ├── gen-energy-mle-anim-svg.ts  # Energy MLE animation SVG generator (with AR coefficient estimation)
+│   └── gen-ozone-svg.ts             # Stratospheric ozone trend analysis SVG generator
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -227,6 +229,8 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
 │   ├── {order0,order2,seasonal,trig,trigar,level,energy,ar2}-{in,out-m}.json  # Test data (see below)
 │   ├── mle.test.ts          # MLE parameter estimation tests (s/w and AR coefficient estimation on WASM)
+│   ├── covariate.test.ts    # Covariate (X parameter) regression tests — β recovery and XX field
+│   ├── ozone.test.ts        # Ozone demo smoke tests — dlmFit with covariates on real satellite data
 │   └── utils.ts             # Test utility functions
 ├── mle-comparison.md    # Comparison of dlm-js MLE vs original MATLAB DLM parameter estimation
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)
@@ -348,7 +352,7 @@ or
 pnpm run test:node
 ```
 
-This runs `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, and `mle.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, and `ozone.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 

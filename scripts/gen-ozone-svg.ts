@@ -25,7 +25,10 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { dlmFit } from "../src/index.ts";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice, DType } from "@hamk-uas/jax-js-nonconsuming";
+
+defaultDevice("wasm");
+
 import {
   r, makeLinearScale, polylinePoints, bandPathD,
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
@@ -218,10 +221,10 @@ svg.push(`<path d="${bandPathD(time, mu_upper, mu_lower, sx, sy1)}" fill="#3b82f
 
 // dlm-js smoothed level — solid blue
 svg.push(`<polyline points="${polylinePoints(time, mu_hat, sx, sy1)}" fill="none" stroke="#2563eb" stroke-width="2.2"/>`);
-// ±2σ band — MATLAB (orange, on top of blue band)
-svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fill="#f59e0b" fill-opacity="0.15" stroke="none"/>`);
-// MATLAB smoothed level — dashed orange (drawn last, always visible)
-svg.push(`<polyline points="${polylinePoints(time, m_level, sx, sy1)}" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6 3"/>`);
+// ±2σ band — MATLAB (red, on top of blue band)
+svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fill="#ef4444" fill-opacity="0.15" stroke="none"/>`);
+// MATLAB smoothed level — dashed red (drawn last, always visible)
+svg.push(`<polyline points="${polylinePoints(time, m_level, sx, sy1)}" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 3"/>`);
 
 // Axes
 svg.push(...renderYAxis(yTicks1Raw, sy1, margin.left, fmt1));
@@ -237,7 +240,7 @@ svg.push(`<line x1="${l1x}" y1="${l1y}" x2="${l1x+22}" y2="${l1y}" stroke="#9ca3
 svg.push(`<text x="${l1x+27}" y="${l1y+4}" fill="#374151" font-size="11">Observations (SAGE II / GOMOS)</text>`);
 svg.push(`<line x1="${l1x}" y1="${l1y+15}" x2="${l1x+22}" y2="${l1y+15}" stroke="#2563eb" stroke-width="2.2"/>`);
 svg.push(`<text x="${l1x+27}" y="${l1y+19}" fill="#374151" font-size="11">dlm-js smoothed level ±2σ</text>`);
-svg.push(`<line x1="${l1x}" y1="${l1y+30}" x2="${l1x+22}" y2="${l1y+30}" stroke="#d97706" stroke-width="1.8" stroke-dasharray="5 3"/>`);
+svg.push(`<line x1="${l1x}" y1="${l1y+30}" x2="${l1x+22}" y2="${l1y+30}" stroke="#dc2626" stroke-width="1.8" stroke-dasharray="5 3"/>`);
 svg.push(`<text x="${l1x+27}" y="${l1y+34}" fill="#374151" font-size="11">MATLAB/Octave reference ±2σ</text>`);
 
 // Title
@@ -252,9 +255,9 @@ svg.push(`<polyline points="${polylinePoints(time, contrib_solar, sx, sy2)}" fil
 // QBO total — dlm-js (solid)
 svg.push(`<polyline points="${polylinePoints(time, contrib_qbo, sx, sy2)}" fill="none" stroke="#8b5cf6" stroke-width="1.8"/>`);
 // Solar contribution — MATLAB (dashed, on top)
-svg.push(`<polyline points="${polylinePoints(time, m_contrib_solar, sx, sy2)}" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6 3"/>`);
-// QBO total — MATLAB (dashed, on top)
-svg.push(`<polyline points="${polylinePoints(time, m_contrib_qbo, sx, sy2)}" fill="none" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6 3"/>`);
+svg.push(`<polyline points="${polylinePoints(time, m_contrib_solar, sx, sy2)}" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 3"/>`);
+// QBO total — MATLAB (dotted, on top)
+svg.push(`<polyline points="${polylinePoints(time, m_contrib_qbo, sx, sy2)}" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="2 3"/>`);
 
 // Axes
 svg.push(...renderYAxis(yTicks2Raw, sy2, margin.left, fmt2));
@@ -273,9 +276,9 @@ svg.push(`<line x1="${l2x}" y1="${l2y}" x2="${l2x+22}" y2="${l2y}" stroke="#f59e
 svg.push(`<text x="${l2x+27}" y="${l2y+4}" fill="#374151" font-size="11">dlm-js solar β̂·X_solar</text>`);
 svg.push(`<line x1="${l2x}" y1="${l2y+15}" x2="${l2x+22}" y2="${l2y+15}" stroke="#8b5cf6" stroke-width="1.8"/>`);
 svg.push(`<text x="${l2x+27}" y="${l2y+19}" fill="#374151" font-size="11">dlm-js QBO β̂_qbo1·X₁ + β̂_qbo2·X₂</text>`);
-svg.push(`<line x1="${l2x}" y1="${l2y+30}" x2="${l2x+22}" y2="${l2y+30}" stroke="#d97706" stroke-width="1.4" stroke-dasharray="5 3"/>`);
-svg.push(`<text x="${l2x+27}" y="${l2y+34}" fill="#374151" font-size="11">MATLAB solar (reference)</text>`);
-svg.push(`<line x1="${l2x}" y1="${l2y+45}" x2="${l2x+22}" y2="${l2y+45}" stroke="#7c3aed" stroke-width="1.4" stroke-dasharray="5 3"/>`);
+svg.push(`<line x1="${l2x}" y1="${l2y+30}" x2="${l2x+22}" y2="${l2y+30}" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="5 3"/>`);
+ svg.push(`<text x="${l2x+27}" y="${l2y+34}" fill="#374151" font-size="11">MATLAB solar (reference)</text>`);
+svg.push(`<line x1="${l2x}" y1="${l2y+45}" x2="${l2x+22}" y2="${l2y+45}" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="2 3"/>`);
 svg.push(`<text x="${l2x+27}" y="${l2y+49}" fill="#374151" font-size="11">MATLAB QBO (reference)</text>`);
 
 // Panel 2 title
