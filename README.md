@@ -31,7 +31,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
 
-*Stratospheric ozone demo (Laine, Latva-Pukkila & Kyrölä 2014, replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red) and a 36-month `dlmForecast` extrapolation beyond the last observation (dashed green, ± 2σ, shaded region — no solar/QBO forcing assumed so uncertainty grows monotonically); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Regenerate with `pnpm run gen:svg`.*
+*Stratospheric ozone demo (Laine, Latva-Pukkila & Kyrölä 2014, replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red) and a 36-month `dlmForecast` trend extrapolation beyond the last observation (dashed green, ± 2σ level-state uncertainty, shaded region — the level state x[0] is plotted rather than the full observation prediction, which would oscillate with the seasonal harmonics); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
 

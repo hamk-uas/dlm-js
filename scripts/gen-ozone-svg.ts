@@ -121,15 +121,18 @@ const fore = await dlmForecast(fit, s_median, H_FORE, DType.Float64, X_forecast_
 const dt = 1 / 12;  // one month in decimal years
 const foreTime: number[] = Array.from({ length: H_FORE }, (_, k) => time[N - 1] + (k + 1) * dt);
 
-// Forecast level (state 0) and observation band (back-scaled)
+// Forecast level (state 0) ± 2σ (back-scaled).
+// We use the level state x[0] rather than the full observation prediction yhat,
+// because yhat = F·x_pred includes the oscillating seasonal harmonics — which
+// would make the "trend forecast" look like a 36-month seasonal projection
+// rather than a smooth trendline. The level state is the quantity the paper
+// actually analyses (the long-term ozone trend).
 const fore_level: number[] = Array.from(fore.x[0]).map(v => v * ys);
 const fore_level_std: number[] = fore.xstd.map(row => row[0] * ys);
-const fore_yhat: number[] = Array.from(fore.yhat).map(v => v * ys);
-const fore_ystd: number[] = Array.from(fore.ystd).map(v => v * ys);
-const fore_upper = fore_yhat.map((v, i) => v + 2 * fore_ystd[i]);
-const fore_lower = fore_yhat.map((v, i) => v - 2 * fore_ystd[i]);
+const fore_upper = fore_level.map((v, i) => v + 2 * fore_level_std[i]);
+const fore_lower = fore_level.map((v, i) => v - 2 * fore_level_std[i]);
 
-console.log(`  Forecast ${H_FORE} months: yhat[0]=${fore_yhat[0].toExponential(3)} ystd[0]=${fore_ystd[0].toExponential(3)} ystd[-1]=${fore_ystd[H_FORE-1].toExponential(3)}`);
+console.log(`  Forecast ${H_FORE} months: level[0]=${fore_level[0].toExponential(3)} std[0]=${fore_level_std[0].toExponential(3)} std[-1]=${fore_level_std[H_FORE-1].toExponential(3)}`);
 
 // Back-scale level and band
 const mu_upper = mu_hat.map((v, i) => v + 2 * mu_std[i]);
@@ -256,10 +259,10 @@ svg.push(`<path d="${bandPathD(time, m_level_upper, m_level_lower, sx, sy1)}" fi
 svg.push(`<polyline points="${polylinePoints(time, m_level, sx, sy1)}" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 3"/>`);
 
 // ── Forecast rendering ───────────────────────────────────────────────────
-// Growing ±2σ observation prediction band (green tint)
+// Growing ±2σ level-state uncertainty band (green tint)
 svg.push(`<path d="${bandPathD(foreTime, fore_upper, fore_lower, sx, sy1)}" fill="#22c55e" fill-opacity="0.18" stroke="none"/>`);
-// Forecast mean — dashed green
-svg.push(`<polyline points="${polylinePoints(foreTime, fore_yhat, sx, sy1)}" fill="none" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3"/>`);
+// Forecast level trend — dashed green
+svg.push(`<polyline points="${polylinePoints(foreTime, fore_level, sx, sy1)}" fill="none" stroke="#16a34a" stroke-width="2" stroke-dasharray="5 3"/>`);
 // Vertical end-of-data marker
 svg.push(`<line x1="${xForeStart}" y1="${p1Top}" x2="${xForeStart}" y2="${p1Bot}" stroke="#6b7280" stroke-width="1" stroke-dasharray="3 2"/>`);
 // "Forecast →" label
@@ -282,7 +285,7 @@ svg.push(`<text x="${l1x+27}" y="${l1y+19}" fill="#374151" font-size="11">dlm-js
 svg.push(`<line x1="${l1x}" y1="${l1y+30}" x2="${l1x+22}" y2="${l1y+30}" stroke="#dc2626" stroke-width="1.8" stroke-dasharray="5 3"/>`);
 svg.push(`<text x="${l1x+27}" y="${l1y+34}" fill="#374151" font-size="11">MATLAB/Octave reference ±2σ</text>`);
 svg.push(`<line x1="${l1x}" y1="${l1y+45}" x2="${l1x+22}" y2="${l1y+45}" stroke="#16a34a" stroke-width="1.8" stroke-dasharray="5 3"/>`);
-svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">36-month forecast ±2σ (no proxies)</text>`);
+svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">36-month trend forecast ±2σ (level state)</text>`);
 
 // Title
 svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N): trend extraction + forecast</text>`);
