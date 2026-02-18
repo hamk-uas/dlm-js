@@ -655,8 +655,11 @@ export const dlmFit = async (
  * @param h - Forecast horizon (number of steps ahead)
  * @param dtype - Computation precision (should match the dtype used in dlmFit)
  * @param X_forecast - Optional covariate rows for forecast steps (h rows × q cols).
- *                     Required if the model was fitted with covariates and you want
- *                     their contributions reflected in yhat/ystd.
+ *                     If omitted (or shorter than h), missing covariate entries are
+ *                     treated as zero in the current implementation. This gives a
+ *                     baseline conditional forecast where unknown driver effects are
+ *                     set to zero. For scientifically neutral use, center drivers
+ *                     before fitting so zero means "typical" driver level.
  * @returns Predicted state means, covariances, and observation predictions for steps 1…h
  */
 export const dlmForecast = async (
