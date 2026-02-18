@@ -154,11 +154,19 @@ const fit = await dlmFit(y, 120, [40, 10], DType.Float64, { order: 1 });
 // Forecast 12 steps ahead
 const fc = await dlmForecast(fit, 120, 12, DType.Float64);
 
-console.log(fc.yhat);  // predicted means [h]
-console.log(fc.ystd);  // prediction std devs [h] — grows monotonically
+console.log(fc.yhat);  // predicted observation means [h] = F·x_pred
+console.log(fc.ystd);  // observation prediction std devs [h] — grows monotonically
 console.log(fc.x);     // state trajectories [m][h]
 console.log(fc.h);     // 12
 console.log(fc.m);     // 2 (state dimension)
+```
+
+`fc.yhat` is the full observation prediction `F·x_pred`. For pure trend models (no seasonality) this equals the level state and is appropriate to plot directly. For seasonal or AR models, `yhat` oscillates with the harmonics/AR dynamics in the forecast horizon — if you want a smooth trendline, use the level state `fc.x[0]` directly:
+
+```js
+// For seasonal/AR models: plot level state, not yhat
+const trend = Array.from(fc.x[0]);        // smooth trend mean
+const trendStd = fc.xstd.map(r => r[0]);  // level state std dev
 ```
 
 With covariates, pass `X_forecast` rows for each forecast step:
