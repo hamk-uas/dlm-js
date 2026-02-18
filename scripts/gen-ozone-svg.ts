@@ -275,7 +275,7 @@ svg.push(...renderAxesBorder(margin.left, p1Top, margin.left + plotW, p1Bot));
 svg.push(`<text transform="rotate(-90)" x="${-(p1Top + panelH / 2)}" y="${margin.left - 52}" text-anchor="middle" fill="#374151" font-size="11">O₃ density [×10¹⁰ cm⁻³]</text>`);
 
 // Legend
-const l1x = margin.left + plotW - 280, l1y = p1Top + 14;
+const l1x = margin.left + plotW - 262, l1y = p1Top + 14;
 svg.push(`<line x1="${l1x}" y1="${l1y}" x2="${l1x+22}" y2="${l1y}" stroke="#9ca3af" stroke-width="1"/>`);
 svg.push(`<text x="${l1x+27}" y="${l1y+4}" fill="#374151" font-size="11">Observations (SAGE II / GOMOS)</text>`);
 svg.push(`<line x1="${l1x}" y1="${l1y+15}" x2="${l1x+22}" y2="${l1y+15}" stroke="#2563eb" stroke-width="2.2"/>`);
