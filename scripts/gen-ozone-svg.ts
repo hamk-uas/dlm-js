@@ -326,6 +326,9 @@ svg.push(`<text x="${l2x+27}" y="${l2y+49}" fill="#374151" font-size="11">MATLAB
 // Panel 2 title
 svg.push(`<text x="${margin.left + plotW / 2}" y="${p2Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Proxy covariate contributions (solar + QBO)</text>`);
 
+// Attribution footnote
+svg.push(`<text x="${margin.left}" y="${H - 6}" fill="#9ca3af" font-size="9">Data: Laine, Latva-Pukkila &amp; Kyrölä (2014), Atmos. Chem. Phys. 14, 9707–9725, doi:10.5194/acp-14-9707-2014. Instruments: SAGE II &amp; GOMOS. Data file via github.com/mjlaine/dlm.</text>`);
+
 svg.push("</svg>");
 
 const outPath = resolve(root, "assets/ozone-demo.svg");
