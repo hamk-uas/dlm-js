@@ -164,7 +164,7 @@ const m_contrib_qbo:   number[] = time.map((_, i) =>
 
 // ── SVG layout ────────────────────────────────────────────────────────────
 const margin = { top: 30, right: 22, bottom: 50, left: 68 };
-const panelGap = 38;
+const panelGap = 55;
 const W = 860;
 const panelH = 230;
 const H = margin.top + panelH + panelGap + panelH + margin.bottom;
