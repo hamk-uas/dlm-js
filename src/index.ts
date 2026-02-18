@@ -24,20 +24,30 @@ export type { DlmMleResult } from "./mle";
  *   v ~ N(0, V)           observation noise
  *   w ~ N(0, W)           state evolution noise
  *
+ * When covariates are provided (FF_arr), F is time-varying:
+ *
+ *   y(t) = FF_t·x_ext(t) + v,  where FF_t = [F_base, X[t,:]]
+ *
+ * The extended state x_ext includes the covariate regression coefficients β,
+ * which evolve as static states (identity block in G, zero block in W).
+ *
  * The forward Kalman filter computes one-step-ahead predictions.
  * The backward RTS smoother refines estimates using all observations.
  *
  * Reference: Durbin & Koopman (2012), "Time Series Analysis by State Space Methods"
  *
  * @param y - Observations (n×1)
- * @param F - Observation matrix (1×m), maps state to observation
+ * @param F - Observation matrix (1×m), maps state to observation. When FF_arr
+ *            is provided, this is the base F (1×m_base) and the effective F at
+ *            each timestep is read from FF_arr instead.
  * @param V_std - Observation noise std devs (n×1)
  * @param x0_data - Initial state mean (m×1 as nested array)
  * @param G - State transition matrix (m×m)
  * @param W - State noise covariance (m×m)
  * @param C0_data - Initial state covariance (m×m as nested array)
- * @param stateSize - State dimension m
+ * @param stateSize - State dimension m (extended: m_base + q for covariates)
  * @param dtype - Computation precision
+ * @param FF_arr - Optional time-varying observation matrix [n, 1, m] (for covariates)
  * @returns Smoothed and filtered state estimates with diagnostics
  * @internal
  */
@@ -51,6 +61,7 @@ const dlmSmo = async (
   C0_data: number[][],
   stateSize: number,
   dtype: DType = DType.Float64,
+  FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y.length;
 
@@ -71,19 +82,26 @@ const dlmSmo = async (
   using r0 = np.array(r0_data, { dtype });
   using N0 = np.array(N0_data, { dtype });
 
-  // Precompute F' for reuse in backward step
-  using Ft = np.transpose(F);
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build FF_scan: [n, 1, m] pytree input for the scan.
+  // Without covariates: broadcast static F to shape [n, 1, m].
+  // With covariates: caller provides FF_arr [n, 1, m_ext] directly.
+  // Both cases use the same step functions — no branching inside scan.
+  // ─────────────────────────────────────────────────────────────────────────
+  const FF_scan: np.Array = FF_arr !== undefined
+    ? FF_arr
+    : np.tile(np.reshape(F, [1, 1, stateSize]), [n, 1, 1]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Step functions (close over F, G, W, Ft as constants for JIT)
-  // All matrix ops are generic in m — matmul and einsum handle any dimension.
+  // Step functions receive FF_t ([1, m]) from the scan pytree.
+  // G and W are still captured as constants (not time-varying).
   // ─────────────────────────────────────────────────────────────────────────
   
   type ForwardCarry = { x: np.Array; C: np.Array };
-  type ForwardX = { y: np.Array; V2: np.Array };
+  type ForwardX = { y: np.Array; V2: np.Array; FF: np.Array };
   type ForwardY = {
     x_pred: np.Array; C_pred: np.Array;
-    K: np.Array; v: np.Array; Cp: np.Array;
+    K: np.Array; v: np.Array; Cp: np.Array; FF: np.Array;
   };
   
   const forwardStep = (
@@ -91,23 +109,23 @@ const dlmSmo = async (
     inp: ForwardX
   ): [ForwardCarry, ForwardY] => {
     const { x: xi, C: Ci } = carry;
-    const { y: yi, V2: V2i } = inp;
+    const { y: yi, V2: V2i, FF: FFi } = inp;
     
-    // Innovation: v = y - F·x  [1,1]
-    const v = np.subtract(yi, np.matmul(F, xi));
+    // Innovation: v = y - FF·x  [1,1]
+    const v = np.subtract(yi, np.matmul(FFi, xi));
     
-    // Innovation covariance: Cp = F·C·F' + V²  [1,1]
+    // Innovation covariance: Cp = FF·C·FF' + V²  [1,1]
     const Cp = np.add(
-      np.einsum('ij,jk,lk->il', F, Ci, F),
+      np.einsum('ij,jk,lk->il', FFi, Ci, FFi),
       V2i
     );
     
-    // Kalman gain: K = G·C·F' / Cp  [m,1]
-    using GCFt = np.einsum('ij,jk,lk->il', G, Ci, F);
-    const K = np.divide(GCFt, Cp);
+    // Kalman gain: K = G·C·FF' / Cp  [m,1]
+    using GCFFt = np.einsum('ij,jk,lk->il', G, Ci, FFi);
+    const K = np.divide(GCFFt, Cp);
     
-    // L = G - K·F  [m,m]
-    using L = np.subtract(G, np.matmul(K, F));
+    // L = G - K·FF  [m,m]
+    using L = np.subtract(G, np.matmul(K, FFi));
     
     // Next state prediction: x_next = G·x + K·v  [m,1]
     const x_next = np.add(
@@ -143,14 +161,15 @@ const dlmSmo = async (
     
     return [
       { x: x_next, C: C_next },
-      { x_pred: xi, C_pred: Ci, K, v, Cp } as ForwardY,
+      // Pass FFi through so backward pass can reuse it
+      { x_pred: xi, C_pred: Ci, K, v, Cp, FF: FFi } as ForwardY,
     ];
   };
   
   type BackwardCarry = { r: np.Array; N: np.Array };
   type BackwardX = {
     x_pred: np.Array; C_pred: np.Array;
-    K: np.Array; v: np.Array; Cp: np.Array;
+    K: np.Array; v: np.Array; Cp: np.Array; FF: np.Array;
   };
   type BackwardY = { x_smooth: np.Array; C_smooth: np.Array };
   
@@ -159,13 +178,14 @@ const dlmSmo = async (
     inp: BackwardX
   ): [BackwardCarry, BackwardY] => {
     const { r, N } = carry;
-    const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi } = inp;
+    const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi, FF: FFi } = inp;
     
-    // L = G - K·F  [m,m]
-    using L = np.subtract(G, np.matmul(Ki, F));
+    // L = G - K·FF  [m,m]
+    using L = np.subtract(G, np.matmul(Ki, FFi));
     
-    // F'·Cp⁻¹  [m,1] (scalar division valid for p=1)
-    using FtCpInv = np.divide(Ft, Cpi);
+    // FF'·Cp⁻¹  [m,1] (scalar division valid for p=1)
+    using FFt = np.transpose(FFi);
+    using FtCpInv = np.divide(FFt, Cpi);
     
     // r_new = F'·Cp⁻¹·v + L'·r  [m,1]
     const r_new = np.add(
@@ -173,7 +193,7 @@ const dlmSmo = async (
       np.matmul(np.transpose(L), r)
     );
     
-    // N_new = F'·Cp⁻¹·F + L'·N·L  [m,m]
+    // N_new = FF'·Cp⁻¹·FF + L'·N·L  [m,m]
     //
     // NUMERICAL PRECISION NOTE:
     // The L'·N·L product via einsum uses two pairwise dot() calls.
@@ -182,7 +202,7 @@ const dlmSmo = async (
     // C·N·C product below. N accumulates information over the
     // backward pass, so rounding compounds across timesteps.
     const N_new = np.add(
-      np.matmul(FtCpInv, F),
+      np.matmul(FtCpInv, FFi),
       np.einsum('ji,jk,kl->il', L, N, L)
     );
     
@@ -242,13 +262,15 @@ const dlmSmo = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Jittable core: forward Kalman filter + backward RTS smoother +
   // diagnostics computed with vectorized numpy ops.
-  // F, G, W, Ft are captured as constants by the JIT compiler.
+  // G and W are captured as constants by the JIT compiler.
+  // FF_scan [n,1,m] is threaded through scan for time-varying F support.
   // Returns stacked tensors for arbitrary state dimension m.
   // ─────────────────────────────────────────────────────────────────────────
   
   const core = (
     x0: np.Array, C0: np.Array,
     y_arr: np.Array, V2_arr: np.Array,
+    FF_scan: np.Array,
     r0: np.Array, N0: np.Array
   ) => {
     // Derive flat [n] inputs for diagnostics
@@ -260,7 +282,7 @@ const dlmSmo = async (
     const [fwdCarry, fwd] = lax.scan(
       forwardStep,
       { x: x0, C: C0 },
-      { y: y_arr, V2: V2_arr }
+      { y: y_arr, V2: V2_arr, FF: FF_scan }
     );
     tree.dispose(fwdCarry);
     
@@ -270,6 +292,7 @@ const dlmSmo = async (
     using K_rev = np.flip(fwd.K, 0);
     using v_rev = np.flip(fwd.v, 0);
     using Cp_rev = np.flip(fwd.Cp, 0);
+    using FF_rev = np.flip(fwd.FF, 0);
 
     const [bwdCarry, bwd] = lax.scan(
       backwardStep,
@@ -280,6 +303,7 @@ const dlmSmo = async (
         K: K_rev,
         v: v_rev,
         Cp: Cp_rev,
+        FF: FF_rev,
       }
     );
     tree.dispose(bwdCarry);
@@ -290,12 +314,13 @@ const dlmSmo = async (
 
     // ─── Observation-space diagnostics ───
 
-    // yhat = F @ xf: F:[1,m] @ xf:[n,m,1] → [n,1,1] → [n]
-    using yhat_3d = np.matmul(F, fwd.x_pred);
+    // yhat = FF @ xf: FF:[n,1,m] @ xf:[n,m,1] → [n,1,1] → [n]
+    using yhat_3d = np.matmul(FF_scan, fwd.x_pred);
     const yhat = np.squeeze(yhat_3d);
 
-    // ystd = sqrt(F @ C_smooth @ F' + V²)
-    using FCFt_3d = np.einsum('ij,njk,lk->nil', F, C_smooth, F);
+    // ystd = sqrt(diag(FF @ C_smooth @ FF') + V²)
+    // einsum 'nij,njk,nlk->nil' but p=1, so result is [n,1,1] which we squeeze
+    using FCFt_3d = np.einsum('nij,njk,nlk->nil', FF_scan, C_smooth, FF_scan);
     using FCFt_flat = np.squeeze(FCFt_3d);
     const ystd = np.sqrt(np.add(FCFt_flat, V2_flat));
 
@@ -303,8 +328,9 @@ const dlmSmo = async (
     const v_flat = np.squeeze(fwd.v);
     const Cp_flat = np.squeeze(fwd.Cp);
 
-    // Dispose fwd.K (no longer needed)
+    // Dispose fwd.K and fwd.FF (no longer needed)
     fwd.K.dispose();
+    fwd.FF.dispose();
 
     // Residuals
     const resid0 = np.subtract(y_1d, yhat);
@@ -332,7 +358,9 @@ const dlmSmo = async (
   };
   
   // Run core — one jit wrapping both scans + all diagnostics
-  const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, r0, N0);
+  const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, r0, N0);
+
+  if (FF_arr === undefined) FF_scan.dispose(); // we own it (created by np.tile)
 
   return tree.makeDisposable({
     ...coreResult, nobs: n, m: stateSize,
@@ -351,6 +379,12 @@ const dlmSmo = async (
  * - Full or trigonometric seasonal
  * - AR(p) components
  *
+ * When X is provided (n×q covariate matrix), the observation equation becomes:
+ *   y(t) = F_base·x(t) + X[t,:]·β + v
+ *
+ * The β coefficients are appended to the state vector as static states
+ * (identity evolution, zero process noise), matching the MATLAB DLM convention.
+ *
  * System matrices G and F are generated by dlmGenSys().
  * State noise covariance W = diag(w[0]², w[1]², ...) with zeros for
  * states beyond w.length.
@@ -360,6 +394,7 @@ const dlmSmo = async (
  * @param w - State noise standard deviations (diagonal of sqrt(W))
  * @param dtype - Computation precision (default: Float64)
  * @param options - Model specification (default: order=1, no seasonal)
+ * @param X - Optional covariate matrix (n rows × q cols); each row is X[t,:]
  * @returns Complete model fit with smoothed estimates and diagnostics
  */
 export const dlmFit = async (
@@ -368,6 +403,7 @@ export const dlmFit = async (
   w: number[],
   dtype: DType = DType.Float64,
   options: DlmOptions = {},
+  X?: ArrayLike<number>[],  // n×q: X[t] is the covariate row at time t
 ): Promise<DlmFitResult> => {
   const n = y.length;
   const FA = getFloatArrayType(dtype);
@@ -381,16 +417,27 @@ export const dlmFit = async (
   // Generate system matrices from options
   // ─────────────────────────────────────────────────────────────────────────
   const sys = dlmGenSys(options);
-  const m = sys.m;
+  const m_base = sys.m;
+  const q = X ? X[0].length : 0;
+  const m = m_base + q;  // extended state dimension (includes β)
 
-  // State transition: x(t) = G·x(t-1) + w
-  using G = np.array(sys.G, { dtype });
-  // Observation: y(t) = F·x(t) + v  (F is [1, m])
-  using F = np.array([sys.F], { dtype });
+  // ─────────────────────────────────────────────────────────────────────────
+  // Extend G, W for covariate β states (static: identity in G, zero in W)
+  // When q=0 this is a no-op and we use the base matrices directly.
+  // ─────────────────────────────────────────────────────────────────────────
+  const G_data: number[][] = m === m_base
+    ? sys.G
+    : [
+        ...sys.G.map(row => [...row, ...new Array(q).fill(0)]),
+        ...Array.from({ length: q }, (_, k) =>
+          [...new Array(m_base).fill(0), ...Array.from({ length: q }, (_, j) => j === k ? 1 : 0)]
+        ),
+      ];
 
-  // State noise covariance: W = diag(w[0]², w[1]², ..., 0, ...)
   const W_data: number[][] = Array.from({ length: m }, (_, i) =>
     Array.from({ length: m }, (_, j) => {
+      // β states (indices m_base..m-1) have zero process noise
+      if (i >= m_base || j >= m_base) return 0;
       if (i === j && i < w.length) return w[i] ** 2;
       return 0;
     })
@@ -404,11 +451,28 @@ export const dlmFit = async (
     W_data[1][1] = w[1] ** 2 * 1;
   }
 
+  using G = np.array(G_data, { dtype });
+  // Base F (1×m_base) — used only for building FF_arr; not passed to dlmSmo directly
+  using F_base = np.array([sys.F], { dtype });
   using W = np.array(W_data, { dtype });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build time-varying FF_arr [n, 1, m] when covariates present.
+  // FF_arr[t] = [[F_base[0], F_base[1], ..., X[t,0], ..., X[t,q-1]]]
+  // When q=0, pass undefined so dlmSmo builds FF_scan from static F.
+  // ─────────────────────────────────────────────────────────────────────────
+  let FF_arr: np.Array | undefined;
+  if (q > 0 && X) {
+    const FF_data: number[][][] = Array.from({ length: n }, (_, t) => [
+      [...sys.F, ...Array.from(X[t])]
+    ]);
+    FF_arr = np.array(FF_data, { dtype });
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Initialize state with diffuse prior
   // x0[0] = mean of first ns observations (level); rest = 0
+  // β states start at 0 with large uncertainty (diffuse prior)
   // ─────────────────────────────────────────────────────────────────────────
   const ns = options.ns ?? 12;
   let initSum = 0;
@@ -431,7 +495,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F, V_std, x0_data, G, W, C0_data, m, dtype);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -445,7 +509,9 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F, V_std, x0_updated, G, W, C0_scaled, m, dtype);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr);
+
+  FF_arr?.dispose();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Convert np.Array results to TypedArrays via consumeData (read + dispose)
@@ -519,10 +585,10 @@ export const dlmFit = async (
   const mape = await toNum(out2.mape);
 
   return {
-    // State estimates
+    // State estimates (m = m_base + q; last q states are β coefficients)
     xf, Cf, x: x_out, C: C_out, xstd,
     // System matrices (plain arrays for easy serialization)
-    G: sys.G,
+    G: G_data,
     F: sys.F,
     W: W_data,
     // Input data
@@ -530,8 +596,8 @@ export const dlmFit = async (
     // Initial state (after Pass 1 refinement)
     x0: x0_updated.map(row => row[0]),
     C0: C0_scaled,
-    // Covariates (empty for basic model)
-    XX: [],
+    // Covariates matrix (stored as row vectors; empty array when X not provided)
+    XX: X ? Array.from({ length: n }, (_, t) => Array.from(X[t]) as number[]) : [],
     // Predictions and residuals
     yhat, ystd, resid0, resid, resid2,
     // Diagnostics

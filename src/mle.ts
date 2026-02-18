@@ -228,6 +228,7 @@ const makeKalmanLoss = (
  * @param lr - Learning rate for Adam (default: 0.05)
  * @param tol - Convergence tolerance on relative lik change (default: 1e-6)
  * @param dtype - Computation precision (default: Float64)
+ * @param X - Optional covariate matrix (n rows × q cols), passed through to dlmFit
  * @returns MLE result with estimated parameters and full DLM fit
  */
 export const dlmMLE = async (
@@ -244,6 +245,7 @@ export const dlmMLE = async (
     /** Called after each iteration with the updated theta and lik. */
     onIteration?: (iter: number, theta: Float64Array | Float32Array, lik: number) => void;
   },
+  X?: ArrayLike<number>[],  // n×q covariate matrix, passed through to dlmFit
 ): Promise<DlmMleResult> => {
   const t0 = performance.now();
   const n = y.length;
@@ -370,7 +372,7 @@ export const dlmMLE = async (
 
   // Run full dlmFit with optimized parameters (including fitted arphi if applicable)
   const fitOptions = arphi_opt ? { ...options, arphi: arphi_opt } : options;
-  const fit = await dlmFit(yArr, s_opt, w_opt, dtype, fitOptions);
+  const fit = await dlmFit(yArr, s_opt, w_opt, dtype, fitOptions, X);
 
   const elapsed = performance.now() - t0;
 

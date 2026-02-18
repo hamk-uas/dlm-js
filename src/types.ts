@@ -86,8 +86,8 @@ export interface DlmFitResult {
   x0: number[];
   /** Initial state covariance (scaled) */
   C0: number[][];
-  /** Covariates (empty for basic model) */
-  XX: number[];
+  /** Covariates matrix: XX[t] is the covariate row at time t (empty array when no covariates) */
+  XX: number[][] | number[];
   /** Filter predictions */
   yhat: FloatArray;
   /** Prediction standard deviations */
