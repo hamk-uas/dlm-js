@@ -77,11 +77,11 @@ function makeAssocLoss(N: number) {
       lhs: [np.Array, np.Array, np.Array],
       rhs: [np.Array, np.Array, np.Array],
     ): [np.Array, np.Array, np.Array] {
-      using a_new = np.multiply(rhs[0], lhs[0]);
+      const a_new = np.multiply(rhs[0], lhs[0]);   // returned — no `using`
       using rb    = np.multiply(rhs[0], lhs[1]);
-      using b_new = np.add(rb, rhs[1]);
+      const b_new = np.add(rb, rhs[1]);             // returned — no `using`
       using rc    = np.multiply(rhs[0], lhs[2]);
-      using c_new = np.add(rc, rhs[2]);
+      const c_new = np.add(rc, rhs[2]);             // returned — no `using`
       return [a_new, b_new, c_new];
     }
 
@@ -91,7 +91,7 @@ function makeAssocLoss(N: number) {
     // Scalar loss: sum(a_scan + b_scan + c_scan)
     using ab  = np.add(a_scan, b_scan);
     using abc = np.add(ab, c_scan);
-    using lik = np.sum(abc);
+    const lik = np.sum(abc);   // returned — no `using`
 
     a_scan.dispose(); b_scan.dispose(); c_scan.dispose();
     return lik;
@@ -102,7 +102,7 @@ const lossFn = makeAssocLoss(N);
 using theta0 = np.array([0.5], { dtype });  // single scalar param, no split needed
 
 // ── Test 1: jit(valueAndGrad) ────────────────────────────────────────────────
-console.log("Test 1 [jit(valueAndGrad(lossFn))]:  (expect: Too many buffers)");
+console.log("Test 1 [jit(valueAndGrad(lossFn))]:  (expect: PASS, no error)");
 try {
   const jvg = jit((theta: np.Array): [np.Array, np.Array] =>
     valueAndGrad(lossFn)(theta));
@@ -116,7 +116,7 @@ try {
 }
 
 // ── Test 2: valueAndGrad without jit ─────────────────────────────────────────
-console.log("Test 2 [valueAndGrad(lossFn), no jit]:  (expect: tracer disposed)");
+console.log("Test 2 [valueAndGrad(lossFn), no jit]:  (expect: PASS, no error)");
 try {
   const [lik, grad] = valueAndGrad(lossFn)(theta0);
   const likV = (await lik.consumeData())[0];

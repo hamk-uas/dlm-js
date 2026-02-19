@@ -120,6 +120,14 @@ an intermediate activation tensor reference is retained beyond its scope and
 then accessed after disposal.  The fix likely involves adjusting the lifetime
 or access order of saved activations in the WebGPU backward-pass finalisation.
 
+Note: the repro compose function uses `const` (not `using`) for returned values
+`a_new`/`b_new`/`c_new`, and the outer function uses `const lik` (not `using`)
+for the returned scalar.  Removing `using` from returned values does not affect
+the error — inside a traced body, jax-js intercepts `using` disposal and manages
+tensor lifetimes symbolically, so `using` on returned values is handled
+correctly.  The disposal error originates inside jax-js's own backward-pass
+finalisation, not in the user code.
+
 ## Reproduction
 
 Minimal self-contained repro: [`issues/repro-webgpu-mle-buffer-limit.ts`](repro-webgpu-mle-buffer-limit.ts)
