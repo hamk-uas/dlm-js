@@ -9,18 +9,20 @@
  * shader, the resulting bind group references inputs, outputs, and saved
  * activations from the compose body simultaneously — yielding > 8 buffers.
  *
- * The compose function here mirrors the DLM Kalman loss in dlm-js
- * (makeKalmanLossAssoc), reduced to m=1 (scalar matrices) to minimise noise.
- * Even at m=1 the compose outputs a 3-tuple (A, b, S), and the backward fuser
- * produces 12 buffer references, crashing with:
+ * The compose function has a 3-element tuple output (a, b, c), each a scalar
+ * [N] tensor.  This directly mirrors the (A, x, C) / (A, b, S) triplet
+ * structure used by makeKalmanLossAssoc in dlm-js.
+ *
+ * Even at this minimal complexity, the backward fuser produces > 8 buffer
+ * references per bind group, crashing with:
  *
  *   Error: Too many buffers (12) for WebGPU pipeline (max: 8)
  *
  * There is no viable eager workaround: removing `jit` causes `using`-managed
- * intermediate tensors (disposals) to be freed before the AD backward pass can
- * read saved activations:
+ * intermediate tensors to be freed before the AD backward pass can read saved
+ * activations:
  *
- *   Error: Referenced tracer Array:float32[1,1] has been disposed
+ *   Error: Referenced tracer Array:float32[N] has been disposed
  *
  * ─── HOW TO RUN ──────────────────────────────────────────────────────────────
  *
@@ -29,114 +31,95 @@
  *
  * ─── EXPECTED OUTPUT (after fix) ────────────────────────────────────────────
  *
- *   Test 1 [jit(valueAndGrad)]:   PASS  lik=<value>  grad=<value>
+ *   Test 1 [jit(valueAndGrad)]:    PASS  lik=<value>  grad=<value>
  *   Test 2 [valueAndGrad, no jit]: PASS  lik=<value>  grad=<value>
  *
- * ─── ACTUAL OUTPUT (jax-js-nonconsuming v0.7.1) ─────────────────────────────
+ * ─── ACTUAL OUTPUT (jax-js-nonconsuming v0.7.2) ──────────────────────────────
  *
- *   Test 1 [jit(valueAndGrad)]:   FAIL  Error: Too many buffers (12) for WebGPU pipeline (max: 8)
- *   Test 2 [valueAndGrad, no jit]: FAIL  Error: Referenced tracer Array:float32[1,1] has been disposed
+ *   Test 1 [jit(valueAndGrad)]:    FAIL  Too many buffers (12) for WebGPU pipeline (max: 8)
+ *   Test 2 [valueAndGrad, no jit]: FAIL  Referenced tracer Array:float32[20] has been disposed
  */
 
 import {
   DType, defaultDevice, init,
-  numpy as np, jit, valueAndGrad, lax, tree,
+  numpy as np, jit, valueAndGrad, lax,
 } from "@hamk-uas/jax-js-nonconsuming";
 
 await init("webgpu");
 defaultDevice("webgpu");
 
 const dtype = DType.Float32;
-const N = 20; // series length — small enough to be fast, big enough to show the issue
+const N = 20;
 
-// ── Minimal differentiable loss using lax.associativeScan ──────────────────
+// ── Loss function using lax.associativeScan with a 3-tuple compose ──────────
 //
-// compose((A_a, b_a, S_a), (A_b, b_b, S_b)) → (A_c, b_c, S_c)
-// mirrors the DLM Kalman forward-filter compose in makeKalmanLossAssoc (m=1).
+// theta: scalar [1] — log of a scale factor
+// Compose: (a0,b0,c0) ⊕ (a1,b1,c1) → (a1·a0, a1·b0+b1, a1·c0+c1)
+// (scalar multiply-add on three channels — mirrors (A, x, C) Kalman structure)
 //
-// Using m=1 (scalars wrapped as [1,1] matrices) to minimise the example while
-// still exercising the same code path as the real m=2 Nile model.
+// This is the minimal differentiable 3-tuple associative scan that exercises
+// the same backward-pass buffer structure as makeKalmanLossAssoc in dlm-js.
 
-function makeMinimalLoss(N: number) {
-  // Fake observations and a fixed G/F for simplicity
-  using y_const = np.ones([N, 1, 1], { dtype });
-  const y_snap = y_const; // captured by closure
+function makeAssocLoss(N: number) {
+  return function assocLoss(theta: np.Array): np.Array {
+    using scale = np.exp(theta);   // [1] — differentiable, broadcast over N
 
-  return function minimalAssocLoss(theta: np.Array): np.Array {
-    // theta = [log_s, log_w]: [2]
-    using log_s = np.slice(theta, [0], [1]);
-    using log_w = np.slice(theta, [1], [2]);
-    using s = np.exp(log_s);        // [1]
-    using w = np.exp(log_w);        // [1]
-    using V2 = np.einsum('i,i->i', s, s);  // s²
-    using W  = np.reshape(w, [1, 1]);       // [1,1]
-    using G  = np.eye(1, { dtype });        // [1,1]
-    using F  = np.ones([1, 1], { dtype }); // [1,1]
+    // Build [N] element tensors from theta
+    using ones_n = np.ones([N], { dtype });
+    using a_elems = np.multiply(ones_n, scale);  // [N] = exp(theta)
+    using b_elems = np.multiply(ones_n, scale);  // [N] = exp(theta)
+    using c_elems = np.ones([N], { dtype });      // [N] = 1 (constant)
 
-    // Build scan elements: one per timestep [N, 1, 1], [N, 1, 1], [N, 1, 1]
-    using v2_scalar = np.reshape(V2, []);
-    using Ak = np.expand_dims(G, 0);                          // [1,1,1]
-    using Ak_n = np.broadcast_to(Ak, [N, 1, 1]);             // [N,1,1]
-    using bk = np.zeros([N, 1, 1], { dtype });
-    using Sk_base = np.expand_dims(W, 0);                     // [1,1,1]
-    using Sk_n = np.broadcast_to(Sk_base, [N, 1, 1]);        // [N,1,1]
-
-    const elems: [np.Array, np.Array, np.Array] = [Ak_n, bk, Sk_n];
-
-    // Compose: the 3-tuple associative operation
+    // Compose: (lhs, rhs) → element-wise multiply-add on 3 channels
     function compose(
-      a: [np.Array, np.Array, np.Array],
-      b: [np.Array, np.Array, np.Array]
+      lhs: [np.Array, np.Array, np.Array],
+      rhs: [np.Array, np.Array, np.Array],
     ): [np.Array, np.Array, np.Array] {
-      using A_c = np.einsum('nij,njk->nik', b[0], a[0]);
-      using Ab  = np.einsum('nij,njk->nik', b[0], a[1]);
-      using b_c = np.add(Ab, b[1]);
-      using BSAt = np.einsum('nij,njk,nlk->nil', b[0], a[2], b[0]);
-      using S_c  = np.add(BSAt, b[2]);
-      return [A_c, b_c, S_c];
+      using a_new = np.multiply(rhs[0], lhs[0]);
+      using rb    = np.multiply(rhs[0], lhs[1]);
+      using b_new = np.add(rb, rhs[1]);
+      using rc    = np.multiply(rhs[0], lhs[2]);
+      using c_new = np.add(rc, rhs[2]);
+      return [a_new, b_new, c_new];
     }
 
-    const [_A_scan, _b_scan, S_scan] = lax.associativeScan(compose, elems);
+    const [a_scan, b_scan, c_scan] = lax.associativeScan(
+      compose, [a_elems, b_elems, c_elems]);
 
-    // Simple scalar loss: sum of diagonal of final S (proxy for log-likelihood)
-    using diag = np.einsum('nii->n', S_scan);
-    using logdiag = np.log(np.abs(diag));
-    using lik = np.sum(logdiag);
+    // Scalar loss: sum(a_scan + b_scan + c_scan)
+    using ab  = np.add(a_scan, b_scan);
+    using abc = np.add(ab, c_scan);
+    using lik = np.sum(abc);
 
-    _A_scan.dispose();
-    _b_scan.dispose();
-    S_scan.dispose();
-
+    a_scan.dispose(); b_scan.dispose(); c_scan.dispose();
     return lik;
   };
 }
 
-const lossFn = makeMinimalLoss(N);
-using theta0 = np.array([Math.log(15.0), Math.log(1.0)], { dtype });
+const lossFn = makeAssocLoss(N);
+using theta0 = np.array([0.5], { dtype });  // single scalar param, no split needed
 
 // ── Test 1: jit(valueAndGrad) ────────────────────────────────────────────────
-console.log("Test 1 [jit(valueAndGrad(lossFn))]:  (expected: Too many buffers (12) for WebGPU pipeline (max: 8))");
+console.log("Test 1 [jit(valueAndGrad(lossFn))]:  (expect: Too many buffers)");
 try {
-  const jittedVG = jit((theta: np.Array): [np.Array, np.Array] => {
-    return valueAndGrad(lossFn)(theta);
-  });
-  const [lik, grad] = jittedVG(theta0);
+  const jvg = jit((theta: np.Array): [np.Array, np.Array] =>
+    valueAndGrad(lossFn)(theta));
+  const [lik, grad] = jvg(theta0);
   const likV = (await lik.consumeData())[0];
-  const gradV = Array.from(await grad.consumeData());
-  console.log(`  PASS  lik=${likV.toFixed(4)}  grad=[${gradV.map(v => v.toFixed(4)).join(', ')}]`);
+  const gradV = (await grad.consumeData())[0];
+  console.log(`  PASS  lik=${likV.toFixed(4)}  grad=${gradV.toFixed(4)}`);
   grad.dispose();
 } catch (e: any) {
   console.log(`  FAIL  ${e.message}`);
 }
 
 // ── Test 2: valueAndGrad without jit ─────────────────────────────────────────
-console.log("Test 2 [valueAndGrad(lossFn), no jit]:  (expected: Referenced tracer ... has been disposed)");
+console.log("Test 2 [valueAndGrad(lossFn), no jit]:  (expect: tracer disposed)");
 try {
-  const vg = valueAndGrad(lossFn);
-  const [lik, grad] = vg(theta0);
+  const [lik, grad] = valueAndGrad(lossFn)(theta0);
   const likV = (await lik.consumeData())[0];
-  const gradV = Array.from(await grad.consumeData());
-  console.log(`  PASS  lik=${likV.toFixed(4)}  grad=[${gradV.map(v => v.toFixed(4)).join(', ')}]`);
+  const gradV = (await grad.consumeData())[0];
+  console.log(`  PASS  lik=${likV.toFixed(4)}  grad=${gradV.toFixed(4)}`);
   grad.dispose();
 } catch (e: any) {
   console.log(`  FAIL  ${e.message}`);
