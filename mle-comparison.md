@@ -170,9 +170,13 @@ The MATLAB DLM toolbox has a second estimation mode (`options.mcmc=1`) that uses
 
 ## GPU + parallel Kalman filter via associative scan
 
+> **Planned refactor:** The current forward filter uses a DARE steady-state Kalman gain approximation. We have since realized that the very paper cited for the backward smoother — Särkkä & García-Fernández [1] — already provides an exact parallel forward Kalman filter in Lemmas 1–2 (5-tuple elements with associative composition). The DARE approximation was independently devised when Lemmas 1–2 were overlooked, despite using Lemmas 5–6 from the same paper for the backward smoother. The planned fix replaces DARE with the exact formulation, eliminating the ~1–2% early-step bias entirely. See [issues/dare-to-exact-parallel.md](issues/dare-to-exact-parallel.md) for the full plan.
+
 Särkkä & García-Fernández [1] show that Bayesian filtering and smoothing recursions can be posed as **all-prefix-sums (parallel scan) operations**. For the linear-Gaussian case (i.e. Kalman filter + RTS smoother), each time step is an affine map and their composition is **associative**:
 
-$$(A_2, b_2, \Sigma_2) \oplus (A_1, b_1, \Sigma_1) = (A_2 A_1,\; A_2 b_1 + b_2,\; A_2 \Sigma_1 A_2^\top + \Sigma_2)$$
+$(A_2, b_2, \Sigma_2) \oplus (A_1, b_1, \Sigma_1) = (A_2 A_1,\; A_2 b_1 + b_2,\; A_2 \Sigma_1 A_2^\top + \Sigma_2)$
+
+This is the 3-tuple affine form currently used by dlm-js for the forward filter (with DARE-derived constant gains). The paper also provides a more general 5-tuple form $(A, b, C, \eta, J)$ [1, Lemmas 1–2] with exact per-timestep Kalman gains and an associative compose rule involving matrix inversions. The planned refactor will switch to the 5-tuple form.
 
 This means the sequential `lax.scan` (O(n) depth) can be replaced by `lax.associativeScan` (O(log n) depth). The paper formulates parallel versions of both the forward filter and the RTS backward smoother, giving algebraically equivalent recursions in exact arithmetic while reducing parallel depth from linear to logarithmic [1, §3–4]. In floating-point arithmetic, operation reordering can still produce small numerical differences. Combined with a WebGPU backend, this gives two orthogonal dimensions of parallelism: across time steps (associative scan) and within each step's matrix operations (GPU ALUs).
 
@@ -189,7 +193,7 @@ Both paths are wrapped in `jit(valueAndGrad(lossFn))` with optax Adam. The final
 
 #### `makeKalmanLossAssoc` — parallel MLE loss via associative scan
 
-The parallel MLE loss function replaces the sequential Kalman forward pass inside `valueAndGrad` with the same affine-map formulation used by `dlmFit`'s forward filter, but with a critical difference: the DARE iteration is unrolled **inside** the traced function so that $K_{ss}$ remains a traced tensor and gradients propagate through both $W$ and $V^2$.
+The parallel MLE loss function replaces the sequential Kalman forward pass inside `valueAndGrad` with the same affine-map formulation used by `dlmFit`'s forward filter, but with a critical difference: the DARE iteration is unrolled **inside** the traced function so that $K_{ss}$ remains a traced tensor and gradients propagate through both $W$ and $V^2$. (Planned: replace DARE with the exact 5-tuple forward filter from [1, Lemmas 1–2], which computes exact per-timestep Kalman gains — no DARE iteration needed.)
 
 **Step-by-step derivation:**
 
@@ -245,9 +249,11 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 ### Implementation status
 
-**The WebGPU associativeScan path is fully implemented and working** for both forward filter and backward smoother. `dlmFit` on the `webgpu` backend with `Float32` automatically uses this path (gated by `dtype === Float32 && device === 'webgpu'`). The design is a **two-source method**, combining classical control theory for the forward filter with the parallel smoother formulation of [1]:
+**The WebGPU associativeScan path is fully implemented and working** for both forward filter and backward smoother. `dlmFit` on the `webgpu` backend with `Float32` automatically uses this path (gated by `dtype === Float32 && device === 'webgpu'`). The current design is a **two-source method**, combining classical control theory for the forward filter with the parallel smoother formulation of [1] — **planned to be unified** under a single algebraic framework using [1, Lemmas 1–6]:
 
-**Forward filter** (DARE + prefix scan — classical Kalman/control theory):
+> **Why the two-source design?** When implementing the WebGPU parallel path, we used Lemmas 5–6 of Särkkä & García-Fernández [1] for the backward smoother (exact, per-timestep gains) but overlooked Lemmas 1–2 of the *same paper*, which provide an equally exact parallel forward Kalman filter using 5-tuple elements $(A_k, b_k, C_k, \eta_k, J_k)$. Instead, we independently devised a DARE (Discrete Algebraic Riccati Equation) steady-state approximation for the forward filter, which introduces ~1–2% early-step bias. The planned refactor replaces DARE with the paper's own Lemmas 1–2, making both passes exact and eliminating this inconsistency. See [issues/dare-to-exact-parallel.md](issues/dare-to-exact-parallel.md) for the full implementation plan.
+
+**Forward filter** (currently: DARE + prefix scan; planned: exact 5-tuple from [1, Lemmas 1–2]):
 - Solves the Discrete Algebraic Riccati Equation (DARE, MATLAB convention) for steady-state Kalman gain $K_{ss}$
 - Constructs per-timestep affine elements $(A_t, b_t, \Sigma_t)$ using $K_{ss}$ and composes them via `lax.associativeScan` (O(log n) depth)
 - This is an intentional approximation: the first ~5 timesteps use steady-state gain before convergence, trading ~1–2% early-step accuracy for full parallelism. The sequential `lax.scan` path on CPU/WASM produces exact per-timestep Kalman gains for reference validation
@@ -264,8 +270,8 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 | Component | Source | Approximation |
 |-----------|--------|---------------|
-| Forward gain $K_{ss}$ | Classical DARE / steady-state Kalman theory | Steady-state gain applied from step 0; exact after ~5 steps |
-| Forward prefix scan composition | [1, §3] — associative affine map composition | None (exact given $K_{ss}$) |
+| Forward gain $K_{ss}$ | Classical DARE / steady-state Kalman theory (**planned: [1, Lemma 1] exact per-timestep gains**) | Current: steady-state gain applied from step 0; exact after ~5 steps. Planned: none (exact) |
+| Forward prefix scan composition | Current: [1, §3] 3-tuple affine map (**planned: [1, Lemma 2] 5-tuple with $(I+C_iJ_j)^{-1}$**) | Current: none (exact given $K_{ss}$). Planned: none (exact) |
 | Backward smoother elements | [1, Lemmas 5–6] — Theorem 2 gives smoothed density as suffix scan | None — exact per-timestep gains $E_k$ from filtered covariances |
 | Backward suffix scan composition | [1, §4] — same associative law as forward | None (algebraically identical to sequential RTS) |
 | Joseph form covariance | Standard Kalman filter stabilization | None — guarantees PSD by construction |
@@ -312,6 +318,6 @@ Three findings:
 3. **The WASM-to-WebGPU ratio converges as N grows**: ~27× at N=100, ~7× at N=102400. WASM is faster at all measured N, but the gap shrinks with series length because WASM's O(n) growth outpaces WebGPU's O(log n) growth. A crossover is plausible at N≈800k–1M where WASM's linear growth would overtake WebGPU's logarithmic growth.
 
 **References:**
-1. Särkkä, S. & García-Fernández, Á. F. (2020). [Temporal Parallelization of Bayesian Smoothers](https://arxiv.org/abs/1905.13002). *IEEE Transactions on Automatic Control*, 66(1), 299–306. doi:[10.1109/TAC.2020.2976316](https://doi.org/10.1109/TAC.2020.2976316). — Poses Kalman filtering and RTS smoothing as associative all-prefix-sums operations; derives the parallel scan formulation for linear-Gaussian and general Bayesian models, reducing sequential depth from O(n) to O(log n). Lemmas 5–6 and Theorem 2 provide the backward smoother element form $(E_k, g_k, L_k)$ and its associative composition law used by dlm-js.
+1. Särkkä, S. & García-Fernández, Á. F. (2020). [Temporal Parallelization of Bayesian Smoothers](https://arxiv.org/abs/1905.13002). *IEEE Transactions on Automatic Control*, 66(1), 299–306. doi:[10.1109/TAC.2020.2976316](https://doi.org/10.1109/TAC.2020.2976316). — Poses Kalman filtering and RTS smoothing as associative all-prefix-sums operations; derives the parallel scan formulation for linear-Gaussian and general Bayesian models, reducing sequential depth from O(n) to O(log n). **Lemmas 1–2**: exact parallel forward Kalman filter (5-tuple elements $(A, b, C, \eta, J)$ + associative composition with $(I+C_iJ_j)^{-1}$). **Lemmas 5–6 + Theorem 2**: parallel backward smoother. dlm-js currently uses Lemmas 5–6 (backward); Lemmas 1–2 (forward) are planned to replace the DARE approximation.
 2. Pyro contributors. [Forecasting II: state space models](https://pyro.ai/examples/forecasting_ii.html). — Demonstrates `GaussianHMM` with parallel-scan Kalman filtering on 78,888-step BART ridership data; also covers `LinearHMM` for heavy-tailed models with parallel auxiliary variable inference.
 3. NumPyro contributors. [Example: Enumerate Hidden Markov Model](https://num.pyro.ai/en/latest/examples/hmm_enum.html). — Uses `scan()` with the parallel-scan algorithm of [1] to reduce parallel complexity of discrete HMM inference from O(length) to O(log(length)); demonstrates variable elimination combined with MCMC on polyphonic music data.
