@@ -1,4 +1,4 @@
-# jax-js: `jit(valueAndGrad)` over `lax.associativeScan` fails on WebGPU — buffer limit (v0.7.1) / concatenate VJP (v0.7.2)
+# jax-js: `jit(valueAndGrad)` over `lax.associativeScan` fails on WebGPU — buffer limit (v0.7.1) / concatenate VJP (v0.7.2, fixed in v0.7.3) / tracer disposal (v0.7.3)
 
 ## Summary
 
@@ -10,10 +10,11 @@ compose body.  The error changed between versions:
 |---------|--------------------------|--------------------------------|
 | v0.7.1  | `Too many buffers (12) for WebGPU pipeline (max: 8)` | `Referenced tracer Array:float32[m,m] has been disposed` |
 | v0.7.2  | `Nonlinear operation in backward pass for concatenate` | `Nonlinear operation in backward pass for concatenate` |
+| v0.7.3  | `Too many buffers (9) for WebGPU pipeline (max: 8)` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
 
-`dlmFit` (forward smoother, no AD) works correctly on WebGPU in both versions.
+`dlmFit` (forward smoother, no AD) works correctly on WebGPU in all versions.
 The WASM/CPU path for `valueAndGrad` over `lax.associativeScan` works fine in
-both versions (112/112 dlm-js tests pass on WASM with v0.7.2).
+all versions (112/112 dlm-js tests pass on WASM with v0.7.3).
 
 This blocks `dlmMLE` from running on the WebGPU backend.
 
@@ -88,6 +89,38 @@ emits an internal `concatenate` op whose VJP is not implemented (or is
 considered "nonlinear") on the WebGPU backend.  The WASM backend does not hit
 this error — the associativeScan VJP works correctly on WASM in v0.7.2.
 
+## v0.7.3 status
+
+v0.7.3 fixes the `concatenate` VJP regression from v0.7.2.  Two residual issues
+remain:
+
+### Residual 1: `jit(valueAndGrad(lossFn))` — buffer limit (9 > 8)
+
+Buffer count reduced from 12 (v0.7.1) to 9, but still 1 over the WebGPU
+bind-group limit of 8:
+
+```
+Too many buffers (9) for WebGPU pipeline (max: 8)
+```
+
+### Residual 2: `valueAndGrad(lossFn)` without `jit` — tracer disposal after result
+
+Bare `valueAndGrad` now successfully computes the loss and gradient (progress
+since v0.7.2!), but then throws a tracer disposal error *after* returning the
+result:
+
+```
+lik=284451.6875  grad=4813868.5000   ← computed correctly
+Referenced tracer Array:float32[1] has been disposed
+```
+
+The gradient value is available before the error, so the computation itself
+works.  The error occurs during the cleanup/finalisation step of the backward
+pass, suggesting a reference to an intermediate activation tensor is retained
+beyond its scope and then accessed after disposal.  This may be fixable by
+adjusting the order of operations or lifetime management in the backward pass
+cleanup for WebGPU.
+
 ## Reproduction
 
 Minimal self-contained repro: [`issues/repro-webgpu-mle-buffer-limit.ts`](repro-webgpu-mle-buffer-limit.ts)
@@ -109,9 +142,10 @@ deno run --no-check --unstable-webgpu --allow-read --allow-env \
   tmp/test-mle-webgpu.ts
 ```
 
-Tested on: jax-js-nonconsuming v0.7.1 (buffer limit error) and v0.7.2
-(concatenate VJP error).  `dlmFit` (no AD) works correctly on WebGPU with
-both versions.
+Tested on: jax-js-nonconsuming v0.7.1 (buffer limit, 12), v0.7.2 (concatenate
+VJP error), and v0.7.3 (buffer limit reduced to 9; bare `valueAndGrad` now
+computes correctly but hits tracer disposal after the result is returned).
+`dlmFit` (no AD) works correctly on WebGPU with all three versions.
 
 ## Expected behaviour
 
