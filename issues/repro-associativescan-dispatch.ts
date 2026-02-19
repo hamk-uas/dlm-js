@@ -68,11 +68,12 @@
  *
  * A/B: O(log n) ✓  lax.associativeScan fuses to ceil(log2 N)+1 dispatches.
  *      Architecturally optimal for WebGPU Kogge-Stone (no cross-workgroup sync).
- * C/D: O(n)    ✗  lax.scan is O(n) dispatches on WebGPU regardless of jit().
- *      Either the compiled-loop is WASM-only, or it doesn't apply to bodies
- *      containing reduction ops (einsum/matmul).  The dlm-js backward RTS
- *      smoother, which runs lax.scan inside jit(core), is therefore the
- *      remaining O(n) bottleneck for dlmFit on WebGPU.
+ * C/D: O(n)    ✗  lax.scan hits the WebGPU compiled-loop ineligibility rule:
+ *      the RTS body has intra-step buffer deps (matmul→matmul→add within one
+ *      iteration).  WebGPU has no cross-workgroup barrier, so fusing N steps
+ *      into one shader is impossible.  jax-js selects executeScanFallback():
+ *      a JS for-loop that calls bodyProgram.execute() once per step — exactly
+ *      O(N) JS→GPU roundtrips.  This is correct behaviour, not a missing opt.
  */
 
 import { numpy as np, lax, jit, DType, defaultDevice, init }
