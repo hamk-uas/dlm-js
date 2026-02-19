@@ -450,6 +450,8 @@ const dlmSmo = async (
     //   fwd.mask   [n,1,1]  — 1.0 observed, 0.0 NaN
 
     let fwd: ForwardY;
+    let x_smooth: np.Array;
+    let C_smooth: np.Array;
 
     if (useAssocScan && dare) {
       // ─── Associative Scan Forward Filter (webgpu + f32) ───
@@ -592,14 +594,88 @@ const dlmSmo = async (
       // jax-js-lint: allow-non-using — stored in fwd.K, disposed by caller
       const K_arr = np.multiply(mask_arr, K_raw);         // [n,m,1]
 
-      x_filt.dispose();
-      C_filt.dispose();
-
       fwd = {
         x_pred: x_pred_arr, C_pred: C_pred_arr,
         K: K_arr, v: v_arr, Cp: Cp_arr,
         FF: FF_scan, mask: mask_arr,
       } as unknown as ForwardY;
+
+      // ─── Parallel Backward Smoother (Särkkä & García-Fernández 2020) ─────
+      //
+      // Reformulates the RTS backward pass as an associative suffix scan,
+      // reducing sequential depth from O(n) to O(log n) dispatches on WebGPU.
+      //
+      // Each smoother element a_k = (E_k, g_k, L_k) satisfies:
+      //   a_k(x_k | x_{k+1}) = N(x_k; E_k·x_{k+1} + g_k, L_k)
+      //
+      // Composition (Lemma 6): identical structure to forward compose:
+      //   (E_ij, g_ij, L_ij) = (E_i·E_j, E_i·g_j + g_i, E_i·L_j·E_i' + L_i)
+      //
+      // Terminal: E_{n-1}=0, g_{n-1}=x̄_{n-1}, L_{n-1}=C_{filt,n-1}.
+      // After composition with terminal, all E values → 0.
+      // Smoothed density: x_smooth = g_comp, C_smooth = L_comp.
+      // ────────────────────────────────────────────────────────────────────────
+      {
+        // S_k = G · C_filt,k · G' + W  [n, m, m]
+        using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt, G);
+        using W_bcast = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n, 1, 1]);
+        using S_mat = np.add(GCGt, W_bcast);
+
+        // Batched matrix inverse S^{-1}  [n, m, m]
+        using S_inv = np.linalg.inv(S_mat);
+
+        // E_k = C_filt,k · G' · S_k^{-1}  [n, m, m]
+        using CGt = np.einsum('nij,kj->nik', C_filt, G);
+        using E_raw = np.einsum('nij,njk->nik', CGt, S_inv);
+
+        // Terminal masking: E[n-1] = 0
+        using term_mask = np.array(
+          Array.from({ length: n }, (_, t) => [[t < n - 1 ? 1.0 : 0.0]]),
+          { dtype }
+        );  // [n, 1, 1]
+        // jax-js-lint: allow-non-using — E_all disposed after scan
+        const E_all = np.multiply(E_raw, term_mask);  // [n, m, m]
+
+        // ImEG = I - E_k · G  [n, m, m]
+        using EG = np.einsum('nij,jk->nik', E_all, G);
+        using I_eye = np.eye(stateSize, undefined, { dtype });
+        using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
+        using ImEG = np.subtract(I_exp, EG);
+
+        // g_k = (I - E_k·G) · x̄_k  [n, m, 1]
+        // jax-js-lint: allow-non-using — g_all disposed after scan
+        const g_all = np.einsum('nij,njk->nik', ImEG, x_filt);
+
+        // L_k (Joseph form — guaranteed PSD):
+        //   L_k = (I - E_k·G) · C_filt,k · (I - E_k·G)' + E_k · W · E_k'
+        using ImEG_C_ImEGt = np.einsum('nij,njk,nlk->nil', ImEG, C_filt, ImEG);
+        using EWEt = np.einsum('nij,jk,nlk->nil', E_all, W, E_all);
+        using L_raw = np.add(ImEG_C_ImEGt, EWEt);
+        // Symmetrize (f32 stabilization)
+        using L_raw_t = np.einsum('nij->nji', L_raw);
+        using L_sum = np.add(L_raw, L_raw_t);
+        // jax-js-lint: allow-non-using — L_all disposed after scan
+        const L_all = np.multiply(np.array(0.5, { dtype }), L_sum);
+
+        // Suffix scan via reverse associativeScan (same compose as forward)
+        const smoothed = lax.associativeScan(
+          compose,
+          { A: E_all, b: g_all, S: L_all },
+          { reverse: true }
+        ) as ScanElem;
+
+        // Smoothed estimates: x_smooth = g_comp, C_smooth = L_comp
+        x_smooth = smoothed.b;      // [n, m, 1]
+        C_smooth = smoothed.S;      // [n, m, m]
+        smoothed.A.dispose();       // All-zero E values (not needed)
+        E_all.dispose();
+        g_all.dispose();
+        L_all.dispose();
+      }
+
+      x_filt.dispose();
+      C_filt.dispose();
+
     } else {
       // ─── Sequential Forward Filter (cpu/wasm) ───
       // fwdSeq fields are disposed individually via fwd.K.dispose() etc.
@@ -611,35 +687,35 @@ const dlmSmo = async (
       );
       tree.dispose(fwdCarry);
       fwd = fwdSeq as unknown as ForwardY;
-    }
-    
-    // ─── Backward RTS Smoother (reversed forward outputs) ───
-    using x_pred_rev = np.flip(fwd.x_pred, 0);
-    using C_pred_rev = np.flip(fwd.C_pred, 0);
-    using K_rev = np.flip(fwd.K, 0);
-    using v_rev = np.flip(fwd.v, 0);
-    using Cp_rev = np.flip(fwd.Cp, 0);
-    using FF_rev = np.flip(fwd.FF, 0);
-    using mask_rev = np.flip(fwd.mask, 0);
 
-    const [bwdCarry, bwd] = lax.scan(
-      backwardStep,
-      { r: r0, N: N0 },
-      {
-        x_pred: x_pred_rev,
-        C_pred: C_pred_rev,
-        K: K_rev,
-        v: v_rev,
-        Cp: Cp_rev,
-        FF: FF_rev,
-        mask: mask_rev,
-      }
-    );
-    tree.dispose(bwdCarry);
-    
-    const x_smooth = np.flip(bwd.x_smooth, 0);  // [n, m, 1]
-    const C_smooth = np.flip(bwd.C_smooth, 0);  // [n, m, m]
-    tree.dispose(bwd);
+      // ─── Sequential Backward RTS Smoother (cpu/wasm) ───
+      using x_pred_rev = np.flip(fwd.x_pred, 0);
+      using C_pred_rev = np.flip(fwd.C_pred, 0);
+      using K_rev = np.flip(fwd.K, 0);
+      using v_rev = np.flip(fwd.v, 0);
+      using Cp_rev = np.flip(fwd.Cp, 0);
+      using FF_rev = np.flip(fwd.FF, 0);
+      using mask_rev = np.flip(fwd.mask, 0);
+
+      const [bwdCarry, bwd] = lax.scan(
+        backwardStep,
+        { r: r0, N: N0 },
+        {
+          x_pred: x_pred_rev,
+          C_pred: C_pred_rev,
+          K: K_rev,
+          v: v_rev,
+          Cp: Cp_rev,
+          FF: FF_rev,
+          mask: mask_rev,
+        }
+      );
+      tree.dispose(bwdCarry);
+
+      x_smooth = np.flip(bwd.x_smooth, 0);  // [n, m, 1]
+      C_smooth = np.flip(bwd.C_smooth, 0);  // [n, m, m]
+      tree.dispose(bwd);
+    }
 
     // ─── Observation-space diagnostics ───
 

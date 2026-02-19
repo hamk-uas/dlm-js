@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" font-family="system-ui,-apple-system,sans-serif" font-size="12">
+<rect width="800" height="200" fill="#fafafa" rx="8"/>
+<rect x="2" y="2" width="796" height="196" fill="none" stroke="#e5e7eb" stroke-width="1" rx="7" stroke-dasharray="6,4"/>
+<text x="400" y="40" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile — MLE on WebGPU (placeholder)</text>
+<text x="400" y="80" text-anchor="middle" fill="#9ca3af" font-size="28">⏳</text>
+<text x="400" y="110" text-anchor="middle" fill="#6b7280" font-size="12">WebGPU MLE is blocked by an upstream jax-js limitation:</text>
+<text x="400" y="130" text-anchor="middle" fill="#9ca3af" font-size="10">jit(valueAndGrad) backward pass exceeds the 8-buffer-per-bind-group WebGPU limit</text>
+<text x="400" y="146" text-anchor="middle" fill="#9ca3af" font-size="10">(associativeScan compose function needs 12 storage buffers for the gradient).</text>
+<text x="400" y="162" text-anchor="middle" fill="#9ca3af" font-size="10">Will be enabled when jax-js adds kernel-splitting for large bind groups.</text>
+</svg>

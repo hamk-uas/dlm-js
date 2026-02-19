@@ -13,23 +13,39 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:nile-demo:first -->96.14 ms<!-- /timing -->, warm run <!-- timing:nile-demo:warm -->46.02 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:nile-demo:first -->101.41 ms<!-- /timing -->, warm run <!-- timing:nile-demo:warm -->50.18 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave" src="assets/kaisaniemi.svg" />
 
-*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:kaisaniemi:first -->98.01 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:warm -->47.04 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:kaisaniemi:first -->101.48 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:warm -->41.50 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy demand demo with seasonal + AR model: smoothed level, seasonal, AR state, and combined signal from dlm-js and MATLAB/Octave" src="assets/trigar.svg" />
 
-*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:trigar:first -->95.74 ms<!-- /timing -->, warm run <!-- timing:trigar:warm -->47.69 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:trigar:first -->98.08 ms<!-- /timing -->, warm run <!-- timing:trigar:warm -->48.53 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim.svg" />
+<img alt="Nile MLE optimization via lax.scan: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim-scan.svg" />
 
-*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in <!-- timing:nile-mle:iterations -->88<!-- /timing --> iterations / <!-- timing:nile-mle:elapsed -->2585 ms<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo (`lax.scan`, sequential): parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in <!-- timing:nile-mle:iterations -->122<!-- /timing --> iterations / <!-- timing:nile-mle:elapsed -->2793 ms<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy MLE optimization with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
+<img alt="Nile MLE optimization via associativeScan: DARE steady-state Kalman gain + parallel prefix scan" src="assets/nile-mle-anim-assoc.svg" />
 
-*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. <!-- timing:energy-mle:iterations -->295<!-- /timing --> iterations / <!-- timing:energy-mle:elapsed -->6.3 s<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo (`associativeScan`, parallel): same model estimated via `makeKalmanLossAssoc` — DARE steady-state Kalman gain traced inside the AD tape + O(log n) `lax.associativeScan` prefix scan. Converged in <!-- timing:nile-mle-assoc:iterations -->114<!-- /timing --> iterations / <!-- timing:nile-mle-assoc:elapsed -->1067 ms<!-- /timing --> on the `wasm` backend. The DARE approximation introduces slight bias (−2·logL ≈ <!-- timing:nile-mle-assoc:lik -->1121.5<!-- /timing --> vs <!-- timing:nile-mle:lik -->1104.9<!-- /timing --> sequential). Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Nile MLE optimization via WebGPU: placeholder — blocked by upstream jax-js buffer limit" src="assets/nile-mle-anim-webgpu.svg" />
+
+*Nile MLE demo (WebGPU, placeholder): blocked by upstream jax-js limitation — `jit(valueAndGrad)` backward pass exceeds the 8-buffer-per-bind-group WebGPU limit. Will be enabled when jax-js adds kernel-splitting for large bind groups.*
+
+<img alt="Energy MLE optimization via lax.scan with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim-scan.svg" />
+
+*Energy MLE demo (`lax.scan`, sequential) with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. <!-- timing:energy-mle:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle:elapsed -->6.5 s<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Energy MLE optimization via associativeScan with AR estimation: DARE steady-state + parallel prefix scan" src="assets/energy-mle-anim-assoc.svg" />
+
+*Energy MLE demo (`associativeScan`, parallel) with AR coefficient estimation: same model via `makeKalmanLossAssoc`. Converged in <!-- timing:energy-mle-assoc:iterations -->264<!-- /timing --> iterations / <!-- timing:energy-mle-assoc:elapsed -->3.0 s<!-- /timing --> on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Energy MLE optimization via WebGPU: placeholder — blocked by upstream jax-js buffer limit" src="assets/energy-mle-anim-webgpu.svg" />
+
+*Energy MLE demo (WebGPU, placeholder): blocked by same upstream jax-js limitation as Nile — `jit(valueAndGrad)` backward pass buffer limit. Will be enabled when jax-js adds kernel-splitting.*
 
 <img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
 
@@ -37,24 +53,24 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Missing-data demo: Nile flow with 23 NaN observations — smoothed level F·x_smooth ± 2σ from dlm-js and MATLAB/Octave, outer band shows observation prediction interval, gray shading over missing regions" src="assets/missing-demo.svg" />
 
-*Missing-data demo: Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->96.97 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->46.39 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Missing-data demo: Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->104.57 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->48.14 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent. Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed -->.
 
 ### Backend performance
 
-`dlmFit` warm-run timings across backends (jitted core, two sequential runs, second shown). Joseph form stabilization is active on all Float32 paths. WebGPU uses the associativeScan forward filter with DARE steady-state Kalman gain.
+`dlmFit` warm-run timings across backends (jitted core, two sequential runs, second shown). Joseph form stabilization is active on all Float32 paths. WebGPU uses `lax.associativeScan` for both the forward filter (DARE steady-state Kalman gain) and the backward smoother (Särkkä & García-Fernández 2020 parallel smoother with per-timestep gains via batched `np.linalg.inv`).
 
 | Model | $n$ | $m$ | cpu / f32 | wasm / f32 | wasm / f64 | webgpu / f32 |
 |-------|-----|-----|-----------|------------|------------|--------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:cpu-f32 -->190 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f32 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->669 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:cpu-f32 -->365 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f32 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->793 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:cpu-f32 -->445 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f32 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->894 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:cpu-f32 -->435 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f32 -->22 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->920 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:cpu-f32 -->190 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f32 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->479 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:cpu-f32 -->365 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f32 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->551 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:cpu-f32 -->445 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f32 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->571 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:cpu-f32 -->435 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f32 -->22 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->599 ms<!-- /timing --> |
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
-- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — at short series the ~20 ms runtime is dominated by fixed JIT/marshaling overhead, not compute. The asymptotic per-step cost is ~1.4 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->151 ms<!-- /timing --> at N=102400. WebGPU/f32 scales as **O(n)** from the start (no fixed-cost region): the ratio versus WASM doubles with every doubling of N (36× at N=100, 343× at N=1600). The associativeScan O(log n) *depth* is never realised because jax-js dispatches each operation in the compose function as a separate sequential GPU kernel. WebGPU's per-step dispatch cost (~4–5 µs) is ~3000× higher than WASM's ~1.4 µs/step compute cost, so no crossover exists.
+- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — at short series the ~20 ms runtime is dominated by fixed JIT/marshaling overhead, not compute. The asymptotic per-step cost is ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->160 ms<!-- /timing --> at N=102400. WebGPU/f32 scales **sub-linearly (O(log n))**: both forward filter and backward smoother use `lax.associativeScan`, so a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->575 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1145 ms<!-- /timing -->). The WASM-to-WebGPU ratio **converges** as N grows: ~27× at N=100, ~7× at N=102400. A crossover is plausible at N≈800k–1M where WASM's linear growth outpaces WebGPU's logarithmic growth.
 - **Joseph form overhead is negligible** — wasm/f32 (Joseph form active) vs wasm/f64 (no Joseph form) differ by <25%, well within JIT variance.
 - **WebGPU results are ~1–2% less accurate** than sequential WASM/f64 because the DARE steady-state Kalman gain approximation uses a fixed gain throughout, while the sequential filter uses time-varying gains in early timesteps.
 
@@ -155,9 +171,11 @@ const mleAR = await dlmMLE(
 console.log(mleAR.arphi);     // estimated AR coefficients (e.g. [0.81])
 ```
 
-The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. The Kalman filter inside the loss function uses `lax.scan` for autodiff compatibility. Noise parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior).
+The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. Noise parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior).
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~88 iterations (~2.2 s) with the default Adam b2=0.9. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
+**Two MLE loss paths:** On CPU/WASM, the Kalman filter inside the loss function uses sequential `lax.scan` (O(n) depth). On WebGPU + Float32, `makeKalmanLossAssoc` replaces it with `lax.associativeScan` (O(log n) depth) using a traced DARE solver inside the AD tape — the same parallel forward filter as `dlmFit`, but with the steady-state Kalman gain $K_{ss}$ kept as a traced tensor so gradients flow through $W$ and $V^2$. Both paths minimize the same prediction-error likelihood $-2\log L = \sum_t [v_t^2/C_p^{(t)} + \log C_p^{(t)}]$. See [mle-comparison.md](mle-comparison.md#makekalmanLossAssoc--parallel-mle-loss-via-associative-scan) for the full derivation.
+
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~122 iterations (~2.6 s) with the default Adam b2=0.9. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
 For a detailed comparison of dlm-js MLE vs the original MATLAB DLM parameter estimation (Nelder-Mead, MCMC), see the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md).
 
@@ -265,7 +283,7 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
-| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). optax Adam optimizer, fully `jit()`-compiled. |
+| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff. Two loss paths: sequential `lax.scan` (CPU/WASM) and `lax.associativeScan` with traced DARE (WebGPU+Float32, O(log n) depth). optax Adam optimizer, fully `jit()`-compiled. |
 | h-step-ahead forecasting | ✅ | ❌ | `dlmForecast`: propagate the last smoothed state h steps forward with no new observations. Returns `yhat` [h], `ystd` [h] (growing uncertainty), and full state+covariance trajectories. Supports all model types and covariates. |
 | float32 computation | ✅ | ❌ | Configurable dtype. Float32 uses Joseph form covariance update + symmetrization + diagonal clamping for numerical stability; numerically stable for m ≤ 2, higher dimensions may still diverge. Three-branch architecture: cpu/f32 (sequential+Joseph), wasm/f64 (sequential, unchanged), webgpu/f32 (associativeScan+DARE+Joseph). |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
@@ -304,13 +322,18 @@ This is algebraically equivalent but numerically more stable — it guarantees a
 
 `dlmSmo` selects an execution path based on device and dtype:
 
-| Branch | Condition | Forward filter | Stabilization |
-|--------|-----------|---------------|---------------|
-| Float64 (default) | `dtype = Float64` | Sequential `lax.scan` | None needed |
-| CPU/WASM + Float32 | `dtype = Float32`, device ≠ `webgpu` | Sequential `lax.scan` | Joseph form + symmetrize + clamp |
-| WebGPU + Float32 | `dtype = Float32`, device = `webgpu` | `lax.associativeScan` (O(log n) depth) | Joseph form + symmetrize + clamp + DARE for steady-state K |
+| Branch | Condition | Forward filter | Backward smoother | Stabilization |
+|--------|-----------|---------------|-------------------|---------------|
+| Float64 (default) | `dtype = Float64` | Sequential `lax.scan` | Sequential `lax.scan` (information form) | None needed |
+| CPU/WASM + Float32 | `dtype = Float32`, device ≠ `webgpu` | Sequential `lax.scan` | Sequential `lax.scan` (information form) | Joseph form + symmetrize + clamp |
+| WebGPU + Float32 | `dtype = Float32`, device = `webgpu` | `lax.associativeScan` (O(log n) depth) | `lax.associativeScan` reverse (O(log n) depth) | Joseph form + symmetrize + DARE for forward K |
 
-The WebGPU branch additionally solves the Discrete Algebraic Riccati Equation (DARE, MATLAB convention) to find a steady-state Kalman gain, then reformulates the filter as an associative prefix scan per Särkkä & García-Fernández (2020). This trades ~1–2% accuracy (steady-state gain approximation in early timesteps) for O(log n) theoretical parallel *depth*. In practice, jax-js-nonconsuming dispatches each operation in the compose function as a separate sequential GPU kernel, so the effective dispatch count is O(n × ops_per_compose) — scaling linearly with N, not O(log n). WASM/f64 therefore remains faster at every tested N (22 ms flat vs 868–7767 ms for N=100–1600; ratio doubles with each doubling of N). A crossover would require kernel fusion across the n independent compose calls at each scan level. Requires the `fix/jit-scan-einsum-maxargs` branch of jax-js-nonconsuming.
+The WebGPU branch is a **two-source parallel method** combining classical control theory (forward) with the parallel smoother algebra of Särkkä & García-Fernández (2020) [1] (backward):
+
+- **Forward filter** (DARE + prefix scan): Solves the Discrete Algebraic Riccati Equation (DARE, MATLAB convention) for a steady-state Kalman gain $K_{ss}$, then constructs per-timestep affine elements and composes them via `lax.associativeScan`. This is an intentional approximation: the steady-state gain converges within ~5 steps for typical DLMs, trading ~1–2% early-step accuracy for full O(log n) parallelism.
+- **Backward smoother** (Särkkä [1], Lemmas 5–6 + Theorem 2): Exact per-timestep smoother gains $E_k = C_{filt,k} G^\top (G C_{filt,k} G^\top + W)^{-1}$ are computed from the forward-filtered covariances via batched `np.linalg.inv`. Smoother elements $(E_k, g_k, L_k)$ with Joseph form $L_k$ are composed via `lax.associativeScan(compose, elems, { reverse: true })` (suffix scan). No accuracy loss — the backward smoother is algebraically equivalent to sequential RTS.
+
+Both scans dispatch ⌈log₂N⌉+1 GPU kernel rounds (Kogge-Stone), giving O(log n) total depth. The sequential CPU/WASM path produces exact per-timestep Kalman gains and serves as the reference for validation. See [mle-comparison.md](mle-comparison.md#implementation-status) for a detailed math provenance table. Requires the `fix/jit-scan-einsum-maxargs` branch of jax-js-nonconsuming.
 
 ## TODO
 
@@ -329,8 +352,12 @@ The WebGPU branch additionally solves the Discrete Algebraic Riccati Equation (D
 │   ├── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── trigar.svg           # Energy demand demo plot (regenerate with `pnpm run gen:svg`)
-│   ├── nile-mle-anim.svg    # Nile MLE optimization animation (regenerate with `pnpm run gen:svg`)
-│   ├── energy-mle-anim.svg  # Energy MLE animation with AR coefficient estimation (regenerate with `pnpm run gen:svg`)
+│   ├── nile-mle-anim-scan.svg    # Nile MLE animation (lax.scan, sequential)
+│   ├── nile-mle-anim-assoc.svg   # Nile MLE animation (associativeScan, parallel)
+│   ├── nile-mle-anim-webgpu.svg  # Nile MLE animation (WebGPU, placeholder — blocked upstream)
+│   ├── energy-mle-anim-scan.svg  # Energy MLE animation (lax.scan) with AR estimation
+│   ├── energy-mle-anim-assoc.svg # Energy MLE animation (associativeScan) with AR estimation
+│   ├── energy-mle-anim-webgpu.svg # Energy MLE animation (WebGPU, placeholder — blocked upstream)
 │   ├── ozone-demo.svg       # Stratospheric ozone trend analysis demo (regenerate with `pnpm run gen:svg`)
 │   ├── missing-demo.svg     # Missing-data demo with NaN interpolation (regenerate with `pnpm run gen:svg`)
 │   └── timings/             # Timing sidecar JSON files written by gen-* / collect-* scripts
@@ -343,10 +370,10 @@ The WebGPU branch additionally solves the Discrete Algebraic Riccati Equation (D
 │   ├── gen-niledemo-svg.ts          # Nile demo SVG generator
 │   ├── gen-kaisaniemi-svg.ts        # Kaisaniemi seasonal demo SVG generator
 │   ├── gen-trigar-svg.ts            # Energy demand demo SVG generator
-│   ├── gen-nile-mle-anim-svg.ts     # Nile MLE animated convergence SVG generator
-│   ├── collect-nile-mle-frames.ts   # Nile MLE frame data collector (→ assets/timings/)
-│   ├── gen-energy-mle-anim-svg.ts   # Energy MLE animation SVG generator (AR coefficient estimation)
-│   ├── collect-energy-mle-frames.ts # Energy MLE frame data collector (→ assets/timings/)
+│   ├── gen-nile-mle-anim-svg.ts     # Nile MLE animated SVG generator (accepts variant: scan/assoc/webgpu)
+│   ├── collect-nile-mle-frames.ts   # Nile MLE frame collector: scan + assocScan variants (→ tmp/, assets/timings/)
+│   ├── gen-energy-mle-anim-svg.ts   # Energy MLE animated SVG generator (accepts variant: scan/assoc/webgpu)
+│   ├── collect-energy-mle-frames.ts # Energy MLE frame collector: scan + assocScan variants (→ tmp/, assets/timings/)
 │   ├── gen-ozone-svg.ts             # Stratospheric ozone trend analysis SVG generator
 │   ├── gen-missing-svg.ts           # Missing-data demo SVG generator (NaN interpolation)
 │   ├── collect-mle-benchmark.ts     # MLE benchmark: all comparison-table rows (pnpm run bench:mle)
@@ -362,7 +389,7 @@ The WebGPU branch additionally solves the Discrete Algebraic Riccati Equation (D
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmForecast` (h-step-ahead forecast), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
-│   ├── mle.ts               # `dlmMLE`: MLE parameter estimation via autodiff (valueAndGrad + lax.scan + optax Adam)
+│   ├── mle.ts               # `dlmMLE`: MLE via autodiff — two loss paths: sequential lax.scan (CPU/WASM), associativeScan with traced DARE (WebGPU+Float32)
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators
@@ -523,6 +550,10 @@ To run the full CI-local check (lint + Octave reference generation + tests):
 ```shell
 pnpm run test
 ```
+
+### References
+
+1. Särkkä, S. & García-Fernández, Á. F. (2020). [Temporal Parallelization of Bayesian Smoothers](https://arxiv.org/abs/1905.13002). *IEEE Transactions on Automatic Control*, 66(1), 299–306. doi:[10.1109/TAC.2020.2976316](https://doi.org/10.1109/TAC.2020.2976316). — Backward smoother element form (Lemmas 5–6) and associative composition (Theorem 2) used by the WebGPU parallel smoother path.
 
 ### Authors
 * Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`

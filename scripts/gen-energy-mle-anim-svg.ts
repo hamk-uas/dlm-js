@@ -1,13 +1,14 @@
 /**
  * Generate an animated MLE SVG (with AR coefficient estimation) from pre-collected energy frames.
  *
- * Reads:   tmp/energy-mle-frames.json   (produced by scripts/collect-energy-mle-frames.ts)
- * Writes:  assets/energy-mle-anim.svg
+ * Accepts a variant argument:
+ *   scan   → reads tmp/mle-frames-energy-scan.json,  writes assets/energy-mle-anim-scan.svg
+ *   assoc  → reads tmp/mle-frames-energy-assoc.json, writes assets/energy-mle-anim-assoc.svg
+ *   webgpu → generates static placeholder,           writes assets/energy-mle-anim-webgpu.svg
  *
- * Shows the combined signal F·x converging as s, w and arphi are jointly
- * optimized. Includes a −2·logL sparkline and an arphi convergence trace.
- *
- * Usage:  npx tsx scripts/gen-energy-mle-anim-svg.ts
+ * Usage:  npx tsx scripts/gen-energy-mle-anim-svg.ts scan
+ *         npx tsx scripts/gen-energy-mle-anim-svg.ts assoc
+ *         npx tsx scripts/gen-energy-mle-anim-svg.ts webgpu
  */
 
 import { readFileSync } from "node:fs";
@@ -19,9 +20,34 @@ import {
   computeKeyTimes, buildAnimPolylineValues, buildAnimBandValues,
   sparklinePoints, renderSparkline, renderSparklineLabels,
 } from "./lib/svg-anim-helpers.ts";
+import { generatePlaceholderSvg } from "./lib/svg-placeholder.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
-const data = JSON.parse(readFileSync(resolve(root, "tmp/energy-mle-frames.json"), "utf8"));
+const variant = (process.argv[2] || "scan") as "scan" | "assoc" | "webgpu";
+
+// ── WebGPU placeholder ─────────────────────────────────────────────────────
+
+if (variant === "webgpu") {
+  const outPath = resolve(root, "assets", "energy-mle-anim-webgpu.svg");
+  writeSvg(
+    generatePlaceholderSvg({
+      title: "Energy — MLE on WebGPU (placeholder)",
+      message: "WebGPU MLE is blocked by an upstream jax-js limitation:",
+      details: [
+        "jit(valueAndGrad) backward pass exceeds the 8-buffer-per-bind-group WebGPU limit",
+        "(associativeScan compose function needs 12 storage buffers for the gradient).",
+        "Will be enabled when jax-js adds kernel-splitting for large bind groups.",
+      ],
+    }),
+    outPath,
+  );
+  console.log(`  Wrote placeholder: ${outPath}`);
+  process.exit(0);
+}
+
+const variantLabel: Record<string, string> = { scan: "lax.scan", assoc: "assocScan" };
+const inputPath = resolve(root, `tmp/mle-frames-energy-${variant}.json`);
+const data = JSON.parse(readFileSync(inputPath, "utf8"));
 
 const {
   t, y, n,
@@ -215,7 +241,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE with AR coefficient estimation (${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s WASM)</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE via ${variantLabel[variant]} with AR estimation (${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s WASM)</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 
@@ -289,6 +315,6 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outPath = resolve(root, "assets", "energy-mle-anim.svg");
+const outPath = resolve(root, "assets", `energy-mle-anim-${variant}.svg`);
 writeSvg(lines, outPath);
-console.log(`  ${numFrames} frames, ${r(totalDuration)}s cycle (${r(animDuration)}s play + ${holdSeconds}s hold)`);
+console.log(`  [${variant}] ${numFrames} frames, ${r(totalDuration)}s cycle (${r(animDuration)}s play + ${holdSeconds}s hold)`);

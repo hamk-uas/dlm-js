@@ -154,6 +154,59 @@ export const timingRegistry: Record<string, TimingSlot> = {
     description: "dlmMLE final −2log L — energy/AR model",
   },
 
+  // ── dlmMLE assocScan variant benchmarks (collect-*.ts, forceAssocScan) ──
+
+  "nile-mle-assoc:elapsed": {
+    script:      "scripts/collect-nile-mle-frames.ts",
+    sidecar:     "collect-nile-mle-frames-assoc",
+    field:       "elapsed",
+    format:      "ms0",
+    description: "dlmMLE total wall-clock — Nile model, assocScan variant",
+  },
+  "nile-mle-assoc:iterations": {
+    script:      "scripts/collect-nile-mle-frames.ts",
+    sidecar:     "collect-nile-mle-frames-assoc",
+    field:       "iterations",
+    format:      "int",
+    description: "dlmMLE iteration count — Nile model, assocScan variant",
+  },
+  "nile-mle-assoc:lik": {
+    script:      "scripts/collect-nile-mle-frames.ts",
+    sidecar:     "collect-nile-mle-frames-assoc",
+    field:       "lik",
+    format:      "lik1",
+    description: "dlmMLE final −2log L — Nile order=1, assocScan variant",
+  },
+
+  "energy-mle-assoc:elapsed": {
+    script:      "scripts/collect-energy-mle-frames.ts",
+    sidecar:     "collect-energy-mle-frames-assoc",
+    field:       "elapsed",
+    format:      "s1",
+    description: "dlmMLE total wall-clock — energy/AR model, assocScan variant (seconds)",
+  },
+  "energy-mle-assoc:elapsed-ms": {
+    script:      "scripts/collect-energy-mle-frames.ts",
+    sidecar:     "collect-energy-mle-frames-assoc",
+    field:       "elapsed",
+    format:      "ms0",
+    description: "dlmMLE total wall-clock — energy/AR model, assocScan variant (ms)",
+  },
+  "energy-mle-assoc:iterations": {
+    script:      "scripts/collect-energy-mle-frames.ts",
+    sidecar:     "collect-energy-mle-frames-assoc",
+    field:       "iterations",
+    format:      "int",
+    description: "dlmMLE iteration count — energy/AR model, assocScan variant",
+  },
+  "energy-mle-assoc:lik": {
+    script:      "scripts/collect-energy-mle-frames.ts",
+    sidecar:     "collect-energy-mle-frames-assoc",
+    field:       "lik",
+    format:      "lik1",
+    description: "dlmMLE final −2log L — energy/AR model, assocScan variant",
+  },
+
   // ── MLE comparison-table benchmark (collect-mle-benchmark.ts) ──────────
 
   "mle-bench:nile-order1:elapsed": {
@@ -275,6 +328,12 @@ export const timingRegistry: Record<string, TimingSlot> = {
   "scale:webgpu-f32:n400":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n400",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=400" },
   "scale:webgpu-f32:n800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n800",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=800" },
   "scale:webgpu-f32:n1600": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n1600", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=1600" },
+  "scale:webgpu-f32:n3200": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n3200", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=3200" },
+  "scale:webgpu-f32:n6400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n6400", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=6400" },
+  "scale:webgpu-f32:n12800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n12800",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=12800" },
+  "scale:webgpu-f32:n25600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n25600",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=25600" },
+  "scale:webgpu-f32:n51200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n51200",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=51200" },
+  "scale:webgpu-f32:n102400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n102400", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=102400" },
 
   // ── Checkpoint benchmark (bench-checkpoint.ts) ──────────────────────────
 

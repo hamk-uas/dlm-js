@@ -1,4 +1,4 @@
-import { DType, numpy as np, lax, jit, valueAndGrad, tree } from "@hamk-uas/jax-js-nonconsuming";
+import { DType, numpy as np, lax, jit, valueAndGrad, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
@@ -237,6 +237,307 @@ const makeKalmanLoss = (
 };
 
 /**
+ * Build a `valueAndGrad`-compatible Kalman log-likelihood loss function
+ * using `lax.associativeScan` for the forward filter.
+ *
+ * Designed for the WebGPU + Float32 path where sequential `lax.scan`
+ * dispatches O(n) GPU kernels. The associative scan reduces depth to
+ * O(log n) (⌈log₂N⌉+1 Kogge-Stone rounds).
+ *
+ * ## Why DARE must be inside the AD tape
+ *
+ * Unlike `dlmFit`'s forward filter (which runs eagerly and can compute
+ * K_ss once before the scan), the MLE loss is differentiated by
+ * `valueAndGrad`. K_ss depends on W = diag(exp(θ)²) and V² = exp(θ₀)²,
+ * so if DARE ran outside the tape, ∂L/∂W would be zero. The 50 Riccati
+ * iterations are unrolled as standard matrix ops (einsum, matmul, add,
+ * divide) — all have defined JVP/VJP rules — and produce O(m²) traced
+ * intermediates, negligible relative to the O(n·m²) scan.
+ *
+ * ## DARE covariance update — full Joseph form
+ *
+ * Each Riccati iteration uses the Joseph form:
+ *
+ *     C_filt = (I − KF) C_pred (I − KF)ᵀ + K V² Kᵀ
+ *
+ * This guarantees PSD at every iterate despite Float32 rounding.
+ *
+ * ## Heterogeneous V² policy
+ *
+ * When `fixedV2_arr` provides per-timestep observation noise V²(t),
+ * DARE uses `mean(V²)` as a representative scalar (it must produce a
+ * single K_ss independent of t). The per-step V²(t) values are applied
+ * faithfully in the scan element Σ_t and in the likelihood C_p^(t).
+ *
+ * ## Prediction-error likelihood
+ *
+ * After the prefix scan recovers filtered states x_filt[t] and
+ * covariances C_filt[t], one-step-ahead predictions are obtained by
+ * shifting: x_pred[0] = x0, x_pred[t] = G·x_filt[t−1]. The
+ * prediction-error decomposition −2 log L = Σ_t mask_t · [v²/Cp + log Cp]
+ * matches the sequential `makeKalmanLoss` objective exactly.
+ *
+ * ## References
+ *
+ * - Särkkä & García-Fernández (2020), IEEE TAC 66(1), §3 — associative
+ *   affine-map composition for the forward filter.
+ * - Standard Kalman DARE — e.g. Anderson & Moore (1979), §4.4.
+ *
+ * @internal
+ */
+const makeKalmanLossAssoc = (
+  F: np.Array,        // [1, m]
+  G_base: np.Array,   // [m, m]
+  x0: np.Array,       // [m, 1]
+  C0: np.Array,       // [m, m]
+  y_arr: np.Array,    // [n, 1, 1] — NaN replaced with 0
+  n: number,
+  m: number,
+  dtype: DType,
+  arInds: number[] = [],
+  fixedV2_arr?: np.Array,  // [n, 1, 1] when s is fixed
+  mask_arr?: np.Array,     // [n, 1, 1]: 1=observed, 0=NaN; undefined = all observed
+  dareIter: number = 50,
+) => {
+  const nar = arInds.length;
+  const fixS = fixedV2_arr !== undefined;
+  const nSwParams = (fixS ? 0 : 1) + m;
+  const nTheta = nSwParams + nar;
+
+  // ─── Compose function for associativeScan (theta-independent) ───
+  type ScanElem = { A: np.Array; b: np.Array; S: np.Array };
+
+  const compose = (a: ScanElem, b_elem: ScanElem): ScanElem => {
+    const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
+    using Ab = np.einsum('nij,njk->nik', b_elem.A, a.b);
+    const b_comp = np.add(Ab, b_elem.b);
+    using ASAt = np.einsum('nij,njk,nlk->nil', b_elem.A, a.S, b_elem.A);
+    const S_comp = np.add(ASAt, b_elem.S);
+    return { A: A_comp, b: b_comp, S: S_comp };
+  };
+
+  return (theta: np.Array): np.Array => {
+    // ─── Parameter extraction (traced) ───
+    using expTheta = np.exp(theta);
+
+    // Build effective G (traced when fitting AR coefficients)
+    const G = nar > 0
+      ? buildG(G_base, theta, arInds, m, nSwParams, nTheta, dtype)
+      : G_base;
+
+    // V2 scalar [1, 1] — traced
+    let V2: np.Array;
+    if (fixS) {
+      // Policy: heterogeneous V2[t] → use mean(V2) for DARE convergence.
+      // The DARE produces a single steady-state K_ss independent of t, so a
+      // representative scalar is the best we can do.  Per-timestep V2[t] is
+      // still applied faithfully in the scan elements and likelihood terms.
+      using fixedMean = np.mean(fixedV2_arr!);
+      V2 = np.reshape(fixedMean, [1, 1]);
+    } else {
+      using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
+      using sVal = np.dot(expTheta, mask_s);
+      V2 = np.reshape(np.square(sVal), [1, 1]);
+    }
+
+    // W = diag(w²) [m, m] — traced
+    const W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
+
+    // ─── Traced DARE: unrolled Riccati iteration (~dareIter steps) ───
+    // Produces K_ss [m, 1] as a traced tensor dependent on W and V2.
+    let C_dare = np.add(C0, np.zerosLike(C0));  // copy of C0 [m, m]
+    for (let i = 0; i < dareIter; i++) {
+      // Predicted covariance via G: C_pred = G·C·G' + W
+      using C_pred = np.add(np.einsum('ij,jk,lk->il', G, C_dare, G), W);
+
+      // Innovation covariance: S = F·C_pred·F' + V2  [1, 1]
+      using S = np.add(np.einsum('ij,jk,lk->il', F, C_pred, F), V2);
+
+      // Kalman gain (standard): K = C_pred·F' / S  [m, 1]
+      using C_pred_Ft = np.matmul(C_pred, np.transpose(F));
+      using K = np.divide(C_pred_Ft, S);
+
+      // Filtered covariance (Joseph form): C_filt = (I-K·F)·C_pred·(I-K·F)' + K·V2·K'
+      using KF = np.matmul(K, F);
+      using ImKF = np.subtract(np.eye(m, undefined, { dtype }), KF);
+      using ImKF_C = np.einsum('ij,jk,lk->il', ImKF, C_pred, ImKF);
+      using KV2Kt = np.multiply(V2, np.matmul(K, np.transpose(K)));
+      // jax-js-lint: allow-non-using — accumulator swap
+      const C_dare_new = np.add(ImKF_C, KV2Kt);
+      C_dare.dispose();
+      C_dare = C_dare_new;
+    }
+
+    // Final steady-state gain from converged C_dare
+    using C_pred_final = np.add(np.einsum('ij,jk,lk->il', G, C_dare, G), W);
+    using S_final = np.add(np.einsum('ij,jk,lk->il', F, C_pred_final, F), V2);
+    using C_pred_Ft_final = np.matmul(C_pred_final, np.transpose(F));
+    const K_ss = np.divide(C_pred_Ft_final, S_final);  // [m, 1] — traced
+
+    // A_ss = (I - K_ss·F)·G  [m, m] — traced
+    using KF_ss = np.matmul(K_ss, F);
+    using ImKF_ss = np.subtract(np.eye(m, undefined, { dtype }), KF_ss);
+    const A_ss = np.matmul(ImKF_ss, G);  // [m, m]
+
+    // KKt = K_ss · K_ss' [m, m] — for V²-scaled noise term
+    using KKt = np.matmul(K_ss, np.transpose(K_ss));
+
+    C_dare.dispose();
+    K_ss.dispose();
+
+    // ─── Build per-timestep scan elements [n, ...] ───
+    // Mask: use provided mask or create all-ones
+    const mask_n = mask_arr ?? np.ones([n, 1, 1], { dtype });
+    const ownsMask = mask_arr === undefined;
+
+    // b[t] = mask · K_ss · y[t]  [n, m, 1]
+    using y_flat = np.squeeze(y_arr, [2]);                // [n, 1]
+    using Ky = np.einsum('ij,nj->ni', K_ss, y_flat);     // [n, m]
+    using Ky_exp = np.expandDims(Ky, 2);                  // [n, m, 1]
+    // jax-js-lint: allow-non-using — disposed after scan
+    const b_arr = np.multiply(mask_n, Ky_exp);            // [n, m, 1]
+
+    // A[t] = mask ? A_ss : G  [n, m, m]
+    // Use float mask to blend: A = mask·A_ss + (1-mask)·G
+    using mask_mm = np.tile(mask_n, [1, m, m]);           // [n, m, m]
+    using one_mm = np.onesLike(mask_mm);
+    using inv_mask_mm = np.subtract(one_mm, mask_mm);
+    using A_ss_exp = np.tile(np.reshape(A_ss, [1, m, m]), [n, 1, 1]);
+    using G_exp = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
+    using A_obs = np.multiply(mask_mm, A_ss_exp);
+    using A_nan = np.multiply(inv_mask_mm, G_exp);
+    // jax-js-lint: allow-non-using — disposed after scan
+    const A_arr = np.add(A_obs, A_nan);                   // [n, m, m]
+
+    // Σ[t] = mask ? (W + V2·KKt) : W  [n, m, m]
+    // For time-varying V2: use per-timestep V2[t]
+    const V2_per_step = fixS
+      ? fixedV2_arr!                                      // [n, 1, 1]
+      : np.tile(np.reshape(V2, [1, 1, 1]), [n, 1, 1]);   // [n, 1, 1]
+    const ownsV2ps = !fixS;
+    using V2_mm = np.reshape(V2_per_step, [n, 1, 1]);
+    using KKt_exp = np.tile(np.reshape(KKt, [1, m, m]), [n, 1, 1]);
+    using V2KKt = np.multiply(V2_mm, KKt_exp);           // [n, m, m]
+    using W_exp = np.tile(np.reshape(W, [1, m, m]), [n, 1, 1]);
+    using Sigma_obs = np.add(W_exp, V2KKt);               // [n, m, m]
+    // Blend: Σ = mask·Σ_obs + (1-mask)·W
+    using Sigma_obs_masked = np.multiply(mask_mm, Sigma_obs);
+    using W_nan = np.multiply(inv_mask_mm, W_exp);
+    // jax-js-lint: allow-non-using — disposed after scan
+    const Sigma_arr = np.add(Sigma_obs_masked, W_nan);    // [n, m, m]
+
+    if (ownsV2ps) V2_per_step.dispose();
+
+    // ─── Associative prefix scan ───
+    const scanned = lax.associativeScan(
+      compose,
+      { A: A_arr, b: b_arr, S: Sigma_arr },
+    ) as ScanElem;
+
+    // x_filt[t] = scanned.A[t] · x0 + scanned.b[t]  [n, m, 1]
+    // Note: np.add creates NEW arrays — x_filt and C_filt are independent of
+    // scanned.b / scanned.S, so tree.dispose(scanned) below is safe.
+    using x0_exp = np.tile(np.reshape(x0, [1, m, 1]), [n, 1, 1]);
+    using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
+    using x_filt = np.add(Ax0, scanned.b);
+
+    // C_filt[t] = scanned.A[t]·C0·scanned.A[t]' + scanned.S[t]  [n, m, m]
+    using C0_exp = np.tile(np.reshape(C0, [1, m, m]), [n, 1, 1]);
+    using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
+    using C_filt = np.add(AC0At, scanned.S);
+
+    tree.dispose(scanned);
+    A_arr.dispose();
+    b_arr.dispose();
+    Sigma_arr.dispose();
+    A_ss.dispose();
+
+    // ─── Compute -2·logL from filtered outputs (split, no concatenate) ───
+    // np.concatenate lacks VJP in jax-js, so we compute the likelihood in
+    // two parts: step 0 (uses x0, C0) and steps 1..n-1 (uses shifted
+    // x_filt, C_filt).  Only np.split (which has working VJP) is used.
+
+    // ── Split observations and mask ──
+    const ySplit = np.split(y_arr, [1], 0);
+    using y0 = ySplit[0];               // [1, 1, 1]
+    const y_rest = ySplit[1];            // [n-1, 1, 1]  — disposed after use
+
+    const maskSplit = mask_arr !== undefined
+      ? np.split(mask_n, [1], 0) : undefined;
+    using mask0 = maskSplit ? maskSplit[0] : np.ones([1, 1, 1], { dtype });
+    const mask_rest = maskSplit
+      ? maskSplit[1]
+      : (mask_arr === undefined ? np.ones([n - 1, 1, 1], { dtype }) : undefined);
+
+    // ── V² for each part ──
+    let V2_0: np.Array;    // [1, 1] for step 0
+    let V2_rest: np.Array; // [n-1, 1, 1] for steps 1..n-1
+    if (fixS) {
+      const v2Split = np.split(fixedV2_arr!, [1], 0);
+      V2_0 = np.reshape(v2Split[0], [1, 1]);
+      v2Split[0].dispose();
+      V2_rest = v2Split[1];
+    } else {
+      V2_0 = np.reshape(V2, [1, 1]);
+      V2_rest = np.tile(np.reshape(V2, [1, 1, 1]), [n - 1, 1, 1]);
+    }
+
+    // ── Step 0: v₀ = y₀ − F·x₀,  Cp₀ = F·C₀·F' + V² ──
+    using Fx0 = np.matmul(F, x0);                          // [1, 1]
+    using y0_11 = np.reshape(y0, [1, 1]);
+    using v0 = np.subtract(y0_11, Fx0);                    // [1, 1]
+    using FC0Ft = np.einsum('ij,jk,lk->il', F, C0, F);    // [1, 1]
+    using Cp0 = np.add(FC0Ft, V2_0);                       // [1, 1]
+    if (!fixS) { /* V2_0 aliases V2 via reshape — don't dispose */ } else V2_0.dispose();
+
+    using v0_sq = np.square(v0);
+    using v0_over_Cp = np.divide(v0_sq, Cp0);
+    using log_Cp0 = np.log(Cp0);
+    using lik0_raw = np.add(v0_over_Cp, log_Cp0);
+    using mask0_11 = np.reshape(mask0, [1, 1]);
+    using lik0_val = np.multiply(mask0_11, lik0_raw);
+    using lik0 = np.sum(lik0_val);                          // scalar
+
+    // ── Steps 1..n-1: x_pred = G·x_filt[0..n-2],  C_pred = G·C_filt·G'+W ──
+    const xfSplit = np.split(x_filt, [n - 1], 0);
+    xfSplit[1].dispose();
+    using x_filt_head = xfSplit[0];                         // [n-1, m, 1]
+
+    const cfSplit = np.split(C_filt, [n - 1], 0);
+    cfSplit[1].dispose();
+    using C_filt_head = cfSplit[0];                         // [n-1, m, m]
+
+    using x_pred_r = np.einsum('ij,njk->nik', G, x_filt_head);     // [n-1, m, 1]
+    using GCGt_r = np.einsum('ij,njk,lk->nil', G, C_filt_head, G); // [n-1, m, m]
+    using W_tiled = np.tile(np.reshape(W, [1, m, m]), [n - 1, 1, 1]);
+    using C_pred_r = np.add(GCGt_r, W_tiled);                      // [n-1, m, m]
+
+    using Fx_r = np.einsum('ij,njk->nik', F, x_pred_r);            // [n-1, 1, 1]
+    using v_rest_raw = np.subtract(y_rest, Fx_r);                   // [n-1, 1, 1]
+    y_rest.dispose();
+
+    using FCFt_r = np.einsum('ij,njk,lk->nil', F, C_pred_r, F);   // [n-1, 1, 1]
+    using Cp_rest = np.add(FCFt_r, V2_rest);                       // [n-1, 1, 1]
+    V2_rest.dispose();
+
+    using vr_sq = np.square(v_rest_raw);
+    using vr_over_Cp = np.divide(vr_sq, Cp_rest);
+    using log_Cp_r = np.log(Cp_rest);
+    using lik_r_raw = np.add(vr_over_Cp, log_Cp_r);
+    using lik_r_masked = np.multiply(mask_rest!, lik_r_raw);
+    using lik_rest = np.sum(lik_r_masked);                          // scalar
+    mask_rest!.dispose();
+
+    if (ownsMask) mask_n.dispose();
+    V2.dispose();
+    W.dispose();
+    if (nar > 0) G.dispose();
+
+    return np.add(lik0, lik_rest);
+  };
+};
+
+/**
  * Estimate DLM parameters (s, w, and optionally arphi) by maximum likelihood
  * via autodiff.
  *
@@ -259,7 +560,9 @@ const makeKalmanLoss = (
  * @param init - Initial guess for parameters (optional; arphi defaults to options.arphi)
  * @param maxIter - Maximum optimizer iterations (default: 200)
  * @param lr - Learning rate for Adam (default: 0.05)
- * @param tol - Convergence tolerance on relative lik change (default: 1e-6)
+ * @param tol - Convergence tolerance on relative lik change (default: 1e-6).
+ *   Requires 5 consecutive steps below this threshold before stopping, to guard
+ *   against transient near-zero steps during oscillation (e.g. assocScan path).
  * @param dtype - Computation precision (default: Float64)
  * @param X - Optional covariate matrix (n rows × q cols), passed through to dlmFit
  * @param sFixed - Optional per-timestep σ array (length n). When provided, s is fixed
@@ -286,6 +589,10 @@ export const dlmMLE = async (
   X?: ArrayLike<number>[],  // n×q covariate matrix, passed through to dlmFit
   sFixed?: ArrayLike<number>, // per-timestep σ (fixes V; s is not estimated)
   adamOpts?: ScaleByAdamOptions, // Adam b1/b2/eps overrides
+  /** Force use of `makeKalmanLossAssoc` (associativeScan-based loss) regardless
+   *  of device/dtype. Useful for benchmarking the parallel loss path on
+   *  CPU/WASM backends where it would not normally be selected. */
+  forceAssocScan?: boolean,
 ): Promise<DlmMleResult> => {
   const t0 = performance.now();
   const n = y.length;
@@ -376,12 +683,21 @@ export const dlmMLE = async (
   // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
   // Traces once, then every iteration is compiled.
 
+  // Device/dtype dispatch: WebGPU + Float32 uses associativeScan-based loss
+  // (O(log n) depth), otherwise sequential lax.scan (O(n) depth).
+  // forceAssocScan overrides to enable benchmarking the parallel path on any backend.
+  const useAssocScanLoss = forceAssocScan || (defaultDevice() === 'webgpu' && dtype === DType.Float32);
+
   // checkpoint: false stores all N carries — no recomputation on backward pass.
   // Benchmarks show ~25–30% speedup over default √N checkpointing for typical
   // DLM dataset sizes (n ≲ few hundred), where carry memory is negligible.
-  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
+  const lossFn = useAssocScanLoss
+    ? makeKalmanLossAssoc(F, G, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, mleMaskArr)
+    : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
   const optimizer = adam(lr, { b2: 0.9, ...adamOpts });
 
+  // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
+  // Traces once, then every iteration is compiled.
   const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
     const [likVal, grad] = valueAndGrad(lossFn)(theta);
     const [updates, newOptState] = optimizer.update(grad, optState);
@@ -402,6 +718,8 @@ export const dlmMLE = async (
   const likHistory: number[] = [];
   let prevLik = Infinity;
   let iter = 0;
+  let patienceCount = 0;
+  const PATIENCE = 5; // require 5 consecutive steps below tol before stopping
 
   for (iter = 0; iter < maxIter; iter++) {
     const [newTheta, newOptState, likVal] = optimStep(theta, optState);
@@ -418,11 +736,19 @@ export const dlmMLE = async (
     theta.dispose(); tree.dispose(optState);
     theta = newTheta; optState = newOptState;
 
-    // Check convergence
+    // Check convergence: require PATIENCE consecutive steps below tol to guard
+    // against transient near-zero steps during oscillation (assocScan path).
     const relChange = Math.abs((likNum - prevLik) / (Math.abs(prevLik) + 1e-30));
-    if (iter > 0 && relChange < tol) {
-      prevLik = likNum;
-      break;
+    if (iter > 0) {
+      if (relChange < tol) {
+        patienceCount++;
+        if (patienceCount >= PATIENCE) {
+          prevLik = likNum;
+          break;
+        }
+      } else {
+        patienceCount = 0;
+      }
     }
     prevLik = likNum;
   }

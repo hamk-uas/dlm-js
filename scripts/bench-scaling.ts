@@ -1,14 +1,12 @@
 /**
- * Backend scaling benchmark — WASM/f64 at all N, WebGPU/f32 at small N.
+ * Backend scaling benchmark — WASM/f64 at all N, WebGPU/f32 at all N.
  *
  * Measures `dlmFit` (Nile order=1, m=2, data tiled) at exponentially
  * increasing N to characterise:
  *   - The WASM fixed-overhead plateau and its inflection point.
- *   - The WASM vs WebGPU crossover (spoiler: none exists — WebGPU is O(n)).
- *
- * WebGPU is capped at N=1600 to keep the benchmark time reasonable.
- * Beyond that, WebGPU scales at ~4-5 µs/step (O(n) kernel-per-op dispatch),
- * so measuring larger N would take many minutes with no new insight.
+ *   - The WebGPU O(log n) scaling from associativeScan (both forward and
+ *     backward passes use associativeScan since the Särkkä & García-Fernández
+ *     2020 parallel smoother was implemented).
  *
  * Must be run with Deno (WebGPU requires --unstable-webgpu):
  *   pnpm run bench:scaling
@@ -32,10 +30,10 @@ const sidecarDir = resolve(root, "assets/timings");
 /** All N values measured for WASM/f64. */
 const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400];
 
-/** Subset of N values also measured for WebGPU/f32.
- *  Capped at 1600 — beyond this, WebGPU is O(n) with ~4-5 µs/step dispatch
- *  cost (~6 seconds per N level at N=1600), making large-N GPU runs impractical. */
-const N_GPU: number[] = [100, 200, 400, 800, 1_600];
+/** N values also measured for WebGPU/f32.
+ *  Both forward and backward passes use associativeScan (O(log n) depth),
+ *  so scaling should be sub-linear. Measured at all N values. */
+const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400];
 
 const WARMUP = 2;
 const RUNS   = 4;
