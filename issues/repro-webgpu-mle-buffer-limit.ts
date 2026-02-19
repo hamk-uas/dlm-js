@@ -31,13 +31,16 @@
  *
  * ─── EXPECTED OUTPUT (after fix) ────────────────────────────────────────────
  *
- *   Test 1 [jit(valueAndGrad)]:    PASS  lik=<value>  grad=<value>
- *   Test 2 [valueAndGrad, no jit]: PASS  lik=<value>  grad=<value>
+ *   Test 1 [jit(valueAndGrad)]:              PASS  lik=<value>  grad=<value>
+ *   Test 2 [valueAndGrad, no jit]:           PASS  lik=<value>  grad=<value>
+ *   Test 3 [valueAndGrad(jit(lossFn))]:      PASS  lik=<value>  grad=<value>
  *
- * ─── ACTUAL OUTPUT (jax-js-nonconsuming v0.7.2) ──────────────────────────────
+ * ─── ACTUAL OUTPUT (jax-js-nonconsuming v0.7.3) ──────────────────────────────
  *
- *   Test 1 [jit(valueAndGrad)]:    FAIL  Too many buffers (12) for WebGPU pipeline (max: 8)
- *   Test 2 [valueAndGrad, no jit]: FAIL  Referenced tracer Array:float32[20] has been disposed
+ *   Test 1 [jit(valueAndGrad)]:              FAIL  Too many buffers (9) for WebGPU pipeline (max: 8)
+ *   Test 2 [valueAndGrad, no jit]:           PASS  lik=284451.6875  grad=4813868.5000
+ *                                            FAIL  Referenced tracer Array:float32[1] has been disposed
+ *   Test 3 [valueAndGrad(jit(lossFn))]:      FAIL  Too many buffers (9) for WebGPU pipeline (max: 8)
  */
 
 import {
@@ -117,6 +120,19 @@ try {
 console.log("Test 2 [valueAndGrad(lossFn), no jit]:  (expect: tracer disposed)");
 try {
   const [lik, grad] = valueAndGrad(lossFn)(theta0);
+  const likV = (await lik.consumeData())[0];
+  const gradV = (await grad.consumeData())[0];
+  console.log(`  PASS  lik=${likV.toFixed(4)}  grad=${gradV.toFixed(4)}`);
+  grad.dispose();
+} catch (e: any) {
+  console.log(`  FAIL  ${e.message}`);
+}
+
+// ── Test 3: valueAndGrad(jit(fn)) — jit inside ───────────────────────────────
+console.log("Test 3 [valueAndGrad(jit(lossFn))]:  (jit inside, AD outside)");
+try {
+  const jitLoss = jit(lossFn);
+  const [lik, grad] = valueAndGrad(jitLoss)(theta0);
   const likV = (await lik.consumeData())[0];
   const gradV = (await grad.consumeData())[0];
   console.log(`  PASS  lik=${likV.toFixed(4)}  grad=${gradV.toFixed(4)}`);

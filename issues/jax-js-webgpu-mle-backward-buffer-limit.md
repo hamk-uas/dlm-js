@@ -6,11 +6,11 @@
 WebGPU backend when `lossFn` contains `lax.associativeScan` with a 3-tuple
 compose body.  The error changed between versions:
 
-| Version | `jit(valueAndGrad)` error | `valueAndGrad` (no jit) error |
-|---------|--------------------------|--------------------------------|
-| v0.7.1  | `Too many buffers (12) for WebGPU pipeline (max: 8)` | `Referenced tracer Array:float32[m,m] has been disposed` |
-| v0.7.2  | `Nonlinear operation in backward pass for concatenate` | `Nonlinear operation in backward pass for concatenate` |
-| v0.7.3  | `Too many buffers (9) for WebGPU pipeline (max: 8)` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
+| Version | `jit(valueAndGrad)` error | `valueAndGrad(jit(fn))` error | `valueAndGrad` (no jit) error |
+|---------|--------------------------|-------------------------------|--------------------------------|
+| v0.7.1  | `Too many buffers (12) for WebGPU pipeline (max: 8)` | `Too many buffers (12)` | `Referenced tracer Array:float32[m,m] has been disposed` |
+| v0.7.2  | `Nonlinear operation in backward pass for concatenate` | `Nonlinear operation in backward pass for concatenate` | `Nonlinear operation in backward pass for concatenate` |
+| v0.7.3  | `Too many buffers (9) for WebGPU pipeline (max: 8)` | `Too many buffers (9)` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
 
 `dlmFit` (forward smoother, no AD) works correctly on WebGPU in all versions.
 The WASM/CPU path for `valueAndGrad` over `lax.associativeScan` works fine in
@@ -94,14 +94,18 @@ this error — the associativeScan VJP works correctly on WASM in v0.7.2.
 v0.7.3 fixes the `concatenate` VJP regression from v0.7.2.  Two residual issues
 remain:
 
-### Residual 1: `jit(valueAndGrad(lossFn))` — buffer limit (9 > 8)
+### Residual 1: `jit(valueAndGrad(lossFn))` and `valueAndGrad(jit(lossFn))` — buffer limit (9 > 8)
 
 Buffer count reduced from 12 (v0.7.1) to 9, but still 1 over the WebGPU
-bind-group limit of 8:
+bind-group limit of 8.  Both jit variants produce the same error:
 
 ```
 Too many buffers (9) for WebGPU pipeline (max: 8)
 ```
+
+`valueAndGrad(jit(fn))` (jit inside, AD outside) hits the same limit — the
+buffer pressure comes from the backward pass of `lax.associativeScan`, not from
+the outer jit wrapper.
 
 ### Residual 2: `valueAndGrad(lossFn)` without `jit` — tracer disposal after result
 
