@@ -13,6 +13,7 @@ import { dlmMLE } from "../src/mle.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { withLeakCheck } from "./lib/leak-utils.ts";
+import { writeTimingsSidecar } from "./lib/timing-sidecar.ts";
 
 defaultDevice("wasm");
 
@@ -156,3 +157,4 @@ const outPath = resolve(outDir, "energy-mle-frames.json");
 writeFileSync(outPath, JSON.stringify(output, null, 2));
 console.log(`\nSaved ${frames.length} frames to ${outPath}`);
 console.log(`  Animation: ${animDuration.toFixed(2)}s play + ${HOLD_SECONDS}s hold = ${(animDuration + HOLD_SECONDS).toFixed(2)}s total cycle`);
+writeTimingsSidecar("collect-energy-mle-frames", { elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.lik });

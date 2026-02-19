@@ -96,6 +96,75 @@ export function deepAlmostEqual(
 }
 
 /**
+ * Normalize MATLAB JSON output to match JS output format.
+ *
+ * MATLAB/Octave collapses 1×n matrices to flat vectors and m×m matrices
+ * to flat nested arrays — for m=1 models the shapes differ from the JS output.
+ * This mirrors the helper in gensys.test.ts for shared use.
+ *
+ * Call with the parsed (and null-normalised) reference object.
+ */
+export function normalizeMatlabOutput(
+  obj: Record<string, unknown>,
+  m: number,
+): Record<string, unknown> {
+  const result = { ...obj };
+
+  // Scalar 1×1 fields that MATLAB squeezes to numbers
+  if (typeof result.G === 'number') result.G = [[result.G]];
+  if (typeof result.F === 'number') result.F = [result.F];
+  if (typeof result.W === 'number') result.W = [[result.W]];
+  if (typeof result.x0 === 'number') result.x0 = [result.x0];
+  if (typeof result.C0 === 'number') result.C0 = [[result.C0]];
+
+  // State arrays: MATLAB m=1 gives flat [n] instead of [[...]] (1 row × n timesteps)
+  if (m === 1 && Array.isArray(result.xf) && typeof result.xf[0] === 'number') {
+    result.xf = [result.xf];
+  }
+  if (m === 1 && Array.isArray(result.x) && typeof result.x[0] === 'number') {
+    result.x = [result.x];
+  }
+  if (m === 1 && Array.isArray(result.Cf) && typeof result.Cf[0] === 'number') {
+    result.Cf = [[result.Cf]];
+  }
+  if (m === 1 && Array.isArray(result.C) && typeof result.C[0] === 'number') {
+    result.C = [[result.C]];
+  }
+  // xstd: MATLAB gives [n] (one std per timestep) instead of [[std1],[std2],...] for m=1
+  if (m === 1 && Array.isArray(result.xstd) && typeof result.xstd[0] === 'number') {
+    result.xstd = (result.xstd as number[]).map((v: number) => [v]);
+  }
+
+  // Remove MATLAB-only fields not present in JS output
+  for (const k of ['options', 's', 'ss', 'xr', 'xrd', 'xrp', 'yrp']) {
+    delete result[k];
+  }
+
+  return result;
+}
+
+/**
+ * Recursively replace JSON `null` values with `NaN`.
+ *
+ * Octave's jsonencode serialises NaN as `null` (JSON has no NaN literal).
+ * This helper normalises a parsed reference object so that NaN-aware numeric
+ * comparisons (e.g. deepAlmostEqual's `isNaN(a) && isNaN(b)` branch) work
+ * correctly when comparing JS TypedArray outputs against Octave references.
+ */
+export function normalizeNulls(val: unknown): unknown {
+  if (val === null) return NaN;
+  if (Array.isArray(val)) return val.map(normalizeNulls);
+  if (val && typeof val === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(val)) {
+      out[k] = normalizeNulls((val as Record<string, unknown>)[k]);
+    }
+    return out;
+  }
+  return val;
+}
+
+/**
  * Check if an array is close to expected values
  */
 export async function arrayClose(

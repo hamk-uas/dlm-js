@@ -13,31 +13,35 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
 
-*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 86.48 ms, warm run 37.67 ms. Regenerate with `pnpm run gen:svg`.*
+*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:nile-demo:first -->96.14 ms<!-- /timing -->, warm run <!-- timing:nile-demo:warm -->46.02 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave" src="assets/kaisaniemi.svg" />
 
-*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 85.84 ms, warm run 38.57 ms. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:kaisaniemi:first -->98.01 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:warm -->47.04 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy demand demo with seasonal + AR model: smoothed level, seasonal, AR state, and combined signal from dlm-js and MATLAB/Octave" src="assets/trigar.svg" />
 
-*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run 89.86 ms, warm run 38.47 ms. Regenerate with `pnpm run gen:svg`.*
+*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:trigar:first -->95.74 ms<!-- /timing -->, warm run <!-- timing:trigar:warm -->47.69 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Nile MLE optimization: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim.svg" />
 
-*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in 88 iterations / 2174 ms on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo: parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in <!-- timing:nile-mle:iterations -->88<!-- /timing --> iterations / <!-- timing:nile-mle:elapsed -->2585 ms<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy MLE optimization with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim.svg" />
 
-*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. 295 iterations / 5.9 s on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. <!-- timing:energy-mle:iterations -->295<!-- /timing --> iterations / <!-- timing:energy-mle:elapsed -->6.3 s<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
 
 *Stratospheric ozone demo (Laine, Latva-Pukkila & Kyrölä (2014), [ACP 14, 9707–9725](https://doi.org/10.5194/acp-14-9707-2014), replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011; data file from [mjlaine/dlm](https://github.com/mjlaine/dlm/tree/master/examples)) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red) and a 15-year (180-month) `dlmForecast` trend extrapolation beyond the last observation (dashed green, ± 2σ level-state uncertainty, shaded region — the level state x[0] is plotted rather than the full observation prediction, which would oscillate with the seasonal harmonics); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Forecast interpretation note: this is a conditional forecast under the chosen future proxy path assumptions (unknown future proxies are not inferred by the model). Regenerate with `pnpm run gen:svg`.*
 
-Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent.
+<img alt="Missing-data demo: Nile flow with 23 NaN observations — smoothed level F·x_smooth ± 2σ from dlm-js and MATLAB/Octave, outer band shows observation prediction interval, gray shading over missing regions" src="assets/missing-demo.svg" />
 
-For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). See the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md) for details.
+*Missing-data demo: Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->90.38 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->47.74 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+
+Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent. Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed -->.
+
+For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). The missing-data demo uses the same Nile dataset with 23 observations removed. See the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md) for details.
 
 ## Installation
 
@@ -188,6 +192,49 @@ For a more neutral assumption in practice, center covariates before fitting so t
 
 For decision use, prefer scenario forecasting: provide multiple plausible `X_forecast` paths (e.g. low/base/high) and compare resulting forecast bands.
 
+### Missing data (NaN observations)
+
+Place `NaN` in the observation vector `y` wherever a measurement is absent. `dlmFit` automatically skips those timesteps in the Kalman gain and residual calculations (K and v are zeroed), so the smoother interpolates through the gaps without any extra configuration:
+
+```js
+import { dlmFit } from "dlm-js";
+import { DType } from "@hamk-uas/jax-js-nonconsuming";
+
+// Nile data with a gap in years 30–39 and every 7th observation missing
+const y = [1120, 1160, 963, NaN, 1210, 1160, 1160, NaN, 813, /* ... */];
+
+const s2_w = 120;
+const s2_v = [40, 10];
+
+const result = await dlmFit(y, s2_w, s2_v, DType.Float64, { order: 1 });
+
+// nobs: number of non-NaN observations actually used
+console.log(result.nobs);   // e.g. 77 when 23 of 100 values are NaN
+
+// yhat, x, xstd, ystd: fully interpolated — finite at every timestep
+console.log(result.yhat);   // smoothed observation mean [n] — no NaN
+console.log(result.x);      // smoothed state trajectories [m][n] — no NaN
+console.log(result.xstd);   // smoothed state std devs [m][n] — no NaN
+console.log(result.ystd);   // smoothed observation std devs [n] — no NaN
+
+// v and resid2: NaN at missing positions (consistent with MATLAB dlmsmo)
+console.log(result.v);      // innovations [n] — NaN at missing timesteps
+console.log(result.resid2); // squared normalised residuals [n] — NaN at missing timesteps
+
+// lik is the log-likelihood summed only over observed timesteps
+console.log(result.lik);
+```
+
+Missing observations are handled identically to MATLAB's `dlmsmo` (`ig = not(isnan(y(i,:)))` logic): the filter propagates through the gap using only the prior, and the RTS smoother then distributes the information from surrounding observations backward and forward. `ystd` grows wider over the gap, reflecting higher uncertainty where no data was seen.
+
+`dlmMLE` also supports missing data — the Kalman loss scan zeros K, v, and the log-likelihood contribution at NaN timesteps, so autodiff and Adam optimization work correctly through the gaps:
+
+```js
+const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
+// mle.lik is the log-likelihood summed only over observed timesteps
+// mle.fit.nobs reports the count of non-NaN observations used
+```
+
 ## Features
 ✅ implemented, ❌ not implemented, — will not be implemented
 
@@ -216,7 +263,7 @@ For decision use, prefer scenario forecasting: provide multiple plausible `X_for
 | --- | --- | --- |
 | ~~Covariates / proxies~~ | `dlmfit` X argument, `dlmsmo` X argument | ✅ **Ported** as `dlmFit` X parameter — appends static β states; tested in `covariate.test.ts`. |
 | Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | Biggest remaining lift — affects all matrix dimensions throughout the filter/smoother. dlm-js currently assumes scalar observations (p = 1). |
-| Missing data (NaN handling) | `dlmsmo` `ig = not(isnan(y(i,:)))` | Requires masking innovation updates for NaN timesteps. Moderate effort; also needs `meannan`/`sumnan` utility functions. |
+| ~~Missing data (NaN handling)~~ | `dlmsmo` `ig = not(isnan(y(i,:)))` | ✅ **Ported** — `dlmFit`: forwardStep zeros K and v at NaN timesteps; backwardStep masks the Fisher-information (N) contribution; NaN-safe diagnostics (`nobs`, `lik`, `ssy`, `s2`, `mse`, `mape`). `dlmMLE`: loss scan masks K, v, and lik-term at NaN timesteps so autodiff and parameter estimation work through missing observations. Tested in `missing.test.ts` (filter/smoother) and `mle.test.ts` (MLE). |
 | ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. Supports `fitar` for AR coefficient estimation. See [MLE estimation](#mle-parameter-estimation) below. |
 | MCMC parameter estimation | `dlmfit` `options.mcmc` | Depends on Marko Laine's external `mcmcrun` MCMC toolbox, which is not included in the dlm repository. Would require porting or replacing the entire MCMC engine. |
 | State sampling (disturbance smoother) | `dlmsmo` `sample` argument | Generates sampled state trajectories for Gibbs sampling. Only useful together with MCMC parameter estimation, so blocked on MCMC. |
@@ -231,7 +278,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 ## TODO
 
 * Test the built library (in `dist/`)
-* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — multivariate observations, missing data)
+* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — multivariate observations)
 * Human review the AI-generated DLM port
 
 ## Project structure

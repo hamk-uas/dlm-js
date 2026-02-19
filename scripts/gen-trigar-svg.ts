@@ -25,6 +25,7 @@ import {
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
 } from "./lib/svg-helpers.ts";
 import { withLeakCheck } from "./lib/leak-utils.ts";
+import { writeTimingsSidecar } from "./lib/timing-sidecar.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const input = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "utf8"));
@@ -288,6 +289,7 @@ push(`</svg>`);
 
 const outPath = resolve(root, "assets", "trigar.svg");
 writeSvg(lines, outPath);
+writeTimingsSidecar("gen-trigar-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`,
 );

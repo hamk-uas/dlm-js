@@ -58,7 +58,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Compilation** | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) |
 | **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
 | **Adam defaults** | N/A | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) |
-| **WASM performance** | N/A | ~1.6 s for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing-always-use-checkpoint-false) |
+| **WASM performance** | N/A | ~<!-- timing:ckpt:nile:false-s -->1.9 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing-always-use-checkpoint-false) |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
@@ -80,19 +80,20 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 
 | Model | $n$ | $m$ | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | $-2\log L$ (Octave) | $-2\log L$ (dlm-js) |
 |-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | 2174 ms | 1104.6 | 1105.0 |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | <!-- timing:nile-mle:elapsed -->2585 ms<!-- /timing --> | 1104.6 | <!-- timing:mle-bench:nile-order1:lik -->1105.0<!-- /timing --> |
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | 1970 ms¹ | 1095.8 | 1095.8 |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | 3509 ms¹ | — | 330.8 |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | 5878 ms | — | 443.1 |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | <!-- timing:mle-bench:nile-order0:elapsed -->1580 ms<!-- /timing --> | 1095.8 | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:elapsed -->3395 ms<!-- /timing --> | — | <!-- timing:mle-bench:kaisaniemi:lik -->341.4<!-- /timing --> |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | <!-- timing:energy-mle:elapsed-ms -->6329 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> |
 
-¹ Measured before `checkpoint: false` was adopted; expect ~25–30% lower with current code.
+Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
 
 **Key observations:**
-- **Nile (n=100, m=2):** Octave `fminsearch` is faster despite being an interpreted language — the Kalman filter is just matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient. dlm-js pays for JIT compilation overhead that doesn't amortize on a 100-observation dataset.
+- **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower" -->slower<!-- /computed --> on this dataset (see table). The Kalman filter is matrix multiplications in a loop, where Octave's LAPACK-backed vectorized ops are efficient per step. dlm-js pays one-time JIT compilation overhead; at n=100 these two effects roughly cancel.
 
-- **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~0.4), consistent with matching likelihood formulations under different optimization details.
-- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in 107 iterations (3.5 s, b2=0.9). This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead. Note: b2=0.9 also found a better optimum (−2logL=330.8) than b2=0.999 (341.6), suggesting the prior default was getting stuck in a plateau.
+- **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.4<!-- /computed -->), consistent with matching likelihood formulations under different optimization details.
+<!-- ai-note: CLAIM: "b2=0.9 converges on Kaisaniemi" — lik is tracked by mle-bench:kaisaniemi:lik. Previously b2=0.9 gave 330.8 vs b2=0.999 gave 341.6; as of 2025-01 both are ~341. The "better optimum" claim has been removed. If :lik ever drops well below 341, that finding may return. -->
+- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->135<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->3.4 s<!-- /timing -->, b2=0.9), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.4<!-- /timing -->. This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead.
 - **Joint $s+w$ fitting:** dlm-js `dlmMLE` always fits both $s$ and $w$ together, while the MATLAB DLM toolbox (run under Octave) can fit $w$ only (`fitv=0`), which is faster when $s$ is known.
 
 ### Gradient checkpointing: always use `checkpoint: false`
@@ -103,18 +104,20 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 - **`false`:** stores all N intermediate carry values — no recomputation on the backward pass.
 - **number:** explicit segment size.
 
-For typical DLM dataset sizes (n ≲ a few hundred), the carry at each time step is just an m-vector and an m×m matrix — negligible memory. Storing all N carries and skipping recomputation is therefore always faster.
+For typical DLM dataset sizes (n ≲ a few hundred), the carry at each time step is just an m-vector and an m×m matrix — negligible memory.
+
+<!-- ai-note: CLAIM: "checkpoint: false is always faster" DEPENDS ON: ckpt:nile:speedup, ckpt:energy:speedup. CURRENT VALUES: +1% / -1% (negligible). The old claim "always faster" was written when speedup was +32%/+26%; it is now effectively zero on these benchmarks. See benchmark table below for current numbers. -->
 
 **Benchmark (WASM, Float64, 60 iterations, 4 timed runs after 1 warmup):**
 
 | Dataset | n | m | `checkpoint: false` | `checkpoint: true` (√N) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
-| Nile, order=1 | 100 | 2 | 1603 ms | 2116 ms | +32% |
-| Energy, order=1+trig1+ar1 | 120 | 5 | 2147 ms | 2710 ms | +26% |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1880 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1914 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+2%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2386 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2372 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> |
 
-All explicit segment sizes (5, 11, 20, 40) performed similarly to `true`, confirming the penalty is purely from extra recomputation (not memory pressure). Setting `seg=n` is equivalent to `false` and produces the same fast result.
+All explicit segment sizes (5, 11, 20, 40) performed similarly to `true`, confirming any overhead is purely from extra recomputation (not memory pressure).
 
-**Conclusion:** `dlmMLE` now unconditionally uses `checkpoint: false` for the `lax.scan` inside `makeKalmanLoss`. For very long series (n ≫ 1000) where per-carry memory could become a concern, an explicit segment size could be re-introduced at that time.
+**Conclusion:** For the current jax-js WASM backend and these dataset sizes (n ≤ 120), `checkpoint: false` and `checkpoint: true` have essentially identical performance (see <!-- timing:ckpt:nile:speedup -->+2%<!-- /timing --> / <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> above). `dlmMLE` uses `checkpoint: false` as the default because it cannot be slower in theory (avoids all recomputation overhead) and poses no memory problem at these scales. For very long series (n ≫ 1000) where per-carry memory becomes a concern, an explicit segment size can be re-introduced at that time.
 
 
 ## MCMC (MATLAB DLM toolbox feature, not tested)
@@ -175,7 +178,7 @@ This means the sequential `lax.scan` (O(n) depth) could be replaced by `lax.asso
 
 **Production use in Pyro/NumPyro:** This is not just theoretical — Pyro's `GaussianHMM` distribution already uses parallel-scan Kalman filtering for inference, "allowing fast analysis of very long time series" [2]. Their `LinearHMM` (heavy-tailed variant) uses parallel auxiliary variable methods that reduce to `GaussianHMM`, then applies parallel-scan inference. The Pyro forecasting tutorial demonstrates this on BART ridership data (n = 78,888 hourly observations) where sequential filtering would be impractical [2]. NumPyro's HMM enumeration example uses the same approach via `scan()` with parallel semantics, explicitly citing Särkkä & García-Fernández for "reduc[ing] parallel complexity from O(length) to O(log(length))" [3].
 
-**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan formulations, sequential depth can drop from O(n) to O(log n), which can accelerate each optimizer iteration on sufficiently long sequences and parallel hardware. For the energy demo (n=120, 295 iters, ~5.9 s), the theoretical serial depth reduction is from about 120 to about 7 per iteration.
+**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan formulations, sequential depth can drop from O(n) to O(log n), which can accelerate each optimizer iteration on sufficiently long sequences and parallel hardware. For the energy demo (n=120, <!-- timing:energy-mle:iterations -->295<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.3 s<!-- /timing -->), the theoretical serial depth reduction is from about 120 to about 7 per iteration.
 
 **Practical caveats for dlm-js today:**
 - **Short series ($n \approx 100\text{–}120$):** The depth reduction is real, but parallel scans add constant-factor overhead and GPU kernel dispatch for tiny $m=2\text{–}5$ matrices may dominate. Pyro's payoff comes from much longer series ($n \approx 79\text{k}$) [2].

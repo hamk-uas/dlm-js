@@ -8,7 +8,7 @@
     "dist"
   ],
   "dependencies": {
-    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#767bd260d52ced630d99654edcbb50591f4dc2ac"
+    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#v0.7.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -38,8 +38,15 @@
     "gen:svg:nile-mle-anim": "npx tsx scripts/collect-nile-mle-frames.ts && npx tsx scripts/gen-nile-mle-anim-svg.ts",
     "gen:svg:energy-mle": "npx tsx scripts/collect-energy-mle-frames.ts && npx tsx scripts/gen-energy-mle-anim-svg.ts",
     "gen:svg:ozone": "npx tsx scripts/gen-ozone-svg.ts",
-    "gen:svg": "pnpm run gen:svg:nile && pnpm run gen:svg:kaisaniemi && pnpm run gen:svg:trigar && pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle && pnpm run gen:svg:ozone",
-    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m && octave-cli --no-gui tests/octave/ozonedemo.m",
+    "gen:svg:missing": "npx tsx scripts/gen-missing-svg.ts",
+    "gen:svg": "pnpm run gen:svg:nile && pnpm run gen:svg:kaisaniemi && pnpm run gen:svg:trigar && pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle && pnpm run gen:svg:ozone && pnpm run gen:svg:missing && pnpm run update:timings",
+    "bench:mle": "npx tsx scripts/collect-mle-benchmark.ts && pnpm run update:timings",
+    "bench:checkpoint": "npx tsx scripts/bench-checkpoint.ts && pnpm run update:timings",
+    "update:timings": "npx tsx scripts/update-timings.ts",
+    "update:timings:dry": "npx tsx scripts/update-timings.ts -- --dry",
+    "update:timings:list": "npx tsx scripts/update-timings.ts -- --list",
+    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m && octave-cli --no-gui tests/octave/ozonedemo.m && octave-cli --no-gui tests/octave/missingdata_test.m",
+    "test:octave:missing": "octave-cli --no-gui tests/octave/missingdata_test.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",
     "prepublishOnly": "pnpm run build && pnpm run test"

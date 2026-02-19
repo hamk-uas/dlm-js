@@ -13,7 +13,10 @@ Quick start — commands you will need (copy/paste) ▶️
 - Lint (jax-js-nonconsuming memory rules): `pnpm run lint`.
 - Generate API docs: `pnpm run docs` (outputs to `docs/`, opens at `docs/index.html`).
 - Generate Octave reference (requires `octave-cli`): `pnpm run test:octave` (produces `tests/*-out-m.json`).
-- Generate SVG plots: `pnpm run gen:svg` (produces `assets/*.svg`).
+- Generate SVG plots: `pnpm run gen:svg` (produces `assets/*.svg`; also writes timing sidecars to `assets/timings/*.json` and auto-patches `<!-- timing:KEY -->` markers in all .md files).
+- Update stale timing values in .md files: `pnpm run update:timings` (reads existing sidecars; no re-run). Inspect slots with `pnpm run update:timings:list`. Preview changes without writing with `pnpm run update:timings:dry`.
+- Benchmark all MLE comparison-table rows (Nile order=0, Kaisaniemi): `pnpm run bench:mle` (writes `assets/timings/collect-mle-benchmark.json` and auto-patches .md).
+- Benchmark `checkpoint` strategies: `pnpm run bench:checkpoint` (writes `assets/timings/bench-checkpoint.json` and auto-patches .md).
 - Build for distribution: `pnpm run build`.
 - Full CI-local check: `pnpm run test` (runs lint + Octave reference + Node tests).
 
@@ -23,9 +26,9 @@ Files & places to inspect first 📁
 - State space generator: `src/dlmgensys.ts` (polynomial, seasonal, AR component assembly, `findArInds` for AR state indexing).
 - Types & helpers: `src/types.ts` (TypedArray usage, `getFloatArrayType`, `DlmForecastResult` interface).
 - Test matrix: `tests/test-matrix.ts` (shared device × dtype configs and tolerances).
-- Tests: `tests/niledemo.test.ts` (Nile demo vs Octave), `tests/gensys.test.ts` (multi-model vs Octave), `tests/synthetic.test.ts` (known true states, statistical assertions), `tests/mle.test.ts` (MLE parameter & AR coefficient estimation on WASM), `tests/covariate.test.ts` (X parameter / β recovery), `tests/ozone.test.ts` (ozone demo smoke tests), `tests/forecast.test.ts` (h-step-ahead forecasting: monotone ystd, finite outputs, covariate support, all models).
+- Tests: `tests/niledemo.test.ts` (Nile demo vs Octave), `tests/gensys.test.ts` (multi-model vs Octave), `tests/synthetic.test.ts` (known true states, statistical assertions), `tests/mle.test.ts` (MLE parameter & AR coefficient estimation on WASM), `tests/covariate.test.ts` (X parameter / β recovery), `tests/ozone.test.ts` (ozone demo smoke tests), `tests/forecast.test.ts` (h-step-ahead forecasting: monotone ystd, finite outputs, covariate support, all models), `tests/missing.test.ts` (order=1 and order=0 with NaN observations vs Octave reference).
 - Reference generators: `tests/octave/niledemo.m`, `tests/octave/gensys_tests.m`, `tests/octave/kaisaniemi_demo.m` (MATLAB/Octave ground truth).
-- SVG generators: `scripts/gen-niledemo-svg.ts`, `scripts/gen-kaisaniemi-svg.ts`, `scripts/gen-trigar-svg.ts`, `scripts/gen-nile-mle-anim-svg.ts` (+ `scripts/collect-nile-mle-frames.ts`), `scripts/gen-energy-mle-anim-svg.ts` (+ `scripts/collect-energy-mle-frames.ts`), `scripts/gen-ozone-svg.ts`.
+- SVG generators: `scripts/gen-niledemo-svg.ts`, `scripts/gen-kaisaniemi-svg.ts`, `scripts/gen-trigar-svg.ts`, `scripts/gen-nile-mle-anim-svg.ts` (+ `scripts/collect-nile-mle-frames.ts`), `scripts/gen-energy-mle-anim-svg.ts` (+ `scripts/collect-energy-mle-frames.ts`), `scripts/gen-ozone-svg.ts`, `scripts/gen-missing-svg.ts` (missing-data demo with NaN interpolation and ystd widening).
 - MLE comparison: `mle-comparison.md` (dlm-js MLE vs MATLAB DLM parameter estimation, with benchmark timings).
 - Upstream issues: `issues/` (precision analysis filed to jax-js-nonconsuming).
 - Build / CI hooks: `package.json`, `vite.config.ts`.
@@ -36,12 +39,19 @@ Project-specific conventions & gotchas ⚠️
 - Reference-first testing: Octave output is the source of truth. If you change numerics intentionally, regenerate Octave output and update tests with justification.
 - Partial-output testing: use `tests/niledemo-keys.json` to limit comparisons for partial implementations.
 - Memory management: This project uses `@hamk-uas/jax-js-nonconsuming` which has **non-consuming ops** — operations leave inputs intact. Use TC39 `using` keyword for automatic disposal and `tree.dispose()` for bulk cleanup. Do NOT use `.ref` (that is the consuming-ops pattern from a different fork).
+- **Timing and computed markers in .md files**: Every machine-dependent value in README.md or mle-comparison.md uses one of two invisible HTML marker forms:
+  - `<!-- timing:KEY -->VALUE<!-- /timing -->` — replaced with `formatTiming(sidecar[field])` for the named KEY. Registry: `scripts/lib/timing-registry.ts`. Sidecars: `assets/timings/<script-basename>.json`.
+  - `<!-- computed:EXPR -->VALUE<!-- /computed -->` — EXPR is a JS expression using `slot("KEY")` (raw numeric value from a sidecar) and `static("KEY")` (value from `assets/timings/static-references.json`). Used for derived verbal claims, e.g. `static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower"` or `Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1)`.
+  - `assets/timings/static-references.json` holds **manually-measured Octave** fminsearch timings and −2logL values. Update its `_measured` date and values whenever Octave is re-run on a different machine.
+  - Both marker types are patched by a single `pnpm run update:timings` call after any sidecar or static-references change.
+  - **Full mle-comparison.md refresh workflow**: `pnpm run bench:mle && pnpm run bench:checkpoint` (each script writes its sidecar and auto-runs `update:timings`). If on a new machine, also re-run Octave (`pnpm run test:octave`) and update `static-references.json` manually.
+  - When **adding** a new timing: (1) add a registry entry to `timing-registry.ts`, (2) call `writeTimingsSidecar` in the relevant script, (3) wrap the .md value with the marker, (4) run `pnpm run update:timings`.
 - ESLint plugin: The `@hamk-uas/jax-js-nonconsuming/eslint-plugin` sub-path export enforces correct `using`/disposal patterns. **Always run `pnpm run lint` after editing `src/` files** to catch memory leaks, missing `using` declarations, and use-after-dispose bugs.
 - Dependencies: `@hamk-uas/jax-js-nonconsuming` (post-v0.4.0, includes the eslint plugin as a sub-path export) is installed from `github:hamk-uas/jax-js-nonconsuming#767bd260d52ced630d99654edcbb50591f4dc2ac`.
 - AD notes: The `using` keyword IS correct inside `grad`/`jit`/`scan` traced bodies — tracers intercept disposal and manage tensor lifetimes. Suppression comments (`// jax-js-lint: allow-non-using`) are only needed for the accumulator-swap pattern (e.g. `W_new`, `newContrib` in `src/mle.ts`). See `src/mle.ts` for examples.
 
 Testing & tolerance details (important for PRs) ✅
-- **Seven test suites**: `niledemo.test.ts` (8 tests, Nile data vs Octave), `gensys.test.ts` (47 tests, multi-model vs Octave), `synthetic.test.ts` (24 tests, known true states), `mle.test.ts` (3 tests, MLE parameter & AR coefficient estimation on WASM), `covariate.test.ts` (5 tests, X parameter / β recovery), `ozone.test.ts` (2 tests, ozone demo smoke), `forecast.test.ts` (6 tests, h-step-ahead forecasting). Total: 95 tests.
+- **Eight test suites**: `niledemo.test.ts` (8 tests, Nile data vs Octave), `gensys.test.ts` (47 tests, multi-model vs Octave), `synthetic.test.ts` (24 tests, known true states), `mle.test.ts` (4 tests, MLE parameter & AR coefficient estimation, including missing data, on WASM), `covariate.test.ts` (5 tests, X parameter / β recovery), `ozone.test.ts` (2 tests, ozone demo smoke), `forecast.test.ts` (6 tests, h-step-ahead forecasting), `missing.test.ts` (order=1 and order=0 with NaN observations vs Octave reference). Total: 112+ tests (exact count is device-dependent).
 - **Tolerances** are defined in `tests/test-matrix.ts`: Float64 relTol=2e-3, absTol=1e-6; Float32 relTol=1e-2, absTol=1e-4. The niledemo test uses tighter ~1e-10 relative tolerance for its specific comparison.
 - Test artifacts: failing runs write `tests/out/` — inspect JSON files there.
 - When adding features: include tests that run in all three modes (`for`, `scan`, `jit`) and add keys to `niledemo-keys.json` if the change is a partial implementation.
@@ -63,6 +73,7 @@ PR checklist (what an AI should do before opening a PR) 📋
 5. **Run `pnpm run lint`** to verify the jax-js-nonconsuming eslint plugin reports no memory/disposal issues.
 6. Run: `pnpm install && pnpm vitest run && pnpm run test:octave` (if applicable).
 7. If public API changes, update `README.md` and TypeScript types in `src/types.ts`.
+8. If MLE runtime, convergence, or −2logL values change: run `pnpm run bench:mle && pnpm run bench:checkpoint` (both auto-patch .md timing/computed markers). If the machine changed, also manually update `assets/timings/static-references.json` with fresh Octave measurements and bump `_measured`.
 
 Example prompts for agents (use these exact templates) ✍️
 - "Add `mode: 'vectorized'` to `dlmFit` implemented via a new helper in `src/index.ts`; add unit tests exercising the new mode and ensure existing `for`/`scan`/`jit` tests still pass. Update README and add entries to `tests/niledemo-keys.json` if output keys change."  

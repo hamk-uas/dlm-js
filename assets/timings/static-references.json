@@ -1,0 +1,12 @@
+{
+  "_note": "Manually measured Octave fminsearch timings. Median of 5 runs on an AMD Ryzen 5 5600H after 1 warmup run. Run: `pnpm run test:octave` to replicate; update values and _measured date when re-measured.",
+  "_measured": "2025-01",
+  "octave-nile-order1-elapsed-ms": 2827,
+  "octave-nile-order1-lik": 1104.6,
+  "octave-nile-order0-elapsed-ms": 610,
+  "octave-nile-order0-lik": 1095.8,
+  "octave-nile-w-only-elapsed-ms": 1623,
+  "octave-nile-w-only-lik": 1104.7,
+  "octave-kaisaniemi-lik": null,
+  "machine": "Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM"
+}

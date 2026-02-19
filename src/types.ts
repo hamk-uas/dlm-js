@@ -51,8 +51,8 @@ export interface DlmSmoResult {
   mse: np.Array;
   /** Mean absolute percentage error (scalar) */
   mape: np.Array;
-  /** Number of observations */
-  nobs: number;
+  /** Number of non-NaN observations (scalar np.Array, consumed by dlmFit) */
+  nobs: np.Array;
   /** State dimension */
   m: number;
 }

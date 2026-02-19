@@ -96,12 +96,16 @@ const dlmSmo = async (
   // Step functions receive FF_t ([1, m]) from the scan pytree.
   // G and W are still captured as constants (not time-varying).
   // ─────────────────────────────────────────────────────────────────────────
-  
+
+  // Constant [1,1] ones tensor captured by forwardStep closure for NaN masking.
+  using const_one_11 = np.array([[1.0]], { dtype });
+
   type ForwardCarry = { x: np.Array; C: np.Array };
   type ForwardX = { y: np.Array; V2: np.Array; FF: np.Array };
   type ForwardY = {
     x_pred: np.Array; C_pred: np.Array;
     K: np.Array; v: np.Array; Cp: np.Array; FF: np.Array;
+    mask: np.Array;  // [1,1]: 1.0 if observed, 0.0 if NaN
   };
   
   const forwardStep = (
@@ -110,30 +114,46 @@ const dlmSmo = async (
   ): [ForwardCarry, ForwardY] => {
     const { x: xi, C: Ci } = carry;
     const { y: yi, V2: V2i, FF: FFi } = inp;
-    
-    // Innovation: v = y - FF·x  [1,1]
-    const v = np.subtract(yi, np.matmul(FFi, xi));
-    
+
+    // NaN masking: mask = 1.0 if y is observed, 0.0 if y is NaN.
+    // When y is NaN, the measurement update is skipped entirely:
+    //   x_{t|t} = x_{t|t-1}  (no correction)
+    //   C_{t|t} = C_{t|t-1}  (no reduction)
+    // This is achieved by zeroing K and v, which makes L = G and
+    // the update terms vanish without branching inside the scan.
+    using is_nan = np.isnan(yi);                                   // [1,1] bool
+    using zero_11 = np.zerosLike(yi);                              // [1,1]
+    const mask_t = np.where(is_nan, zero_11, const_one_11);       // [1,1]: 0 if NaN
+    using y_safe = np.where(is_nan, zero_11, yi);                  // [1,1]: 0 if NaN
+
+    // Innovation: v = (y_safe - FF·x) * mask  [1,1]  (0 when NaN)
+    using FFxi = np.matmul(FFi, xi);
+    using v_raw = np.subtract(y_safe, FFxi);
+    const v = np.multiply(mask_t, v_raw);
+
     // Innovation covariance: Cp = FF·C·FF' + V²  [1,1]
     const Cp = np.add(
       np.einsum('ij,jk,lk->il', FFi, Ci, FFi),
       V2i
     );
-    
-    // Kalman gain: K = G·C·FF' / Cp  [m,1]
+
+    // Kalman gain: K = mask * (G·C·FF' / Cp)  [m,1]  (0 when NaN)
     using GCFFt = np.einsum('ij,jk,lk->il', G, Ci, FFi);
-    const K = np.divide(GCFFt, Cp);
-    
-    // L = G - K·FF  [m,m]
+    using K_raw = np.divide(GCFFt, Cp);
+    const K = np.multiply(mask_t, K_raw);  // [1,1]×[m,1] → [m,1] by broadcast
+
+    // L = G - K·FF  [m,m]  (= G when NaN, since K=0)
     using L = np.subtract(G, np.matmul(K, FFi));
-    
+
     // Next state prediction: x_next = G·x + K·v  [m,1]
+    // When NaN: x_next = G·x (no measurement update)
     const x_next = np.add(
       np.matmul(G, xi),
       np.matmul(K, v)
     );
-    
+
     // Next covariance: C_next = G·C·L' + W  [m,m]
+    // When NaN: C_next = G·C·G' + W  (L = G, no reduction from update)
     //
     // NUMERICAL PRECISION NOTE:
     // einsum('ij,jk,lk->il', G, C, L) decomposes into two sequential
@@ -161,8 +181,8 @@ const dlmSmo = async (
     
     return [
       { x: x_next, C: C_next },
-      // Pass FFi through so backward pass can reuse it
-      { x_pred: xi, C_pred: Ci, K, v, Cp, FF: FFi } as ForwardY,
+      // Pass FFi and mask through so backward pass can reuse them
+      { x_pred: xi, C_pred: Ci, K, v, Cp, FF: FFi, mask: mask_t } as ForwardY,
     ];
   };
   
@@ -170,6 +190,7 @@ const dlmSmo = async (
   type BackwardX = {
     x_pred: np.Array; C_pred: np.Array;
     K: np.Array; v: np.Array; Cp: np.Array; FF: np.Array;
+    mask: np.Array;  // [1,1]: 1.0 if observed, 0.0 if NaN (mirrors forwardStep)
   };
   type BackwardY = { x_smooth: np.Array; C_smooth: np.Array };
   
@@ -178,22 +199,27 @@ const dlmSmo = async (
     inp: BackwardX
   ): [BackwardCarry, BackwardY] => {
     const { r, N } = carry;
-    const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi, FF: FFi } = inp;
-    
-    // L = G - K·FF  [m,m]
+    const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi, FF: FFi, mask: maski } = inp;
+
+    // L = G - K·FF  [m,m]  (K=0 when NaN → L=G, propagating prior)
     using L = np.subtract(G, np.matmul(Ki, FFi));
-    
+
     // FF'·Cp⁻¹  [m,1] (scalar division valid for p=1)
     using FFt = np.transpose(FFi);
     using FtCpInv = np.divide(FFt, Cpi);
-    
+
     // r_new = F'·Cp⁻¹·v + L'·r  [m,1]
+    // vi is already 0 at NaN positions (zeroed in forwardStep), so
+    // FtCpInv·vi contributes 0 automatically at missing timesteps.
     const r_new = np.add(
       np.multiply(FtCpInv, vi),
       np.matmul(np.transpose(L), r)
     );
-    
-    // N_new = FF'·Cp⁻¹·FF + L'·N·L  [m,m]
+
+    // N_new = mask·(FF'·Cp⁻¹·FF) + L'·N·L  [m,m]
+    // The outer-product term must be masked: at NaN timesteps it would
+    // otherwise add spurious Fisher information to N, causing the smoother
+    // to over-shrink state uncertainty at and around missing observations.
     //
     // NUMERICAL PRECISION NOTE:
     // The L'·N·L product via einsum uses two pairwise dot() calls.
@@ -201,8 +227,9 @@ const dlmSmo = async (
     // in each dot, but errors still propagate into C_smooth via the
     // C·N·C product below. N accumulates information over the
     // backward pass, so rounding compounds across timesteps.
+    using FtCpInvFF = np.matmul(FtCpInv, FFi);  // [m,m]
     const N_new = np.add(
-      np.matmul(FtCpInv, FFi),
+      np.multiply(maski, FtCpInvFF),  // [1,1]×[m,m] → [m,m]: 0 when NaN
       np.einsum('ji,jk,kl->il', L, N, L)
     );
     
@@ -293,6 +320,7 @@ const dlmSmo = async (
     using v_rev = np.flip(fwd.v, 0);
     using Cp_rev = np.flip(fwd.Cp, 0);
     using FF_rev = np.flip(fwd.FF, 0);
+    using mask_rev = np.flip(fwd.mask, 0);
 
     const [bwdCarry, bwd] = lax.scan(
       backwardStep,
@@ -304,6 +332,7 @@ const dlmSmo = async (
         v: v_rev,
         Cp: Cp_rev,
         FF: FF_rev,
+        mask: mask_rev,
       }
     );
     tree.dispose(bwdCarry);
@@ -313,6 +342,10 @@ const dlmSmo = async (
     tree.dispose(bwd);
 
     // ─── Observation-space diagnostics ───
+
+    // NaN observation mask [n]: 1.0 where observed, 0.0 where missing.
+    // Squeezed from the [n,1,1] mask stored by forwardStep.
+    using mask_flat = np.squeeze(fwd.mask);   // [n]
 
     // yhat = FF @ xf: FF:[n,1,m] @ xf:[n,m,1] → [n,1,1] → [n]
     using yhat_3d = np.matmul(FF_scan, fwd.x_pred);
@@ -325,37 +358,55 @@ const dlmSmo = async (
     const ystd = np.sqrt(np.add(FCFt_flat, V2_flat));
 
     // Innovations [n,1,1] → [n]
+    // v is already zeroed at NaN positions (K=0 in forwardStep when NaN)
     const v_flat = np.squeeze(fwd.v);
     const Cp_flat = np.squeeze(fwd.Cp);
 
-    // Dispose fwd.K and fwd.FF (no longer needed)
+    // Dispose fwd.K, fwd.FF, fwd.mask (no longer needed after squeeze)
     fwd.K.dispose();
     fwd.FF.dispose();
+    fwd.mask.dispose();
 
-    // Residuals
-    const resid0 = np.subtract(y_1d, yhat);
-    const resid = np.divide(resid0, V_flat);
-    const resid2 = np.divide(v_flat, np.sqrt(Cp_flat));
+    // y_safe: replace NaN with 0 for numerically safe reductions
+    using is_nan_y = np.isnan(y_1d);       // [n] bool
+    using y_safe = np.where(is_nan_y, np.zerosLike(y_1d), y_1d);  // [n]
 
-    // Scalar reductions
-    const ssy = np.sum(np.square(resid0));
-    const lik = np.sum(np.add(
+    // Residuals: naturally NaN at missing positions (y_1d has NaN there)
+    const resid0 = np.subtract(y_1d, yhat);    // [n]: NaN at missing obs
+    const resid  = np.divide(resid0, V_flat);  // [n]: NaN at missing obs
+    // Standardised prediction residuals: NaN at missing positions (matching MATLAB)
+    using resid2_raw = np.divide(v_flat, np.sqrt(Cp_flat));   // [n]: 0 at NaN pos
+    using nan_arr = np.full([n], NaN, { dtype });              // [n] all NaN
+    const resid2 = np.where(is_nan_y, nan_arr, resid2_raw);   // [n]: NaN at missing
+
+    // NaN-safe scalar reductions — use mask_flat to exclude missing timesteps
+    using resid0_safe = np.subtract(y_safe, yhat);           // [n]: 0 at missing pos
+    using resid_safe  = np.divide(resid0_safe, V_flat);      // [n]: 0 at missing pos
+    const nobs = np.sum(mask_flat);                          // scalar: count of valid obs
+    const ssy  = np.sum(np.multiply(mask_flat, np.square(resid0_safe)));
+    const lik  = np.sum(np.multiply(mask_flat, np.add(
       np.divide(np.square(v_flat), Cp_flat),
       np.log(Cp_flat)
-    ));
-    const s2 = np.mean(np.square(resid));
-    const mse = np.mean(np.square(resid2));
+    )));
+    const s2   = np.divide(
+      np.sum(np.multiply(mask_flat, np.square(resid_safe))), nobs);
+    const mse  = np.divide(
+      np.sum(np.multiply(mask_flat, np.square(resid2_raw))), nobs);
     // Sign-preserving guard: tiny epsilon prevents NaN when y contains exact
     // zeros, but preserves sign (negative y → negative MAPE, matching MATLAB).
-    const mape = np.mean(np.divide(np.abs(resid2), np.add(y_1d, np.array(1e-30, { dtype }))));
-    
+    const mape = np.divide(
+      np.sum(np.multiply(mask_flat,
+        np.divide(np.abs(resid2_raw), np.add(y_safe, np.array(1e-30, { dtype }))))),
+      nobs
+    );
+
     return {
       x: x_smooth, C: C_smooth,
       xf: fwd.x_pred, Cf: fwd.C_pred,
       yhat, ystd,
       v: v_flat, Cp: Cp_flat,
       resid0, resid, resid2,
-      ssy, lik, s2, mse, mape,
+      ssy, lik, s2, mse, mape, nobs,
     };
   };
   
@@ -365,7 +416,7 @@ const dlmSmo = async (
   if (FF_arr === undefined) FF_scan.dispose(); // we own it (created by np.tile)
 
   return tree.makeDisposable({
-    ...coreResult, nobs: n, m: stateSize,
+    ...coreResult, m: stateSize,
   }) as DlmSmoResult & Disposable;
 };
 
@@ -495,10 +546,14 @@ export const dlmFit = async (
   // β states start at 0 with large uncertainty (diffuse prior)
   // ─────────────────────────────────────────────────────────────────────────
   const ns = options.ns ?? 12;
-  let initSum = 0;
+  let initSum = 0, initCount = 0;
   const count = Math.min(ns, n);
-  for (let i = 0; i < count; i++) initSum += Number(yArr[i]);
-  const mean_y = initSum / count;
+  for (let i = 0; i < count; i++) {
+    const v = Number(yArr[i]);
+    if (!isNaN(v)) { initSum += v; initCount++; }
+  }
+  // NaN-safe mean: use available observations; fall back to 0 if all missing
+  const mean_y = initCount > 0 ? initSum / initCount : 0;
   // Initial covariance: diagonal with large uncertainty (diffuse prior)
   const c0_val = (Math.abs(mean_y) * 0.5) ** 2;
   const c0 = c0_val === 0 ? 1e7 : c0_val;
@@ -603,6 +658,7 @@ export const dlmFit = async (
   const s2 = await toNum(out2.s2);
   const mse = await toNum(out2.mse);
   const mape = await toNum(out2.mape);
+  const nobs = Math.round(await toNum(out2.nobs));  // count of non-NaN observations
 
   return {
     // State estimates (m = m_base + q; last q states are β coefficients)
@@ -622,7 +678,7 @@ export const dlmFit = async (
     yhat, ystd, resid0, resid, resid2,
     // Diagnostics
     ssy, v, Cp: Cp_arr, s2,
-    nobs: out2.nobs,
+    nobs,
     lik, mse, mape,
     class: 'dlmfit',
   };
@@ -640,7 +696,19 @@ export const dlmFit = async (
  *   ystd(k)     = sqrt(FF_k · C_pred(k) · FF_k' + s²) (observation std)
  *
  * This is the standard Kalman prediction step with no measurement update —
- * equivalent to appending NaN observations and running the filter only.
+ * equivalent to appending NaN observations and running dlmFit on the extended
+ * series, but cheaper (O(h) vs O(n+h)) because it skips the full filter+smoother
+ * pass over the already-fitted data.
+ *
+ * **Equivalence with NaN-extended dlmFit:**
+ * Appending NaN values to `y` and calling `dlmFit` on the extended series
+ * produces numerically identical `yhat`/`ystd` for the appended steps, because
+ * the RTS smoother propagates no new information backwards through NaN steps.
+ * Use that pattern instead when:
+ *   - You have *some* known future observations (partial future data, revised
+ *     estimates, scenario constraints) — mix real values and NaN freely.
+ *   - You want the smoothed state trajectory to continue into the forecast window
+ *     as part of the same `DlmFitResult` (e.g. for plotting continuity).
  *
  * All model types are supported: local level/trend, full/trigonometric seasonal,
  * AR(p), and covariate (β) models. Covariate states (static β blocks in G/W)

@@ -136,6 +136,10 @@ const makeKalmanLoss = (
    * - number: explicit segment size.
    */
   checkpoint?: boolean | number,
+  /** Optional per-timestep NaN mask [n, 1, 1]: 1 = observed, 0 = missing.
+   * When undefined, all timesteps are treated as observed (default).
+   * y_arr must have NaN replaced with 0 before being passed when using this. */
+  mask_arr?: np.Array,
 ) => {
   const nar = arInds.length;
   // When s is fixed, theta = [w₀…w_{m-1}, arphi…]  (no leading s slot)
@@ -151,14 +155,15 @@ const makeKalmanLoss = (
 
     // Step function defined here so it captures the correct G
     type Carry = { x: np.Array; C: np.Array };
-    type ScanInp = { y: np.Array; V2: np.Array; W: np.Array };
+    type ScanInp = { y: np.Array; V2: np.Array; W: np.Array; mask: np.Array };
 
     const step = (carry: Carry, inp: ScanInp): [Carry, np.Array] => {
       const { x, C } = carry;
-      const { y: yi, V2: V2i, W } = inp;
+      const { y: yi, V2: V2i, W, mask: mask_t } = inp;
 
-      // Innovation: v = y - F·x  [1,1]
-      using v = np.subtract(yi, np.matmul(F, x));
+      // Innovation: v_raw = y - F·x  [1,1]; mask to 0 at missing timesteps
+      using v_raw = np.subtract(yi, np.matmul(F, x));
+      using v = np.multiply(mask_t, v_raw);
 
       // C·Fᵀ: [m,m]@[m,1] → [m,1]
       using CFt = np.matmul(C, Ft);
@@ -166,8 +171,9 @@ const makeKalmanLoss = (
       // Innovation covariance: Cp = F·(C·Fᵀ) + V²  [1,1]
       const Cp = np.add(np.matmul(F, CFt), V2i);
 
-      // Kalman gain: K = G·(C·Fᵀ) / Cp  [m,1]
-      using K = np.divide(np.matmul(G, CFt), Cp);
+      // Kalman gain: K_raw = G·(C·Fᵀ)/Cp, masked to 0 at missing steps [m,1]
+      using K_raw = np.divide(np.matmul(G, CFt), Cp);
+      using K = np.multiply(mask_t, K_raw);
 
       // Next state: x_next = G·x + K·v  [m,1]
       const x_next = np.add(np.matmul(G, x), np.matmul(K, v));
@@ -180,9 +186,9 @@ const makeKalmanLoss = (
       using CLt = np.matmul(C, Lt);
       const C_next = np.add(np.matmul(G, CLt), W);
 
-      // Per-step -2·loglik: v²/Cp + log(Cp)
-      using lik_t = np.add(np.divide(np.square(v), Cp), np.log(Cp));
-      return [{ x: x_next, C: C_next }, np.squeeze(lik_t)];
+      // Per-step -2·loglik: mask · (v²/Cp + log(Cp)) — zero at missing steps
+      using lik_raw = np.add(np.divide(np.square(v_raw), Cp), np.log(Cp));
+      return [{ x: x_next, C: C_next }, np.multiply(mask_t, np.squeeze(lik_raw))];
     };
 
     using expTheta = np.exp(theta);
@@ -212,12 +218,17 @@ const makeKalmanLoss = (
       np.reshape(W, [1, m, m]),
     );
 
+    // Build mask for scan: use provided mask or create all-ones (no NaN masking)
+    const mask_for_scan = mask_arr ?? np.ones([n, 1, 1], { dtype });
+    const ownsMask = mask_arr === undefined;
+
     const [fc, likTerms] = lax.scan(
       step,
       { x: x0, C: C0 },
-      { y: y_arr, V2: V2_arr, W: W_arr },
+      { y: y_arr, V2: V2_arr, W: W_arr, mask: mask_for_scan },
       checkpoint !== undefined ? { checkpoint } : undefined,
     );
+    if (ownsMask) mask_for_scan.dispose();
     tree.dispose(fc);
     const total = np.sum(likTerms);
     likTerms.dispose();
@@ -304,15 +315,26 @@ export const dlmMLE = async (
   using F = np.array([sys.F], { dtype }); // [1, m]
   using Ft = np.transpose(F);
 
-  // Stack observations: [n, 1, 1]
-  using y_arr = np.array(Array.from(yArr).map(yi => [[yi]]), { dtype });
+  // Detect missing observations (NaN) and build a mask [n, 1, 1]: 1 = observed, 0 = NaN
+  const yList = Array.from(yArr);
+  const hasMissing = yList.some(v => isNaN(v));
+  const mleMaskArr = hasMissing
+    ? np.array(yList.map(yi => [[isNaN(yi) ? 0 : 1]]), { dtype })
+    : undefined;
 
-  // Initial state covariance — diagonal, initialised from data variance
+  // Stack observations: [n, 1, 1] — NaN replaced with 0 (masked out in scan step)
+  using y_arr = np.array(yList.map(yi => [[isNaN(yi) ? 0 : yi]]), { dtype });
+
+  // Initial state — initialised from data mean/variance, NaN-safe
   const ns = options.ns ?? 12;
   let initSum = 0;
-  const count = Math.min(ns, n);
-  for (let i = 0; i < count; i++) initSum += Number(yArr[i]);
-  const mean_y = initSum / count;
+  let initCount = 0;
+  const nsActual = Math.min(ns, n);
+  for (let i = 0; i < nsActual; i++) {
+    const vi = Number(yArr[i]);
+    if (!isNaN(vi)) { initSum += vi; initCount++; }
+  }
+  const mean_y = initCount > 0 ? initSum / initCount : 0;
   const c0_val = (Math.abs(mean_y) * 0.5) ** 2;
   const c0 = c0_val === 0 ? 1e7 : c0_val;
   const x0_data: number[][] = Array.from({ length: m }, (_, i) =>
@@ -324,9 +346,11 @@ export const dlmMLE = async (
   using x0 = np.array(x0_data, { dtype });
   using C0 = np.array(C0_data, { dtype });
 
-  // Initial parameter guess
-  const variance = Array.from(yArr).reduce((s, v) => s + v * v, 0) / n
-    - (Array.from(yArr).reduce((s, v) => s + v, 0) / n) ** 2;
+  // Initial parameter guess (NaN-safe variance)
+  const yObs = Array.from(yArr).filter(v => !isNaN(v));
+  const nObs = yObs.length || 1;
+  const variance = yObs.reduce((s, v) => s + v * v, 0) / nObs
+    - (yObs.reduce((s, v) => s + v, 0) / nObs) ** 2;
   const s_init = init?.s ?? (Math.sqrt(Math.abs(variance)) || 1.0);
   const w_init = init?.w ?? new Array(m).fill(s_init * 0.1);
   const arphi_init = init?.arphi ?? arphi_orig;
@@ -355,7 +379,7 @@ export const dlmMLE = async (
   // checkpoint: false stores all N carries — no recomputation on backward pass.
   // Benchmarks show ~25–30% speedup over default √N checkpointing for typical
   // DLM dataset sizes (n ≲ few hundred), where carry memory is negligible.
-  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false);
+  const lossFn = makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
   const optimizer = adam(lr, { b2: 0.9, ...adamOpts });
 
   const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
@@ -407,6 +431,7 @@ export const dlmMLE = async (
   const thetaData = await theta.data() as Float64Array | Float32Array;
   theta.dispose(); tree.dispose(optState);
   fixedV2_arr?.dispose();
+  mleMaskArr?.dispose();
 
   const wOffset = fixS ? 0 : 1;
   const s_opt = fixS ? NaN : Math.exp(thetaData[0]);

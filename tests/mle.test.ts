@@ -158,4 +158,38 @@ describe('dlmMLE', async () => {
     expect(result.fit.y.length).toBe(200);
     expect(Number.isFinite(result.lik)).toBe(true);
   });
+
+  it('dlmMLE converges with NaN observations (missing data)', async () => {
+    // Generate clean data, then punch 20% holes in it
+    const s_true = 8;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const yClean = generateData(sys.G, sys.F, s_true, w_true, 100, 7);
+
+    // Remove every 5th observation (20 out of 100)
+    const y: (number | null)[] = yClean.map((v, i) => (i % 5 === 0 ? null : v));
+    const yForMle = y.map(v => (v === null ? NaN : v));
+    const nobs_expected = y.filter(v => v !== null).length;
+    expect(nobs_expected).toBe(80);
+
+    const result = await withLeakCheck(() =>
+      dlmMLE(yForMle, options, undefined, 150, 0.05, 1e-6, dtype)
+    );
+
+    // lik must be finite (NaN lik would indicate a bug in masking)
+    expect(Number.isFinite(result.lik)).toBe(true);
+
+    // s and w estimates should be positive
+    expect(result.s).toBeGreaterThan(0);
+    expect(result.w[0]).toBeGreaterThan(0);
+
+    // fit.nobs should reflect only the observed timesteps
+    expect(result.fit.nobs).toBe(nobs_expected);
+
+    // fit outputs should be fully interpolated (finite everywhere)
+    expect(Array.from(result.fit.yhat).every(Number.isFinite)).toBe(true);
+    expect(result.fit.x[0].every(Number.isFinite)).toBe(true);
+  });
 });
+

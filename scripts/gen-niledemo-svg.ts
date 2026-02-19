@@ -16,6 +16,7 @@ import {
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
 } from "./lib/svg-helpers.ts";
 import { withLeakCheck } from "./lib/leak-utils.ts";
+import { writeTimingsSidecar } from "./lib/timing-sidecar.ts";
 
 // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -160,6 +161,7 @@ push(`</svg>`);
 
 const outPath = resolve(root, "assets", "niledemo.svg");
 writeSvg(lines, outPath);
+writeTimingsSidecar("gen-niledemo-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`
 );
