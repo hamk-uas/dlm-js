@@ -47,7 +47,7 @@ Project-specific conventions & gotchas ⚠️
   - **Full mle-comparison.md refresh workflow**: `pnpm run bench:mle && pnpm run bench:checkpoint` (each script writes its sidecar and auto-runs `update:timings`). If on a new machine, also re-run Octave (`pnpm run test:octave`) and update `static-references.json` manually.
   - When **adding** a new timing: (1) add a registry entry to `timing-registry.ts`, (2) call `writeTimingsSidecar` in the relevant script, (3) wrap the .md value with the marker, (4) run `pnpm run update:timings`.
 - ESLint plugin: The `@hamk-uas/jax-js-nonconsuming/eslint-plugin` sub-path export enforces correct `using`/disposal patterns. **Always run `pnpm run lint` after editing `src/` files** to catch memory leaks, missing `using` declarations, and use-after-dispose bugs.
-- Dependencies: `@hamk-uas/jax-js-nonconsuming` (post-v0.4.0, includes the eslint plugin as a sub-path export) is installed from `github:hamk-uas/jax-js-nonconsuming#767bd260d52ced630d99654edcbb50591f4dc2ac`.
+- Dependencies: `@hamk-uas/jax-js-nonconsuming` v0.7.1 (includes the eslint plugin as a sub-path export) is installed from `github:hamk-uas/jax-js-nonconsuming#v0.7.1`.
 - AD notes: The `using` keyword IS correct inside `grad`/`jit`/`scan` traced bodies — tracers intercept disposal and manage tensor lifetimes. Suppression comments (`// jax-js-lint: allow-non-using`) are only needed for the accumulator-swap pattern (e.g. `W_new`, `newContrib` in `src/mle.ts`). See `src/mle.ts` for examples.
 
 Testing & tolerance details (important for PRs) ✅
