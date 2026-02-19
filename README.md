@@ -526,7 +526,7 @@ pnpm run test
 
 ### Authors
 * Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
-* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Supervision of AI coding agent port of DLM
+* Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Supervision of AI coding agents
 
 ### Copyright
 * 2013-2017 Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
