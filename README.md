@@ -294,20 +294,33 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── trigar.svg           # Energy demand demo plot (regenerate with `pnpm run gen:svg`)
 │   ├── nile-mle-anim.svg    # Nile MLE optimization animation (regenerate with `pnpm run gen:svg`)
 │   ├── energy-mle-anim.svg  # Energy MLE animation with AR coefficient estimation (regenerate with `pnpm run gen:svg`)
-│   └── ozone-demo.svg       # Stratospheric ozone trend analysis demo (regenerate with `pnpm run gen:svg`)
+│   ├── ozone-demo.svg       # Stratospheric ozone trend analysis demo (regenerate with `pnpm run gen:svg`)
+│   ├── missing-demo.svg     # Missing-data demo with NaN interpolation (regenerate with `pnpm run gen:svg`)
+│   └── timings/             # Timing sidecar JSON files written by gen-* / collect-* scripts
+│       ├── static-references.json   # Manually-measured Octave reference values + machine info
+│       └── *.json               # Per-script timing data (auto-written; patched into .md by update:timings)
 ├── dist/                # Compiled and bundled output (after build)
 ├── docs/                # Generated API documentation (after `pnpm run docs`, gitignored)
 ├── issues/              # Drafted GitHub issues for upstream jax-js-nonconsuming
-├── scripts/             # SVG plot generators and frame collectors
+├── scripts/             # SVG generators, frame collectors, benchmark runners, timing automation
 │   ├── gen-niledemo-svg.ts          # Nile demo SVG generator
 │   ├── gen-kaisaniemi-svg.ts        # Kaisaniemi seasonal demo SVG generator
 │   ├── gen-trigar-svg.ts            # Energy demand demo SVG generator
-│   ├── gen-nile-mle-svg.ts         # Nile MLE before/after optimization SVG generator
-│   ├── collect-nile-mle-frames.ts   # Nile MLE frame data collector (→ tmp/mle-frames.json)
-│   ├── gen-nile-mle-anim-svg.ts    # Nile MLE animated convergence SVG generator
-│   ├── collect-energy-mle-frames.ts # Energy MLE frame data collector (→ tmp/energy-mle-frames.json)
-│   ├── gen-energy-mle-anim-svg.ts  # Energy MLE animation SVG generator (with AR coefficient estimation)
-│   └── gen-ozone-svg.ts             # Stratospheric ozone trend analysis SVG generator
+│   ├── gen-nile-mle-anim-svg.ts     # Nile MLE animated convergence SVG generator
+│   ├── collect-nile-mle-frames.ts   # Nile MLE frame data collector (→ assets/timings/)
+│   ├── gen-energy-mle-anim-svg.ts   # Energy MLE animation SVG generator (AR coefficient estimation)
+│   ├── collect-energy-mle-frames.ts # Energy MLE frame data collector (→ assets/timings/)
+│   ├── gen-ozone-svg.ts             # Stratospheric ozone trend analysis SVG generator
+│   ├── gen-missing-svg.ts           # Missing-data demo SVG generator (NaN interpolation)
+│   ├── collect-mle-benchmark.ts     # MLE benchmark: all comparison-table rows (pnpm run bench:mle)
+│   ├── bench-checkpoint.ts          # Checkpoint strategy benchmark (pnpm run bench:checkpoint)
+│   ├── update-timings.ts            # Patch <!-- timing:KEY --> and <!-- computed:EXPR --> markers in .md files
+│   └── lib/                         # Shared script helpers
+│       ├── timing-registry.ts       # Single source of truth for all timing slots
+│       ├── timing-sidecar.ts        # writeTimingsSidecar / readTimingsSidecar / stampMachineInfo
+│       ├── svg-helpers.ts           # SVG axis / grid / band drawing utilities
+│       ├── svg-anim-helpers.ts      # SVG animation frame helpers
+│       └── leak-utils.ts            # withLeakCheck wrapper for scripts
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmForecast` (h-step-ahead forecast), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
@@ -319,7 +332,12 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   │   ├── niledemo.m           # Niledemo — pre-existing MATLAB DLM demo script
 │   │   ├── gensys_tests.m       # Additional model tests (synthetic data, generated for this project)
 │   │   ├── kaisaniemi_demo.m    # Kaisaniemi seasonal demo reference generator
-│   │   └── kaisaniemi.mat       # Kaisaniemi monthly temperature data from mjlaine/dlm examples
+│   │   ├── kaisaniemi.mat       # Kaisaniemi monthly temperature data from mjlaine/dlm examples
+│   │   ├── missingdata_test.m   # Missing-data (NaN) reference generator (order=0 and order=1)
+│   │   ├── ozonedemo.m          # Stratospheric ozone demo reference generator
+│   │   ├── mle_benchmark.m      # Octave fminsearch MLE benchmark (for mle-comparison.md static refs)
+│   │   ├── load_json.m          # JSON loader helper for Octave scripts
+│   │   └── save_json.m          # JSON writer helper for Octave scripts
 │   ├── out/                 # Test outputs (gitignored)
 │   ├── test-matrix.ts       # Shared device × dtype test configurations and tolerances
 │   ├── niledemo-in.json     # Niledemo input data
@@ -330,10 +348,15 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── synthetic.test.ts    # Synthetic ground-truth tests (known true states, statistical assertions)
 │   ├── kaisaniemi-{in,out-m}.json    # Kaisaniemi seasonal demo test data
 │   ├── {order0,order2,seasonal,trig,trigar,level,energy,ar2}-{in,out-m}.json  # Test data (see below)
+│   ├── ozone-{in,out-m}.json             # Ozone demo test fixtures (real satellite data)
+│   ├── missing-{in,out-m}.json           # Missing-data (NaN) test fixtures — order=1
+│   ├── missing-order0-{in,out-m}.json    # Missing-data test fixtures — order=0
 │   ├── mle.test.ts          # MLE parameter estimation tests (s/w and AR coefficient estimation on WASM)
 │   ├── covariate.test.ts    # Covariate (X parameter) regression tests — β recovery and XX field
 │   ├── ozone.test.ts        # Ozone demo smoke tests — dlmFit with covariates on real satellite data
 │   ├── forecast.test.ts     # dlmForecast tests — h-step predictions, monotone ystd, covariate support
+│   ├── missing.test.ts      # Missing-data tests — order=0 and order=1 vs Octave reference
+│   ├── ozonedata.dat        # Raw stratospheric ozone satellite data (loaded by ozone demo scripts)
 │   └── utils.ts             # Test utility functions
 ├── mle-comparison.md    # Comparison of dlm-js MLE vs original MATLAB DLM parameter estimation
 ├── tmp/                 # Scratch / temp directory for agents and debug (gitignored)
