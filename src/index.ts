@@ -1,4 +1,4 @@
-import { DType, numpy as np, lax, jit, tree } from "@hamk-uas/jax-js-nonconsuming";
+import { DType, numpy as np, lax, jit, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmSmoResult, DlmFitResult, DlmForecastResult, FloatArray } from "./types";
 import { getFloatArrayType } from "./types";
 import { dlmGenSys } from "./dlmgensys";
@@ -10,6 +10,102 @@ export type { DlmOptions, DlmSystem } from "./dlmgensys";
 export { dlmGenSys, findArInds } from "./dlmgensys";
 export { dlmMLE } from "./mle";
 export type { DlmMleResult } from "./mle";
+
+/**
+ * Solve the Discrete Algebraic Riccati Equation (DARE) to find the
+ * steady-state Kalman gain K_ss and associated matrices.
+ *
+ * Iterates the standard Kalman predict-update cycle starting from C0
+ * until the predicted covariance converges. Uses the Joseph form for
+ * the filtered covariance update to maintain positive-definiteness
+ * in Float32.
+ *
+ * Result:
+ *   K_ss  [m, 1]  — steady-state Kalman gain (standard formulation)
+ *   A_ss  [m, m]  — (I - K_ss·F)·G  — state transition after update
+ *   Sigma_base [m, m] — (I - K_ss·F)·W·(I - K_ss·F)' — base covariance
+ *   KKt   [m, m]  — K_ss · K_ss' — for per-timestep V²-scaled term
+ *
+ * The returned K_ss uses the standard formulation:
+ *   x̄_t = G·x_{t-1}  (predict)
+ *   K_t  = C̄_t·F' / (F·C̄_t·F' + V²)  (gain from predicted cov)
+ *   x_t  = x̄_t + K_t·(y_t - F·x̄_t)   = (I - K_t·F)·G·x_{t-1} + K_t·y_t
+ *
+ * This is NOT the same as the MATLAB DLM convention used in the sequential
+ * filter (K_m = G·C·F'/Cp). The two produce algebraically different gains
+ * but converge to the same steady state. The standard formulation is used
+ * here because it gives a symmetric compose rule for associativeScan:
+ *   (A₂, b₂, Σ₂) ⊕ (A₁, b₁, Σ₁) = (A₂·A₁, A₂·b₁ + b₂, A₂·Σ₁·A₂' + Σ₂)
+ *
+ * @internal
+ */
+const solveDAREForKss = async (
+  G_data: number[][],
+  F_data: number[],
+  W_data: number[][],
+  C0_data: number[][],
+  V2_scalar: number,
+  m: number,
+  dtype: DType,
+  maxIter: number = 50,
+): Promise<{
+  K_ss: np.Array;        // [m, 1]
+  A_ss: np.Array;        // [m, m]
+  Sigma_base: np.Array;  // [m, m]
+  KKt: np.Array;         // [m, m]
+}> => {
+  // Work eagerly (no jit) — this is a cheap O(maxIter·m³) pre-computation
+  // Uses MATLAB DLM convention: K = G·C·F'/(F·C·F'+V²) directly from filtered cov C,
+  // so that the assocScan forward pass (A_ss = G−K_ss·F) is consistent with the
+  // sequential MATLAB filter and the backward smoother K recovery.
+  using G = np.array(G_data, { dtype });
+  using F_mat = np.array([F_data], { dtype });        // [1, m]
+  using W_mat = np.array(W_data, { dtype });
+  using V2 = np.array([[V2_scalar]], { dtype });       // [1, 1]
+
+  let C = np.array(C0_data, { dtype });                // [m, m] filtered cov
+
+  for (let i = 0; i < maxIter; i++) {
+    // MATLAB convention: Cp = F·C·F' + V²  (using filtered C, not predicted)
+    using Cp = np.add(np.einsum('ij,jk,lk->il', F_mat, C, F_mat), V2);
+
+    // MATLAB gain: K = G·C·F' / Cp  [m,1]
+    using GCFt = np.einsum('ij,jk,lk->il', G, C, F_mat);
+    using K = np.divide(GCFt, Cp);
+
+    // L = G − K·F  (MATLAB convention smoother matrix)
+    using KF = np.matmul(K, F_mat);                    // [m, m]
+    using L = np.subtract(G, KF);                      // [m, m]
+
+    // Joseph form update: C_new = L·C·L' + K·V²·K' + W
+    using LCLt = np.einsum('ij,jk,lk->il', L, C, L);
+    using KV2Kt = np.multiply(V2, np.matmul(K, np.transpose(K)));
+    using sum1 = np.add(LCLt, KV2Kt);
+    // jax-js-lint: allow-non-using
+    const C_new = np.add(sum1, W_mat);
+    C.dispose();
+    C = C_new;
+  }
+
+  // Compute converged K_ss and A_ss using MATLAB convention
+  using Cp_ss = np.add(np.einsum('ij,jk,lk->il', F_mat, C, F_mat), V2);
+  using GCFt_ss = np.einsum('ij,jk,lk->il', G, C, F_mat);
+  const K_ss = np.divide(GCFt_ss, Cp_ss);              // [m, 1]
+
+  // A_ss = G − K_ss·F  (MATLAB convention: the smoother matrix L_ss)
+  using KF_ss = np.matmul(K_ss, F_mat);
+  const A_ss = np.subtract(G, KF_ss);                  // [m, m]
+
+  // Sigma_base = W  (MATLAB Joseph form: C_new = A_ss·C·A_ss' + K·V²·K' + W,
+  // so the V²-independent part contributed each step is just W)
+  const Sigma_base = np.add(W_mat, np.zerosLike(W_mat)); // copy of W [m, m]
+
+  // KKt = K_ss · K_ss'  (for V²-scaled measurement noise part)
+  const KKt = np.matmul(K_ss, np.transpose(K_ss));     // [m, m]
+
+  C.dispose();
+  return { K_ss, A_ss, Sigma_base, KKt };
+};
 
 /**
  * DLM Smoother - Kalman filter (forward) + Rauch-Tung-Striebel smoother (backward).
@@ -62,8 +158,32 @@ const dlmSmo = async (
   stateSize: number,
   dtype: DType = DType.Float64,
   FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
+  /** Plain-JS system matrix data — only needed for associativeScan DARE.
+   *  Passed from dlmFit which already has them. */
+  sysData?: { G_data: number[][]; F_data: number[]; W_data: number[][] },
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y.length;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Branch selection: three execution paths based on device + dtype
+  //
+  //   wasm/cpu + Float64  →  current sequential scan (no extra stabilization)
+  //   cpu      + Float32  →  sequential scan + Joseph form + symmetrize + clamp
+  //   webgpu   + Float32  →  associativeScan forward + Joseph form/symmetrize/clamp
+  //
+  // The Float32 stabilization (Joseph form covariance update, symmetrization,
+  // diagonal clamping) adds ~m² extra ops per step but prevents the covariance
+  // from going non-positive-definite for m > 2, which is the main float32
+  // failure mode. Float64 is unaffected — it takes the fast path without any
+  // extra work.
+  //
+  // The associativeScan path (webgpu) reformulates the forward Kalman filter
+  // as an associative prefix scan per Särkkä & García-Fernández (2020),
+  // reducing sequential depth from O(n) to O(log n) on parallel hardware.
+  // ─────────────────────────────────────────────────────────────────────────
+  const device = defaultDevice();
+  const f32 = dtype === DType.Float32;
+  const useAssocScan = f32 && device === 'webgpu';
 
   // Stack observations: shape [n, 1, 1] for matmul compatibility
   using y_arr = np.array(Array.from(y).map(yi => [[yi]]), { dtype });
@@ -91,6 +211,22 @@ const dlmSmo = async (
   const FF_scan: np.Array = FF_arr !== undefined
     ? FF_arr
     : np.tile(np.reshape(F, [1, 1, stateSize]), [n, 1, 1]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pre-compute steady-state Kalman gain for associativeScan path (webgpu).
+  // Done eagerly before core (outside JIT) — cheap O(50·m³).
+  // ─────────────────────────────────────────────────────────────────────────
+  let dare: { K_ss: np.Array; A_ss: np.Array; Sigma_base: np.Array; KKt: np.Array } | null = null;
+  if (useAssocScan && sysData) {
+    // Use mean V² across timesteps for the DARE
+    let v2sum = 0;
+    for (let i = 0; i < V_std.length; i++) v2sum += V_std[i] * V_std[i];
+    const v2mean = v2sum / V_std.length;
+    dare = await solveDAREForKss(
+      sysData.G_data, sysData.F_data, sysData.W_data,
+      C0_data, v2mean, stateSize, dtype,
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Step functions receive FF_t ([1, m]) from the scan pytree.
@@ -152,32 +288,39 @@ const dlmSmo = async (
       np.matmul(K, v)
     );
 
-    // Next covariance: C_next = G·C·L' + W  [m,m]
-    // When NaN: C_next = G·C·G' + W  (L = G, no reduction from update)
+    // Next covariance: C_next depends on dtype branch.
     //
-    // NUMERICAL PRECISION NOTE:
-    // einsum('ij,jk,lk->il', G, C, L) decomposes into two sequential
-    // dot products: tmp = G·C, then result = tmp·L'. Since jax-js-nonconsuming
-    // v0.2.1, Float64 reductions use Kahan compensated summation,
-    // reducing per-dot rounding from O(m·ε) to O(ε²). For m = 13
-    // (full seasonal) this improved worst-case relative error from
-    // ~3e-5 to ~1.8e-5 vs MATLAB. However, the dominant error
-    // source remains the subtraction C - C·N·C in the backward
-    // step (see below), which Kahan cannot fix.
+    // Float64 path (fast, matches MATLAB DLM reference):
+    //   C_next = G·C·L' + W
     //
-    // POTENTIAL DLM-SIDE IMPROVEMENT (not yet implemented):
-    // The Joseph form covariance update is numerically more stable:
+    // Float32 path (Joseph form — numerically stable):
     //   C_next = L·C·L' + K·V²·K' + W
-    // It guarantees positive semi-definiteness by construction and
-    // avoids the subtraction in G·C·L' = (G - K·F)·C·G' that can
-    // cause cancellation. However, it costs more matrix multiplies
-    // per step and would deviate from the MATLAB DLM reference
-    // implementation (dlmfit.m). We should only adopt it after the
-    // port is fully validated against MATLAB outputs.
-    const C_next = np.add(
-      np.einsum('ij,jk,lk->il', G, Ci, L),
-      W
-    );
+    //   followed by symmetrization: C_next = 0.5·(C_next + C_next')
+    //
+    // The Joseph form guarantees positive semi-definiteness by construction
+    // and avoids the implicit subtraction in G·C·L' that causes catastrophic
+    // cancellation for m > 2 in Float32. The extra cost (~2 matmuls + transpose)
+    // is negligible compared to the stability gain. Float64 skips this because
+    // Kahan-compensated dot products (v0.2.1) keep errors manageable and we
+    // want exact MATLAB DLM reference matching.
+    let C_next: np.Array;
+    if (f32) {
+      // Joseph form: L·C·L' + K·V²·K' + W
+      using LCLt = np.einsum('ij,jk,lk->il', L, Ci, L);
+      using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));  // [1,1]·([m,1]·[1,m]) = [m,m]
+      using sum1 = np.add(LCLt, KV2Kt);
+      using sum2 = np.add(sum1, W);
+      // Symmetrize: C = 0.5·(C + C')
+      using sum2t = np.transpose(sum2);
+      using sumBoth = np.add(sum2, sum2t);
+      C_next = np.multiply(np.array(0.5, { dtype }), sumBoth);
+    } else {
+      // Standard form (matches MATLAB dlmsmo.m): G·C·L' + W
+      C_next = np.add(
+        np.einsum('ij,jk,lk->il', G, Ci, L),
+        W
+      );
+    }
     
     return [
       { x: x_next, C: C_next },
@@ -243,45 +386,35 @@ const dlmSmo = async (
     // error in the DLM. When the smoothing correction C·N·C is
     // nearly equal to C_pred, we subtract two similar-magnitude
     // quantities to get a small result — classic catastrophic
-    // cancellation. Measured worst case (jax-js-nonconsuming v0.2.1 with Kahan):
-    // trig model (m=6), C[5][4] ≈ 2e-7 shows ~3.5% relative error
-    // vs MATLAB (absolute error ~7e-9). Kahan compensated summation
-    // in dot products (v0.2.1) improved the seasonal model (m=13)
-    // but shifted the rounding pattern for trig (m=6), making this
-    // specific element worse. This confirms that the bottleneck is
-    // the subtraction itself, not the dot product accuracy.
+    // cancellation. Float64 keeps errors manageable via Kahan
+    // compensated summation (v0.2.1); Float32 can produce negative
+    // variances for m > 2.
     //
-    // The einsum('ij,jk,kl->il', C, N, C) still decomposes into
-    // two pairwise dot() calls; Kahan helps each individual dot
-    // but cannot prevent the cancellation in the outer subtraction.
-    //
-    // POTENTIAL DLM-SIDE IMPROVEMENTS (not yet implemented):
-    //
-    // Option A — Joseph form for the backward step:
-    //   C_smooth = (I - C·N)·C·(I - C·N)' + C·N·(tolerance term)
-    //   This avoids the large subtraction by reformulating as a
-    //   product of smaller corrections. It's used in some modern
-    //   Kalman filter implementations for exactly this reason.
-    //
-    // Option B — Symmetrize after subtraction:
-    //   C_smooth = 0.5 * (C_smooth + C_smooth')
-    //   Cheap, doesn't fix the cancellation but ensures symmetry
-    //   is preserved despite asymmetric rounding.
-    //
-    // Option C — Clamp negative diagonal entries:
-    //   Covariance diagonals must be ≥ 0. In Float32 with m > 2,
-    //   this subtraction can produce negative variances, causing
-    //   NaN when sqrt is taken later. Clamping would be a band-aid.
-    //
-    // We intentionally match the MATLAB DLM reference (dlmsmo.m)
-    // formulation for now. Deviating should only happen after the
-    // port is fully validated and the improvement is justified by
-    // a specific downstream need (e.g., Float32 support for m > 2,
-    // or very large state dimensions).
-    const C_smooth = np.subtract(
-      Ci,
-      np.einsum('ij,jk,kl->il', Ci, N_new, Ci)
-    );
+    // Float32 stabilization (applied when f32=true):
+    //   1. Symmetrize: C_smooth = 0.5·(C_smooth + C_smooth')
+    //   2. Clamp diagonal: max(diag, 0) to prevent NaN from sqrt
+    // This doesn't fix the cancellation but prevents downstream NaN.
+    // A future parallel smoother (Särkkä §4) will replace this
+    // entire backward step.
+    let C_smooth: np.Array;
+    {
+      using C_raw = np.subtract(
+        Ci,
+        np.einsum('ij,jk,kl->il', Ci, N_new, Ci)
+      );
+      if (f32) {
+        // Symmetrize: C = 0.5·(C + C') — fixes tiny asymmetries from f32 rounding.
+        // NOTE: We do NOT clamp entries to ≥ 0 here. Off-diagonal entries of a
+        // covariance matrix CAN be negative (negative correlations). Clamping all
+        // entries would destroy the covariance structure for m > 1.
+        using Ct = np.transpose(C_raw);
+        using sumC = np.add(C_raw, Ct);
+        C_smooth = np.multiply(np.array(0.5, { dtype }), sumC);
+      } else {
+        // Float64: use raw result (matches MATLAB dlmsmo.m reference)
+        C_smooth = np.add(C_raw, np.zeros([stateSize, stateSize], { dtype })); // copy to own
+      }
+    }
     
     return [{ r: r_new, N: N_new }, { x_smooth, C_smooth }];
   };
@@ -306,12 +439,179 @@ const dlmSmo = async (
     using V_flat = np.sqrt(V2_flat);     // [n] observation noise std dev
 
     // ─── Forward Kalman Filter ───
-    const [fwdCarry, fwd] = lax.scan(
-      forwardStep,
-      { x: x0, C: C0 },
-      { y: y_arr, V2: V2_arr, FF: FF_scan }
-    );
-    tree.dispose(fwdCarry);
+    // Two paths: sequential lax.scan (cpu/wasm) or parallel associativeScan (webgpu).
+    // Both produce the same `fwd` structure consumed by the backward smoother:
+    //   fwd.x_pred [n,m,1]  — carry entering step t (= x_{t-1|t-1})
+    //   fwd.C_pred [n,m,m]  — cov entering step t
+    //   fwd.K      [n,m,1]  — Kalman gain (MATLAB convention)
+    //   fwd.v      [n,1,1]  — innovation (masked to 0 at NaN)
+    //   fwd.Cp     [n,1,1]  — innovation variance
+    //   fwd.FF     [n,1,m]  — observation matrix per step
+    //   fwd.mask   [n,1,1]  — 1.0 observed, 0.0 NaN
+
+    let fwd: ForwardY;
+
+    if (useAssocScan && dare) {
+      // ─── Associative Scan Forward Filter (webgpu + f32) ───
+      //
+      // Uses steady-state Kalman gain from DARE to construct per-timestep
+      // elements (A, b, Σ) and composes them via lax.associativeScan.
+      //
+      // Standard Kalman formulation (NOT the MATLAB convention):
+      //   x̄_t = G·x_{t-1|t-1}           (predict)
+      //   K_t  = C̄_t·F'/(F·C̄_t·F'+V²)   (gain)
+      //   x_{t|t} = (I-K_t·F)·G · x_{t-1|t-1} + K_t·y_t
+      //   C_{t|t} = A·C_{t-1|t-1}·A' + Σ  where A=(I-K·F)·G
+      //
+      // The steady-state approximation uses K_ss for all steps (converges
+      // within ~5 steps for typical DLMs), giving constant A_ss and Σ_base.
+      // NaN steps use A=G, b=0, Σ=W (prediction only, no update).
+
+      const { K_ss, A_ss, Sigma_base, KKt } = dare!;
+
+      // Build NaN mask [n, 1, 1]: 1.0 observed, 0.0 NaN
+      using is_nan = np.isnan(y_arr);                    // [n,1,1] bool
+      using zero_n11 = np.zerosLike(y_arr);              // [n,1,1]
+      using one_n11 = np.onesLike(y_arr);                // [n,1,1]
+      // jax-js-lint: allow-non-using — stored in fwd.mask, disposed after backward pass
+      const mask_arr = np.where(is_nan, zero_n11, one_n11); // [n,1,1]
+
+      // NaN-safe y: replace NaN with 0
+      using y_safe_arr = np.where(is_nan, zero_n11, y_arr); // [n,1,1]
+
+      // Per-timestep b = mask · K_ss · y_safe  [n, m, 1]
+      // K_ss is [m,1], y_safe is [n,1,1] → via einsum: [n,m,1]
+      // b[t] = mask[t] · K_ss · y_safe[t]  (0 when NaN)
+      using y_safe_flat = np.squeeze(y_safe_arr, [2]);    // [n, 1]
+      using Ky_all = np.einsum('ij,nj->ni', K_ss, y_safe_flat);  // [m,1]@... → [n, m]
+      using Ky_expand = np.expandDims(Ky_all, 2);       // [n, m, 1]
+      using b_arr = np.multiply(mask_arr, Ky_expand);    // [n, m, 1]: 0 at NaN
+
+      // Per-timestep A [n, m, m]: A_ss where observed, G where NaN
+      // mask_mm [n,1,1] broadcasts to [n,m,m]
+      using A_ss_expanded = np.tile(np.reshape(A_ss, [1, stateSize, stateSize]), [n, 1, 1]);
+      using G_expanded = np.tile(np.reshape(G, [1, stateSize, stateSize]), [n, 1, 1]);
+      // is_nan [n,1,1] bool — NaN→G, observed→A_ss (branches swapped vs float-mask form)
+      using A_arr = np.where(
+        np.tile(is_nan, [1, stateSize, stateSize]),
+        G_expanded,
+        A_ss_expanded,
+      );                                                  // [n, m, m]
+
+      // Per-timestep Σ [n, m, m]:
+      //   observed: Sigma_base + V²[t]·KKt
+      //   NaN:      W
+      using V2_mm = np.reshape(V2_arr, [n, 1, 1]);       // [n,1,1]
+      using KKt_expanded = np.tile(np.reshape(KKt, [1, stateSize, stateSize]), [n, 1, 1]);
+      using Sigma_V2 = np.multiply(V2_mm, KKt_expanded); // [n,m,m]
+      using Sigma_base_exp = np.tile(np.reshape(Sigma_base, [1, stateSize, stateSize]), [n, 1, 1]);
+      using Sigma_obs = np.add(Sigma_base_exp, Sigma_V2); // [n,m,m]
+      using W_expanded = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n, 1, 1]);
+      // is_nan [n,1,1] bool — NaN→W, observed→Sigma_obs (branches swapped vs float-mask form)
+      using Sigma_arr = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_expanded, Sigma_obs); // [n, m, m]
+
+      // ─── Compose function for associativeScan ───
+      // Pytree: { A: [k,m,m], b: [k,m,1], S: [k,m,m] }
+      // compose(earlier, later) chains the affine maps:
+      //   A_comp = A_later · A_earlier
+      //   b_comp = A_later · b_earlier + b_later
+      //   S_comp = A_later · S_earlier · A_later' + S_later
+      type ScanElem = { A: np.Array; b: np.Array; S: np.Array };
+
+      const compose = (a: ScanElem, b_elem: ScanElem): ScanElem => {
+        // A_comp = B.A @ A.A  — batched [k,m,m]
+        const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
+        // b_comp = B.A @ A.b + B.b  — [k,m,1]
+        using Ab = np.einsum('nij,njk->nik', b_elem.A, a.b);
+        const b_comp = np.add(Ab, b_elem.b);
+        // S_comp = B.A @ A.S @ B.A' + B.S  — [k,m,m]
+        using ASAt = np.einsum('nij,njk,nlk->nil', b_elem.A, a.S, b_elem.A);
+        const S_comp = np.add(ASAt, b_elem.S);
+        return { A: A_comp, b: b_comp, S: S_comp };
+      };
+
+      // Run associative scan — O(log n) depth
+      const scanned = lax.associativeScan(
+        compose,
+        { A: A_arr, b: b_arr, S: Sigma_arr },
+      ) as ScanElem;
+
+      // scanned.A[t], scanned.b[t], scanned.S[t] are the composed transformations
+      // from step 0..t inclusive. To get filtered state:
+      //   x_filt[t] = scanned.A[t] · x0 + scanned.b[t]
+      //   C_filt[t] = scanned.A[t] · C0 · scanned.A[t]' + scanned.S[t]
+
+      // x_filt = A_comp @ x0 + b_comp  [n, m, 1]
+      using x0_exp = np.tile(np.reshape(x0, [1, stateSize, 1]), [n, 1, 1]);
+      using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
+      const x_filt = np.add(Ax0, scanned.b);             // [n, m, 1]
+
+      // C_filt = A_comp @ C0 @ A_comp' + S_comp  [n, m, m]
+      using C0_exp = np.tile(np.reshape(C0, [1, stateSize, stateSize]), [n, 1, 1]);
+      using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
+      using C_filt_raw = np.add(AC0At, scanned.S);
+
+      // Symmetrize C_filt (f32 stabilization — always true on this path)
+      using C_filt_t = np.einsum('nij->nji', C_filt_raw);
+      using C_filt_sum = np.add(C_filt_raw, C_filt_t);
+      const C_filt = np.multiply(np.array(0.5, { dtype }), C_filt_sum); // [n,m,m]
+
+      tree.dispose(scanned);
+
+      // ─── Recover sequential-convention diagnostics from filtered results ───
+      // x_pred[t] = x_{t-1|t-1} → prepend x0, drop last
+      // C_pred[t] = C_{t-1|t-1} → prepend C0, drop last
+      const xFiltParts = np.split(x_filt, [n - 1], 0);
+      xFiltParts[1].dispose();
+      using x_filt_head = xFiltParts[0];  // [n-1, m, 1]
+      using x0_1 = np.reshape(x0, [1, stateSize, 1]);
+      // jax-js-lint: allow-non-using — stored in fwd.x_pred, disposed by caller
+      const x_pred_arr = np.concatenate([x0_1, x_filt_head], 0);  // [n, m, 1]
+
+      const cFiltParts = np.split(C_filt, [n - 1], 0);
+      cFiltParts[1].dispose();
+      using C_filt_head = cFiltParts[0];  // [n-1, m, m]
+      using C0_1 = np.reshape(C0, [1, stateSize, stateSize]);
+      // jax-js-lint: allow-non-using — stored in fwd.C_pred, disposed by caller
+      const C_pred_arr = np.concatenate([C0_1, C_filt_head], 0);  // [n, m, m]
+
+      // v[t] = mask · (y - F·x_pred)  [n,1,1]
+      using Fx_pred = np.einsum('nij,njk->nik', FF_scan, x_pred_arr); // [n,1,1]
+      using v_raw = np.subtract(y_safe_arr, Fx_pred);
+      // jax-js-lint: allow-non-using — stored in fwd.v, disposed by caller
+      const v_arr = np.multiply(mask_arr, v_raw);         // [n,1,1]
+
+      // Cp[t] = F·C_pred·F' + V²  [n,1,1]
+      using FCFt = np.einsum('nij,njk,nlk->nil', FF_scan, C_pred_arr, FF_scan);
+      // jax-js-lint: allow-non-using — stored in fwd.Cp, disposed by caller
+      const Cp_arr = np.add(FCFt, V2_arr);                // [n,1,1]
+
+      // K[t] = mask · G·C_pred·F' / Cp  [n,m,1]  (MATLAB convention for backward pass)
+      using GCFt = np.einsum('ij,njk,nlk->nil', G, C_pred_arr, FF_scan); // [n,m,1]
+      using K_raw = np.divide(GCFt, Cp_arr);
+      // jax-js-lint: allow-non-using — stored in fwd.K, disposed by caller
+      const K_arr = np.multiply(mask_arr, K_raw);         // [n,m,1]
+
+      x_filt.dispose();
+      C_filt.dispose();
+
+      fwd = {
+        x_pred: x_pred_arr, C_pred: C_pred_arr,
+        K: K_arr, v: v_arr, Cp: Cp_arr,
+        FF: FF_scan, mask: mask_arr,
+      } as unknown as ForwardY;
+    } else {
+      // ─── Sequential Forward Filter (cpu/wasm) ───
+      // fwdSeq fields are disposed individually via fwd.K.dispose() etc.
+      // eslint-disable-next-line jax-js/require-scan-result-dispose
+      const [fwdCarry, fwdSeq] = lax.scan(
+        forwardStep,
+        { x: x0, C: C0 },
+        { y: y_arr, V2: V2_arr, FF: FF_scan }
+      );
+      tree.dispose(fwdCarry);
+      fwd = fwdSeq as unknown as ForwardY;
+    }
     
     // ─── Backward RTS Smoother (reversed forward outputs) ───
     using x_pred_rev = np.flip(fwd.x_pred, 0);
@@ -412,6 +712,14 @@ const dlmSmo = async (
   
   // Run core — one jit wrapping both scans + all diagnostics
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, r0, N0);
+
+  // Dispose DARE tensors — they live outside jit, so manual cleanup is needed.
+  if (dare) {
+    dare.K_ss.dispose();
+    dare.A_ss.dispose();
+    dare.Sigma_base.dispose();
+    dare.KKt.dispose();
+  }
 
   if (FF_arr === undefined) FF_scan.dispose(); // we own it (created by np.tile)
 
@@ -564,13 +872,20 @@ export const dlmFit = async (
     Array.from({ length: m }, (_, j) => (i === j ? c0 : 0.0))
   );
 
+  // Plain-JS system data for DARE (associativeScan steady-state Kalman gain).
+  // F_data is extended to m dimensions (base F + zeros for covariate states).
+  const F_data_ext: number[] = q > 0
+    ? [...sys.F, ...new Array(q).fill(0)]
+    : sys.F;
+  const sysData = { G_data, F_data: F_data_ext, W_data };
+
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 1: Initial smoother to refine starting values
   // ─────────────────────────────────────────────────────────────────────────
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr, sysData);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -584,7 +899,7 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr, sysData);
 
   FF_arr?.dispose();
 

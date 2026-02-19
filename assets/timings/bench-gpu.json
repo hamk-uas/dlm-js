@@ -1,0 +1,10 @@
+{
+  "nile_o0__webgpu_f32__first": 1044.414854,
+  "nile_o0__webgpu_f32__warm": 674.308814,
+  "nile_o1__webgpu_f32__first": 861.197913,
+  "nile_o1__webgpu_f32__warm": 782.5618039999999,
+  "kaisaniemi__webgpu_f32__first": 1373.3704579999994,
+  "kaisaniemi__webgpu_f32__warm": 843.3701500000006,
+  "trigar__webgpu_f32__first": 1351.8548679999994,
+  "trigar__webgpu_f32__warm": 923.0763280000001
+}

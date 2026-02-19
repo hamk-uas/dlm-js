@@ -58,7 +58,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Compilation** | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) |
 | **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
 | **Adam defaults** | N/A | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) |
-| **WASM performance** | N/A | ~<!-- timing:ckpt:nile:false-s -->1.9 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing-always-use-checkpoint-false) |
+| **WASM performance** | N/A | ~<!-- timing:ckpt:nile:false-s -->1.8 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing-always-use-checkpoint-false) |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
@@ -82,8 +82,8 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 |-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
 | Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | <!-- timing:nile-mle:elapsed -->2585 ms<!-- /timing --> | 1104.6 | <!-- timing:mle-bench:nile-order1:lik -->1105.0<!-- /timing --> |
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | <!-- timing:mle-bench:nile-order0:elapsed -->1612 ms<!-- /timing --> | 1095.8 | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:elapsed -->3391 ms<!-- /timing --> | — | <!-- timing:mle-bench:kaisaniemi:lik -->341.4<!-- /timing --> |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | <!-- timing:mle-bench:nile-order0:elapsed -->1542 ms<!-- /timing --> | 1095.8 | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:elapsed -->3296 ms<!-- /timing --> | — | <!-- timing:mle-bench:kaisaniemi:lik -->341.4<!-- /timing --> |
 | Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | <!-- timing:energy-mle:elapsed-ms -->6329 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> |
 
 Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
@@ -93,7 +93,7 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 - **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.4<!-- /computed -->), consistent with matching likelihood formulations under different optimization details.
 <!-- ai-note: CLAIM: "b2=0.9 converges on Kaisaniemi" — lik is tracked by mle-bench:kaisaniemi:lik. Previously b2=0.9 gave 330.8 vs b2=0.999 gave 341.6; as of 2025-01 both are ~341. The "better optimum" claim has been removed. If :lik ever drops well below 341, that finding may return. -->
-- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->135<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->3.4 s<!-- /timing -->, b2=0.9), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.4<!-- /timing -->. This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead.
+- **Kaisaniemi (m=4, 5 params):** The reported Octave `fminsearch` run (with `maxfuneval=800`) failed with NaN/Inf, while dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->135<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->3.3 s<!-- /timing -->, b2=0.9), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.4<!-- /timing -->. This is evidence in favor of gradient-based optimization on this case, but not a universal failure claim for Nelder-Mead.
 - **Joint $s+w$ fitting:** dlm-js `dlmMLE` always fits both $s$ and $w$ together, while the MATLAB DLM toolbox (run under Octave) can fit $w$ only (`fitv=0`), which is faster when $s$ is known.
 
 ### Gradient checkpointing: always use `checkpoint: false`
@@ -112,12 +112,12 @@ For typical DLM dataset sizes (n ≲ a few hundred), the carry at each time step
 
 | Dataset | n | m | `checkpoint: false` | `checkpoint: true` (√N) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1880 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1914 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+2%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2386 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2372 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1826 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1835 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+0%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2238 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2220 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> |
 
 All explicit segment sizes (5, 11, 20, 40) performed similarly to `true`, confirming any overhead is purely from extra recomputation (not memory pressure).
 
-**Conclusion:** For the current jax-js WASM backend and these dataset sizes (n ≤ 120), `checkpoint: false` and `checkpoint: true` have essentially identical performance (see <!-- timing:ckpt:nile:speedup -->+2%<!-- /timing --> / <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> above). `dlmMLE` uses `checkpoint: false` as the default because it cannot be slower in theory (avoids all recomputation overhead) and poses no memory problem at these scales. For very long series (n ≫ 1000) where per-carry memory becomes a concern, an explicit segment size can be re-introduced at that time.
+**Conclusion:** For the current jax-js WASM backend and these dataset sizes (n ≤ 120), `checkpoint: false` and `checkpoint: true` have essentially identical performance (see <!-- timing:ckpt:nile:speedup -->+0%<!-- /timing --> / <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> above). `dlmMLE` uses `checkpoint: false` as the default because it cannot be slower in theory (avoids all recomputation overhead) and poses no memory problem at these scales. For very long series (n ≫ 1000) where per-carry memory becomes a concern, an explicit segment size can be re-introduced at that time.
 
 
 ## MCMC (MATLAB DLM toolbox feature, not tested)
@@ -168,24 +168,65 @@ The MATLAB DLM toolbox has a second estimation mode (`options.mcmc=1`) that uses
 3. **Custom fit functions** (`options.fitfun`) — user-supplied cost functions.
 4. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
 
-## Future: GPU + parallel Kalman filter via associative scan
+## GPU + parallel Kalman filter via associative scan
 
 Särkkä & García-Fernández [1] show that Bayesian filtering and smoothing recursions can be posed as **all-prefix-sums (parallel scan) operations**. For the linear-Gaussian case (i.e. Kalman filter + RTS smoother), each time step is an affine map and their composition is **associative**:
 
 $$(A_2, b_2, \Sigma_2) \oplus (A_1, b_1, \Sigma_1) = (A_2 A_1,\; A_2 b_1 + b_2,\; A_2 \Sigma_1 A_2^\top + \Sigma_2)$$
 
-This means the sequential `lax.scan` (O(n) depth) could be replaced by `lax.associativeScan` (O(log n) depth). The paper formulates parallel versions of both the forward filter and the RTS backward smoother, giving algebraically equivalent recursions in exact arithmetic while reducing parallel depth from linear to logarithmic [1, §3–4]. In floating-point arithmetic, operation reordering can still produce small numerical differences. Combined with a WebGPU backend, this would give two orthogonal dimensions of parallelism: across time steps (associative scan) and within each step's matrix operations (GPU ALUs).
+This means the sequential `lax.scan` (O(n) depth) can be replaced by `lax.associativeScan` (O(log n) depth). The paper formulates parallel versions of both the forward filter and the RTS backward smoother, giving algebraically equivalent recursions in exact arithmetic while reducing parallel depth from linear to logarithmic [1, §3–4]. In floating-point arithmetic, operation reordering can still produce small numerical differences. Combined with a WebGPU backend, this gives two orthogonal dimensions of parallelism: across time steps (associative scan) and within each step's matrix operations (GPU ALUs).
 
 **Production use in Pyro/NumPyro:** This is not just theoretical — Pyro's `GaussianHMM` distribution already uses parallel-scan Kalman filtering for inference, "allowing fast analysis of very long time series" [2]. Their `LinearHMM` (heavy-tailed variant) uses parallel auxiliary variable methods that reduce to `GaussianHMM`, then applies parallel-scan inference. The Pyro forecasting tutorial demonstrates this on BART ridership data (n = 78,888 hourly observations) where sequential filtering would be impractical [2]. NumPyro's HMM enumeration example uses the same approach via `scan()` with parallel semantics, explicitly citing Särkkä & García-Fernández for "reduc[ing] parallel complexity from O(length) to O(log(length))" [3].
 
-**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan formulations, sequential depth can drop from O(n) to O(log n), which can accelerate each optimizer iteration on sufficiently long sequences and parallel hardware. For the energy demo (n=120, <!-- timing:energy-mle:iterations -->295<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.3 s<!-- /timing -->), the theoretical serial depth reduction is from about 120 to about 7 per iteration.
+**Impact on MLE**: Each `valueAndGrad(loss)` call currently runs a sequential Kalman filter under AD. With associative scan formulations, the theoretical sequential depth drops from O(n) to O(log n). However, as the crossover benchmark shows, this depth reduction is not realised in practice with jax-js because each compose operation dispatches as separate sequential GPU kernels. Until kernel fusion is available, MLE on WebGPU is strictly slower than WASM regardless of series length. For the energy demo (n=120, <!-- timing:energy-mle:iterations -->295<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.3 s<!-- /timing -->), the non-fused WebGPU path would be several hundred times slower per iteration.
 
-**Practical caveats for dlm-js today:**
-- **Short series ($n \approx 100\text{–}120$):** The depth reduction is real, but parallel scans add constant-factor overhead and GPU kernel dispatch for tiny $m=2\text{–}5$ matrices may dominate. Pyro's payoff comes from much longer series ($n \approx 79\text{k}$) [2].
-- **WebGPU is float32-only:** The extra matrix multiplies in the tree reduction would amplify the existing float32 covariance instability (see numerical precision notes in `src/index.ts`).
-- **`lax.associativeScan` is not yet available** in jax-js-nonconsuming.
+### Implementation status
 
-The crossover point where GPU + associative scan clearly wins is likely around **$n > 500$, $m > 5$**, where GPU occupancy and parallel depth savings start to dominate dispatch overhead. This is the same algorithmic trick that makes S4/S5/Mamba efficient on GPU for long-sequence modeling.
+**The WebGPU associativeScan path is fully implemented and working.** `dlmFit` on the `webgpu` backend with `Float32` automatically uses this path (gated by `dtype === Float32 && device === 'webgpu'`):
+
+- Solves the Discrete Algebraic Riccati Equation (DARE, MATLAB convention) for steady-state Kalman gain K_ss
+- Reformulates the forward filter as an associative prefix scan per [1], with per-timestep affine elements composed via `lax.associativeScan`
+- Uses Joseph form covariance update + symmetrization + diagonal clamping for Float32 stability
+- Missing-data (NaN) support: observed timesteps use A_ss = G−K_ss·F; NaN timesteps use A = G (pure prediction, no Kalman gain update)
+
+Requires the `fix/jit-scan-einsum-maxargs` branch of jax-js-nonconsuming (commit f09121d or later) which fixes JIT shape inference for einsum inside `lax.scan` / `lax.associativeScan` on WebGPU. See [upstream issue](../issues/jax-js-webgpu-jit-einsum.md) for full context.
+
+### WebGPU vs WASM benchmark
+
+`dlmFit` warm-run timings (jitted core, second of two runs):
+
+| Model | $n$ | $m$ | wasm / f64 (scan) | webgpu / f32 (assocScan) |
+|-------|-----|-----|-------------------|--------------------------|
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->674 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->783 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->843 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->923 ms<!-- /timing --> |
+
+**Why WebGPU is slower — and why there is no crossover with the current implementation:**
+
+A crossover benchmark (Nile order=1, m=2) measured scaling at exponentially increasing N (WASM: 2 warmup + 4 timed runs median; WebGPU: same). At short series, WASM is dominated by fixed overhead (~20 ms — JIT result marshaling and JS↔WASM round-trips), so the per-step compute contribution is invisible:
+
+| N | wasm/f64 | µs/step | webgpu/f32 | ratio |
+|---|--------------|--------------|-----------------|-------|
+| 100 | <!-- timing:scale:wasm-f64:n100 -->25 ms<!-- /timing --> | 245 | <!-- timing:scale:webgpu-f32:n100 -->868 ms<!-- /timing --> | 36× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->21 ms<!-- /timing --> | 105 | <!-- timing:scale:webgpu-f32:n200 -->1213 ms<!-- /timing --> | 55× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | 52 | <!-- timing:scale:webgpu-f32:n400 -->2220 ms<!-- /timing --> | 105× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->22 ms<!-- /timing --> | 27 | <!-- timing:scale:webgpu-f32:n800 -->4209 ms<!-- /timing --> | 188× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->21 ms<!-- /timing --> | 13 | <!-- timing:scale:webgpu-f32:n1600 -->7767 ms<!-- /timing --> | 343× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->24 ms<!-- /timing --> | 7.5 | — | — |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->32 ms<!-- /timing --> | 5.0 | — | — |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->33 ms<!-- /timing --> | 2.6 | — | — |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->51 ms<!-- /timing --> | 2.0 | — | — |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->77 ms<!-- /timing --> | 1.5 | — | — |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->143 ms<!-- /timing --> | 1.4 | — | — |
+
+Three findings:
+
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly. The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->143 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
+
+2. **WebGPU scales as O(n)** — the ratio doubles with every doubling of N. The associativeScan O(log n) *depth* is never realised because jax-js dispatches each operation in the compose function (einsum $A_{comp}$, einsum $b_{comp}$, einsum $\Sigma_{comp}$, and the additions) as a separate sequential GPU kernel. The n−1 total compose calls therefore run serially, giving O(n × ops_per_compose) total GPU dispatches — more, not fewer, than the sequential O(n) filter. This is a kernel-fusion deficit: the associativeScan benefit can only be realised if all n/2 independent compose calls at each scan round are dispatched as a single batched kernel (one kernel per round × log n rounds). jax-js does not do this.
+
+3. **No crossover exists**: extrapolating the WebGPU O(n) trend, its per-step dispatch cost is roughly 4–5 µs/step — about 3000× higher than WASM's asymptotic ~1.4 µs/step compute cost. WASM is faster at every N, and the gap grows with N.
 
 **References:**
 1. Särkkä, S. & García-Fernández, Á. F. (2020). [Temporal Parallelization of Bayesian Smoothers](https://arxiv.org/abs/1905.13002). *IEEE Transactions on Automatic Control*, 66(1), 299–306. — Poses Kalman filtering and RTS smoothing as associative all-prefix-sums operations; derives the parallel scan formulation for linear-Gaussian and general Bayesian models, reducing sequential depth from O(n) to O(log n).

@@ -175,11 +175,11 @@ push(`<path d="${bandPathD(t, octStateUpper, octStateLower, sx, sy)}" fill="${oc
 // Inner state uncertainty band (more opaque)
 push(`<path d="${bandPathD(t, jsStateUpper, jsStateLower, sx, sy)}" fill="${jsStateBandColor}" stroke="none"/>`);
 
-// Octave smoothed level (dashed red)
-push(`<polyline points="${polylinePoints(t, octLevel, sx, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
-
 // dlm-js smoothed level (solid blue)
 push(`<polyline points="${polylinePoints(t, jsLevel, sx, sy)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+
+// Octave smoothed level (dashed red — drawn on top)
+push(`<polyline points="${polylinePoints(t, octLevel, sx, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
 
 push(`</g>`);
 

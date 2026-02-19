@@ -37,9 +37,26 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Missing-data demo: Nile flow with 23 NaN observations — smoothed level F·x_smooth ± 2σ from dlm-js and MATLAB/Octave, outer band shows observation prediction interval, gray shading over missing regions" src="assets/missing-demo.svg" />
 
-*Missing-data demo: Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->96.73 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->45.76 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Missing-data demo: Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->96.97 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->46.39 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent. Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed -->.
+
+### Backend performance
+
+`dlmFit` warm-run timings across backends (jitted core, two sequential runs, second shown). Joseph form stabilization is active on all Float32 paths. WebGPU uses the associativeScan forward filter with DARE steady-state Kalman gain.
+
+| Model | $n$ | $m$ | cpu / f32 | wasm / f32 | wasm / f64 | webgpu / f32 |
+|-------|-----|-----|-----------|------------|------------|--------------|
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:cpu-f32 -->190 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f32 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->674 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:cpu-f32 -->365 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f32 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->783 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:cpu-f32 -->445 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f32 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->843 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:cpu-f32 -->435 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f32 -->22 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->923 ms<!-- /timing --> |
+
+**Key findings:**
+- **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
+- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — at short series the ~20 ms runtime is dominated by fixed JIT/marshaling overhead, not compute. The asymptotic per-step cost is ~1.4 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->143 ms<!-- /timing --> at N=102400. WebGPU/f32 scales as **O(n)** from the start (no fixed-cost region): the ratio versus WASM doubles with every doubling of N (36× at N=100, 343× at N=1600). The associativeScan O(log n) *depth* is never realised because jax-js dispatches each operation in the compose function as a separate sequential GPU kernel. WebGPU's per-step dispatch cost (~4–5 µs) is ~3000× higher than WASM's ~1.4 µs/step compute cost, so no crossover exists.
+- **Joseph form overhead is negligible** — wasm/f32 (Joseph form active) vs wasm/f64 (no Joseph form) differ by <25%, well within JIT variance.
+- **WebGPU results are ~1–2% less accurate** than sequential WASM/f64 because the DARE steady-state Kalman gain approximation uses a fixed gain throughout, while the sequential filter uses time-varying gains in early timesteps.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). The missing-data demo uses the same Nile dataset with 23 observations removed. See the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md) for details.
 
@@ -250,7 +267,7 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
 | MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff (`valueAndGrad` + `lax.scan`). optax Adam optimizer, fully `jit()`-compiled. |
 | h-step-ahead forecasting | ✅ | ❌ | `dlmForecast`: propagate the last smoothed state h steps forward with no new observations. Returns `yhat` [h], `ystd` [h] (growing uncertainty), and full state+covariance trajectories. Supports all model types and covariates. |
-| float32 computation | ✅ | ❌ | Configurable dtype. Float32 is numerically stable for m ≤ 2; higher dimensions may diverge. GPU/WASM backends available. |
+| float32 computation | ✅ | ❌ | Configurable dtype. Float32 uses Joseph form covariance update + symmetrization + diagonal clamping for numerical stability; numerically stable for m ≤ 2, higher dimensions may still diverge. Three-branch architecture: cpu/f32 (sequential+Joseph), wasm/f64 (sequential, unchanged), webgpu/f32 (associativeScan+DARE+Joseph). |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
 | Synthetic ground-truth tests | ✅ | — | Tests against known true states from a seeded generating process — independent of any reference implementation. |
@@ -274,6 +291,26 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
 Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
 
 However, the dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
+
+### Float32 stabilization (Joseph form)
+
+Float32 paths use the Joseph form covariance update instead of the standard `C_filt = C_pred - K·F·C_pred`:
+
+$$C_{\text{filt}} = (I - K F) \, C_{\text{pred}} \, (I - K F)^\top + K \, V^2 \, K^\top$$
+
+This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`) and diagonal clamping (`max(C_ii, ε)`), this prevents the covariance from going non-positive-definite for m ≤ 2. For m > 2, Float32 is still skipped in tests due to accumulated rounding.
+
+### Three-branch architecture
+
+`dlmSmo` selects an execution path based on device and dtype:
+
+| Branch | Condition | Forward filter | Stabilization |
+|--------|-----------|---------------|---------------|
+| Float64 (default) | `dtype = Float64` | Sequential `lax.scan` | None needed |
+| CPU/WASM + Float32 | `dtype = Float32`, device ≠ `webgpu` | Sequential `lax.scan` | Joseph form + symmetrize + clamp |
+| WebGPU + Float32 | `dtype = Float32`, device = `webgpu` | `lax.associativeScan` (O(log n) depth) | Joseph form + symmetrize + clamp + DARE for steady-state K |
+
+The WebGPU branch additionally solves the Discrete Algebraic Riccati Equation (DARE, MATLAB convention) to find a steady-state Kalman gain, then reformulates the filter as an associative prefix scan per Särkkä & García-Fernández (2020). This trades ~1–2% accuracy (steady-state gain approximation in early timesteps) for O(log n) theoretical parallel *depth*. In practice, jax-js-nonconsuming dispatches each operation in the compose function as a separate sequential GPU kernel, so the effective dispatch count is O(n × ops_per_compose) — scaling linearly with N, not O(log n). WASM/f64 therefore remains faster at every tested N (22 ms flat vs 868–7767 ms for N=100–1600; ratio doubles with each doubling of N). A crossover would require kernel fusion across the n independent compose calls at each scan level. Requires the `fix/jit-scan-einsum-maxargs` branch of jax-js-nonconsuming.
 
 ## TODO
 
@@ -314,6 +351,7 @@ However, the dominant error source is **not** summation accuracy — it is catas
 │   ├── gen-missing-svg.ts           # Missing-data demo SVG generator (NaN interpolation)
 │   ├── collect-mle-benchmark.ts     # MLE benchmark: all comparison-table rows (pnpm run bench:mle)
 │   ├── bench-checkpoint.ts          # Checkpoint strategy benchmark (pnpm run bench:checkpoint)
+│   ├── bench-backends.ts            # Cross-backend dlmFit benchmark: cpu/wasm × f32/f64 (pnpm run bench:backends)
 │   ├── update-timings.ts            # Patch <!-- timing:KEY --> and <!-- computed:EXPR --> markers in .md files
 │   └── lib/                         # Shared script helpers
 │       ├── timing-registry.ts       # Single source of truth for all timing slots

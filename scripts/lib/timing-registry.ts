@@ -229,6 +229,53 @@ export const timingRegistry: Record<string, TimingSlot> = {
     description: "dlmMLE final −2log L — Kaisaniemi trig model",
   },
 
+  // ── Cross-backend dlmFit benchmark (bench-backends.ts) ───────────────────
+
+  "bb:nile-o0:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__cpu_f32__warm",       format: "ms0", description: "dlmFit warm — Nile order=0, cpu/f32" },
+  "bb:nile-o0:wasm-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__wasm_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=0, wasm/f32" },
+  "bb:nile-o0:wasm-f64":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__wasm_f64__warm",      format: "ms0", description: "dlmFit warm — Nile order=0, wasm/f64" },
+
+  "bb:nile-o1:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__cpu_f32__warm",       format: "ms0", description: "dlmFit warm — Nile order=1, cpu/f32" },
+  "bb:nile-o1:wasm-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__wasm_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=1, wasm/f32" },
+  "bb:nile-o1:wasm-f64":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__wasm_f64__warm",      format: "ms0", description: "dlmFit warm — Nile order=1, wasm/f64" },
+
+  "bb:kaisaniemi:cpu-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__cpu_f32__warm",   format: "ms0", description: "dlmFit warm — Kaisaniemi trig, cpu/f32" },
+  "bb:kaisaniemi:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__wasm_f32__warm",  format: "ms0", description: "dlmFit warm — Kaisaniemi trig, wasm/f32" },
+  "bb:kaisaniemi:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__wasm_f64__warm",  format: "ms0", description: "dlmFit warm — Kaisaniemi trig, wasm/f64" },
+
+  "bb:trigar:cpu-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__cpu_f32__warm",   format: "ms0", description: "dlmFit warm — Energy trig+AR, cpu/f32" },
+  "bb:trigar:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f32__warm",  format: "ms0", description: "dlmFit warm — Energy trig+AR, wasm/f32" },
+  "bb:trigar:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f64__warm",  format: "ms0", description: "dlmFit warm — Energy trig+AR, wasm/f64" },
+
+  // ── WebGPU dlmFit benchmark (bench-gpu.ts, Deno) ─────────────────────────
+
+  "bb:nile-o0:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o0__webgpu_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=0, webgpu/f32" },
+  "bb:nile-o1:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o1__webgpu_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=1, webgpu/f32" },
+  "bb:kaisaniemi:webgpu-f32": { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "kaisaniemi__webgpu_f32__warm",   format: "ms0", description: "dlmFit warm — Kaisaniemi trig, webgpu/f32" },
+  "bb:trigar:webgpu-f32":     { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "trigar__webgpu_f32__warm",       format: "ms0", description: "dlmFit warm — Energy trig+AR, webgpu/f32" },
+
+  // ── Backend scaling benchmark (bench-scaling.ts, Deno) ──────────────────
+  // WASM/f64 at N=100..102400; WebGPU/f32 at N=100..1600 only.
+  // Data: Nile order=1 (m=2) tiled to each N. Warmup=2, Runs=4, median.
+
+  "scale:wasm-f64:n100":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n100",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=100" },
+  "scale:wasm-f64:n200":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n200",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=200" },
+  "scale:wasm-f64:n400":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n400",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=400" },
+  "scale:wasm-f64:n800":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n800",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=800" },
+  "scale:wasm-f64:n1600":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n1600",   format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=1600" },
+  "scale:wasm-f64:n3200":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n3200",   format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=3200" },
+  "scale:wasm-f64:n6400":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n6400",   format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=6400" },
+  "scale:wasm-f64:n12800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n12800",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=12800" },
+  "scale:wasm-f64:n25600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n25600",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=25600" },
+  "scale:wasm-f64:n51200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n51200",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=51200" },
+  "scale:wasm-f64:n102400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n102400", format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=102400" },
+
+  "scale:webgpu-f32:n100":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n100",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=100" },
+  "scale:webgpu-f32:n200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n200",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=200" },
+  "scale:webgpu-f32:n400":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n400",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=400" },
+  "scale:webgpu-f32:n800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n800",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=800" },
+  "scale:webgpu-f32:n1600": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n1600", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=1600" },
+
   // ── Checkpoint benchmark (bench-checkpoint.ts) ──────────────────────────
 
   "ckpt:nile:false-ms": {
