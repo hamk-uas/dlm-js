@@ -1,4 +1,4 @@
-# jax-js: `jit(valueAndGrad)` over `lax.associativeScan` fails on WebGPU — buffer limit (v0.7.1) / concatenate VJP (v0.7.2, fixed in v0.7.3) / tracer disposal (v0.7.3)
+# jax-js: `jit(valueAndGrad)` over `lax.associativeScan` fails on WebGPU — buffer limit (v0.7.1–3, fixed in v0.7.4) / tracer disposal after result (v0.7.3–4)
 
 ## Summary
 
@@ -11,10 +11,11 @@ compose body.  The error changed between versions:
 | v0.7.1  | `Too many buffers (12) for WebGPU pipeline (max: 8)` | `Referenced tracer Array:float32[m,m] has been disposed` |
 | v0.7.2  | `Nonlinear operation in backward pass for concatenate` | `Nonlinear operation in backward pass for concatenate` |
 | v0.7.3  | `Too many buffers (9) for WebGPU pipeline (max: 8)` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
+| v0.7.4  | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
 
 `dlmFit` (forward smoother, no AD) works correctly on WebGPU in all versions.
 The WASM/CPU path for `valueAndGrad` over `lax.associativeScan` works fine in
-all versions (112/112 dlm-js tests pass on WASM with v0.7.3).
+all versions (112/112 dlm-js tests pass on WASM with v0.7.4).
 
 This blocks `dlmMLE` from running on the WebGPU backend.
 
@@ -92,34 +93,32 @@ this error — the associativeScan VJP works correctly on WASM in v0.7.2.
 ## v0.7.3 status
 
 v0.7.3 fixes the `concatenate` VJP regression from v0.7.2.  Two residual issues
-remain:
+remained:
 
-### Residual 1: `jit(valueAndGrad(lossFn))` — buffer limit (9 > 8)
+- `jit(valueAndGrad)`: buffer count reduced 12 → 9, still 1 over limit.
+- `valueAndGrad` (no jit): computes correctly, then tracer disposal after result.
 
-Buffer count reduced from 12 (v0.7.1) to 9, but still 1 over the WebGPU
-bind-group limit of 8:
+## v0.7.4 status
 
-```
-Too many buffers (9) for WebGPU pipeline (max: 8)
-```
-
-### Residual 2: `valueAndGrad(lossFn)` without `jit` — tracer disposal after result
-
-Bare `valueAndGrad` now successfully computes the loss and gradient (progress
-since v0.7.2!), but then throws a tracer disposal error *after* returning the
-result:
+v0.7.4 fixes the buffer limit.  **Both** `jit(valueAndGrad(lossFn))` and bare
+`valueAndGrad(lossFn)` now compute the correct result:
 
 ```
-lik=284451.6875  grad=4813868.5000   ← computed correctly
+lik=284451.6875  grad=4813868.5000   ← correct
+```
+
+One residual issue remains: a tracer disposal error thrown *after* the result
+is returned, in both cases:
+
+```
 Referenced tracer Array:float32[1] has been disposed
 ```
 
-The gradient value is available before the error, so the computation itself
-works.  The error occurs during the cleanup/finalisation step of the backward
-pass, suggesting a reference to an intermediate activation tensor is retained
-beyond its scope and then accessed after disposal.  This may be fixable by
-adjusting the order of operations or lifetime management in the backward pass
-cleanup for WebGPU.
+The computation completes successfully before the error — the loss and gradient
+values are available.  The error occurs during backward-pass cleanup, suggesting
+an intermediate activation tensor reference is retained beyond its scope and
+then accessed after disposal.  The fix likely involves adjusting the lifetime
+or access order of saved activations in the WebGPU backward-pass finalisation.
 
 ## Reproduction
 
@@ -142,42 +141,35 @@ deno run --no-check --unstable-webgpu --allow-read --allow-env \
   tmp/test-mle-webgpu.ts
 ```
 
-Tested on: jax-js-nonconsuming v0.7.1 (buffer limit, 12), v0.7.2 (concatenate
-VJP error), and v0.7.3 (buffer limit reduced to 9; bare `valueAndGrad` now
-computes correctly but hits tracer disposal after the result is returned).
-`dlmFit` (no AD) works correctly on WebGPU with all three versions.
+Tested on: v0.7.1 (buffer limit, 12), v0.7.2 (concatenate VJP error),
+v0.7.3 (buffer limit 9; bare `valueAndGrad` computes correctly then disposal
+error), v0.7.4 (buffer limit fixed; both paths compute correctly then disposal
+error).  `dlmFit` (no AD) works correctly on WebGPU with all versions.
 
 ## Expected behaviour
 
 `jit(valueAndGrad(fn))` (and bare `valueAndGrad(fn)`) where `fn` uses
-`lax.associativeScan` with a multi-output compose body should succeed on WebGPU.
-Possible approaches:
+`lax.associativeScan` with a multi-output compose body should complete without
+error on WebGPU.  As of v0.7.4, computation is correct — only the post-result
+cleaning needs fixing:
 
-**For the v0.7.2 `concatenate` VJP issue:**
-1. Implement/fix the `concatenate` VJP on the WebGPU backend so it is
-   recognised as differentiable.
-2. Replace the internal `concatenate` in the `lax.associativeScan` backward
-   implementation with a stack/split approach whose VJP is implemented.
-
-**For the v0.7.1 buffer limit (may still apply after fixing concatenate):**
-1. **Kernel splitting**: when the fused backward shader would exceed 8 buffers,
-   split it into multiple sequential dispatches each under the limit.
-2. **Bind group tiling / multiple bind groups**: distribute buffers across
-   multiple bind group slots (WebGPU allows up to 4 bind group slots).
-3. **Checkpoint + recompute strategy**: rematerialise intermediate results from
-   checkpointed inputs instead of saving all activations.
+**Remaining: tracer disposal after result (v0.7.4)**
+- Fix the backward-pass cleanup order so that saved activation tensors are not
+  accessed after their scope has disposed them.
+- Alternatively, extend the lifetime of the relevant intermediate(s) until the
+  full backward finalisation is complete.
 
 ## Impact
 
-- `dlmMLE` on WebGPU is completely blocked.  `dlmFit` (smoother, forward-only,
-  no AD) works fine on WebGPU today.
-- The issue likely affects any use of `jit(valueAndGrad)` over a loss built
-  from `lax.associativeScan` with tuple-valued compose bodies of state dimension
-  m ≥ 2, i.e. any non-trivial differentiable parallel scan.
-- Workaround in dlm-js: WebGPU + Float32 falls back to `makeKalmanLossAssoc`
-  without `jit`, but this hits Failure 2 (tracer disposal).  Currently dlm-js
-  uses `makeKalmanLoss` (sequential scan, CPU/WASM only) for MLE and generates
-  a static placeholder SVG for the WebGPU MLE animation.
+- `dlmMLE` on WebGPU is almost unblocked as of v0.7.4 — the residual tracer
+  disposal error is thrown after the correct result is returned, so it only
+  prevents clean integration (exception propagation breaks the optimizer loop).
+- The issue affects any use of `jit(valueAndGrad)` or `valueAndGrad` over a
+  loss from `lax.associativeScan` with tuple-valued compose bodies.
+- Workaround in dlm-js: currently uses `makeKalmanLoss` (sequential scan,
+  CPU/WASM only) for MLE and generates a static placeholder SVG for the
+  WebGPU MLE animation.  Will enable the full WebGPU MLE path once the
+  disposal error is resolved.
 
 ## Related issues
 

@@ -34,9 +34,10 @@
  *   Test 1 [jit(valueAndGrad)]:    PASS  lik=<value>  grad=<value>
  *   Test 2 [valueAndGrad, no jit]: PASS  lik=<value>  grad=<value>
  *
- * ─── ACTUAL OUTPUT (jax-js-nonconsuming v0.7.3) ──────────────────────────────
+ * ─── ACTUAL OUTPUT (jax-js-nonconsuming v0.7.4) ──────────────────────────────
  *
- *   Test 1 [jit(valueAndGrad)]:    FAIL  Too many buffers (9) for WebGPU pipeline (max: 8)
+ *   Test 1 [jit(valueAndGrad)]:    PASS  lik=284451.6875  grad=4813868.5000
+ *                                  FAIL  Referenced tracer Array:float32[1] has been disposed
  *   Test 2 [valueAndGrad, no jit]: PASS  lik=284451.6875  grad=4813868.5000
  *                                  FAIL  Referenced tracer Array:float32[1] has been disposed
  */
