@@ -8,5 +8,6 @@
   "octave-nile-w-only-elapsed-ms": 1623,
   "octave-nile-w-only-lik": 1104.7,
   "octave-kaisaniemi-lik": null,
-  "machine": "Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM"
+  "machine": "Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM",
+  "gpu": "GeForce RTX 4070 Ti SUPER (WebGPU adapter)"
 }
