@@ -31,9 +31,9 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Nile MLE demo (`associativeScan`, parallel): same model estimated via `makeKalmanLossAssoc` — DARE steady-state Kalman gain traced inside the AD tape + O(log n) `lax.associativeScan` prefix scan. Converged in <!-- timing:nile-mle-assoc:iterations -->114<!-- /timing --> iterations / <!-- timing:nile-mle-assoc:elapsed -->1067 ms<!-- /timing --> on the `wasm` backend. The DARE approximation introduces slight bias (−2·logL ≈ <!-- timing:nile-mle-assoc:lik -->1121.5<!-- /timing --> vs <!-- timing:nile-mle:lik -->1104.9<!-- /timing --> sequential). Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Nile MLE optimization via WebGPU: placeholder — blocked by upstream jax-js buffer limit" src="assets/nile-mle-anim-webgpu.svg" />
+<img alt="Nile MLE optimization via WebGPU: associativeScan with DARE steady-state Kalman gain and parallel prefix scan on GPU" src="assets/nile-mle-anim-webgpu.svg" />
 
-*Nile MLE demo (WebGPU, placeholder): blocked by upstream jax-js limitation — `jit(valueAndGrad)` backward pass exceeds the 8-buffer-per-bind-group WebGPU limit. Will be enabled when jax-js adds kernel-splitting for large bind groups.*
+*Nile MLE demo (WebGPU, `associativeScan`): same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:nile-mle-webgpu:iterations -->111<!-- /timing --> iterations / <!-- timing:nile-mle-webgpu:elapsed -->31454 ms<!-- /timing --> (−2·logL ≈ <!-- timing:nile-mle-webgpu:lik -->1121.5<!-- /timing -->). Slower than WASM at n=100 due to GPU dispatch overhead at small sequence lengths; WebGPU pays off at large N where O(log n) depth beats WASM's O(n) sequential filter. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy MLE optimization via lax.scan with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim-scan.svg" />
 
@@ -43,9 +43,9 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 *Energy MLE demo (`associativeScan`, parallel) with AR coefficient estimation: same model via `makeKalmanLossAssoc`. Converged in <!-- timing:energy-mle-assoc:iterations -->264<!-- /timing --> iterations / <!-- timing:energy-mle-assoc:elapsed -->3.0 s<!-- /timing --> on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy MLE optimization via WebGPU: placeholder — blocked by upstream jax-js buffer limit" src="assets/energy-mle-anim-webgpu.svg" />
+<img alt="Energy MLE optimization via WebGPU with AR coefficient estimation: associativeScan with DARE steady-state Kalman gain and parallel prefix scan on GPU" src="assets/energy-mle-anim-webgpu.svg" />
 
-*Energy MLE demo (WebGPU, placeholder): blocked by same upstream jax-js limitation as Nile — `jit(valueAndGrad)` backward pass buffer limit. Will be enabled when jax-js adds kernel-splitting.*
+*Energy MLE demo (WebGPU, `associativeScan`) with AR coefficient estimation: same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:energy-mle-webgpu:iterations -->263<!-- /timing --> iterations / <!-- timing:energy-mle-webgpu:elapsed -->90.3 s<!-- /timing --> (−2·logL ≈ <!-- timing:energy-mle-webgpu:lik -->481.2<!-- /timing -->). Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
 

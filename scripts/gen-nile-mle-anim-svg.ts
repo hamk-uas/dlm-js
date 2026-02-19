@@ -4,7 +4,7 @@
  * Accepts a variant argument:
  *   scan   → reads tmp/mle-frames-nile-scan.json,  writes assets/nile-mle-anim-scan.svg
  *   assoc  → reads tmp/mle-frames-nile-assoc.json, writes assets/nile-mle-anim-assoc.svg
- *   webgpu → generates static placeholder,         writes assets/nile-mle-anim-webgpu.svg
+ *   webgpu → reads tmp/mle-frames-nile-webgpu.json, writes assets/nile-mle-anim-webgpu.svg
  *
  * Usage:  npx tsx scripts/gen-nile-mle-anim-svg.ts scan
  *         npx tsx scripts/gen-nile-mle-anim-svg.ts assoc
@@ -20,32 +20,12 @@ import {
   computeKeyTimes, buildAnimPolylineValues, buildAnimBandValues,
   sparklinePoints, renderSparkline, renderSparklineLabels,
 } from "./lib/svg-anim-helpers.ts";
-import { generatePlaceholderSvg } from "./lib/svg-placeholder.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const variant = (process.argv[2] || "scan") as "scan" | "assoc" | "webgpu";
 
-// ── WebGPU placeholder ─────────────────────────────────────────────────────
-
-if (variant === "webgpu") {
-  const outPath = resolve(root, "assets", "nile-mle-anim-webgpu.svg");
-  writeSvg(
-    generatePlaceholderSvg({
-      title: "Nile — MLE on WebGPU (placeholder)",
-      message: "WebGPU MLE is blocked by an upstream jax-js limitation:",
-      details: [
-        "jit(valueAndGrad) backward pass exceeds the 8-buffer-per-bind-group WebGPU limit",
-        "(associativeScan compose function needs 12 storage buffers for the gradient).",
-        "Will be enabled when jax-js adds kernel-splitting for large bind groups.",
-      ],
-    }),
-    outPath,
-  );
-  console.log(`  Wrote placeholder: ${outPath}`);
-  process.exit(0);
-}
-
-const variantLabel: Record<string, string> = { scan: "lax.scan", assoc: "assocScan" };
+const variantLabel: Record<string, string> = { scan: "lax.scan", assoc: "assocScan", webgpu: "WebGPU" };
+const backendLabel = variant === "webgpu" ? "WebGPU" : "WASM";
 const inputPath = resolve(root, `tmp/mle-frames-nile-${variant}.json`);
 const data = JSON.parse(readFileSync(inputPath, "utf8"));
 
@@ -235,7 +215,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile — MLE via ${variantLabel[variant]} (${iterations} iters, ${elapsedMs} ms WASM)</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile — MLE via ${variantLabel[variant]} (${iterations} iters, ${elapsedMs} ms ${backendLabel})</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 

@@ -207,7 +207,58 @@ export const timingRegistry: Record<string, TimingSlot> = {
     description: "dlmMLE final −2log L — energy/AR model, assocScan variant",
   },
 
-  // ── MLE comparison-table benchmark (collect-mle-benchmark.ts) ──────────
+  // ── dlmMLE WebGPU variant benchmarks (collect-*-webgpu.ts, Float32) ──────
+
+  "nile-mle-webgpu:elapsed": {
+    script:      "scripts/collect-nile-mle-frames-webgpu.ts",
+    sidecar:     "collect-nile-mle-frames-webgpu",
+    field:       "elapsed",
+    format:      "ms0",
+    description: "dlmMLE total wall-clock — Nile model, WebGPU Float32 variant",
+  },
+  "nile-mle-webgpu:iterations": {
+    script:      "scripts/collect-nile-mle-frames-webgpu.ts",
+    sidecar:     "collect-nile-mle-frames-webgpu",
+    field:       "iterations",
+    format:      "int",
+    description: "dlmMLE iteration count — Nile model, WebGPU Float32 variant",
+  },
+  "nile-mle-webgpu:lik": {
+    script:      "scripts/collect-nile-mle-frames-webgpu.ts",
+    sidecar:     "collect-nile-mle-frames-webgpu",
+    field:       "lik",
+    format:      "lik1",
+    description: "dlmMLE final −2log L — Nile order=1, WebGPU Float32 variant",
+  },
+
+  "energy-mle-webgpu:elapsed": {
+    script:      "scripts/collect-energy-mle-frames-webgpu.ts",
+    sidecar:     "collect-energy-mle-frames-webgpu",
+    field:       "elapsed",
+    format:      "s1",
+    description: "dlmMLE total wall-clock — energy/AR model, WebGPU Float32 variant (seconds)",
+  },
+  "energy-mle-webgpu:elapsed-ms": {
+    script:      "scripts/collect-energy-mle-frames-webgpu.ts",
+    sidecar:     "collect-energy-mle-frames-webgpu",
+    field:       "elapsed",
+    format:      "ms0",
+    description: "dlmMLE total wall-clock — energy/AR model, WebGPU Float32 variant (ms)",
+  },
+  "energy-mle-webgpu:iterations": {
+    script:      "scripts/collect-energy-mle-frames-webgpu.ts",
+    sidecar:     "collect-energy-mle-frames-webgpu",
+    field:       "iterations",
+    format:      "int",
+    description: "dlmMLE iteration count — energy/AR model, WebGPU Float32 variant",
+  },
+  "energy-mle-webgpu:lik": {
+    script:      "scripts/collect-energy-mle-frames-webgpu.ts",
+    sidecar:     "collect-energy-mle-frames-webgpu",
+    field:       "lik",
+    format:      "lik1",
+    description: "dlmMLE final −2log L — energy/AR model, WebGPU Float32 variant",
+  },
 
   "mle-bench:nile-order1:elapsed": {
     script:      "scripts/collect-mle-benchmark.ts",
