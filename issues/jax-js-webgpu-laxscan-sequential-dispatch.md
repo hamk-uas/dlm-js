@@ -1,18 +1,19 @@
-# jax-js: lax.scan dispatches each step from JS on WebGPU — O(n) overhead
+# jax-js: lax.scan on WebGPU is O(n) regardless of jit — compiled-loop is WASM-only or unavailable for reduction ops
 
 ## Summary
 
-`lax.scan` on WebGPU dispatches each of its *n* steps individually from
-JavaScript.  This means a scan body with *P* ops incurs **P·n GPU kernel
-launches** regardless of the scan direction.  For comparison,
-`lax.associativeScan` with the same body now dispatches **P·log₂(n) kernels**
-(fusion confirmed working in branch `fix/jit-scan-einsum-maxargs` commit
-`3112787c`).
+`lax.scan` on WebGPU dispatches O(n) GPU kernels even when wrapped in `jit()`,
+while `lax.associativeScan` inside `jit` achieves the architecturally-optimal
+⌈log₂N⌉+1 dispatches.  The jax-js team stated that `lax.scan` inside `jit`
+should produce 1 dispatch (compiled in-shader loop), but empirical testing shows
+this does **not** hold on WebGPU when the step body contains reduction ops
+(einsum/matmul).  The compiled-loop may be WASM-only, or may only apply to
+purely elementwise scan bodies.
 
-The impact in dlm-js is that `dlmFit` on WebGPU scales O(n) with the time
-series length, despite the forward filter using the O(log n) `associativeScan`
-path.  The **backward RTS smoother** uses a sequential `lax.scan` with ~5 ops
-per step, making it the dominant O(n) bottleneck.
+The impact in dlm-js is that `dlmFit` on WebGPU scales O(n) with the series
+length.  The forward filter uses `lax.associativeScan` (⌈log₂N⌉+1 dispatches,
+fast), but the **backward RTS smoother** uses `lax.scan` inside `jit(core)`,
+which still runs O(n) dispatches on WebGPU.
 
 ## Reproduction
 
@@ -23,89 +24,96 @@ deno run --no-check --unstable-webgpu --allow-read --allow-env \
   issues/repro-associativescan-dispatch.ts
 ```
 
-The script benchmarks three cases with m=2, N=100…1600 on WebGPU/Float32:
+The script benchmarks four cases with m=2, N=100…1600 on WebGPU/Float32:
 
 | Case | Description |
 |------|-------------|
-| A | `lax.associativeScan(compose, elems)` — parallel prefix |
+| A | `lax.associativeScan(compose, elems)` — bare, no jit |
 | B | `jit(fn)(elems)` where `fn` calls `lax.associativeScan` |
-| C | `lax.scan(backwardStep, carry, elems, { reverse: true })` — sequential |
+| C | `lax.scan(backwardStep, carry, elems, {reverse:true})` — bare, no jit |
+| D | `jit(fn)(carry, elems)` where `fn` calls `lax.scan` — how dlm-js backward smoother actually runs |
 
 ## Measured results — commit `3112787c` on `fix/jit-scan-einsum-maxargs`
 
 ```
-       N   A:assocScan  ratio   B:jit(scan)  ratio   C:lax.scan  ratio
-     100          17.5      -          15.8      -         47.6      -
-     200          16.8  0.96x          16.5  1.04x        102.4  2.15x
-     400          20.3  1.21x          19.0  1.15x        201.1  1.96x
-     800          20.8  1.02x          20.6  1.09x        380.4  1.89x
-    1600          22.6  1.08x          23.0  1.11x       1053.5  2.77x
+       N   A:assocScan  ratio  B:jit(aScan)  ratio      C:scan  ratio  D:jit(scan)  ratio
+     100          15.5      -          15.4      -        48.0      -         50.7      -
+     200          17.5  1.12x          16.7  1.08x       104.8  2.18x        122.2  2.41x
+     400          21.6  1.24x          21.2  1.27x       240.5  2.30x        253.2  2.07x
+     800          24.2  1.12x          24.1  1.14x       526.0  2.19x        551.6  2.18x
+    1600          25.3  1.05x          25.5  1.06x      1046.2  1.99x       1045.5  1.90x
 ```
 
-- **Cases A and B**: ~17–23ms constant across N=100–1600 (ratio ≈ 1×) — O(log n) kernel fusion is **working**.
-- **Case C**: 47ms → 1054ms, ratio ≈ 2× per doubling — O(n) per-step JS dispatch — **not fixed**.
+- **Cases A and B**: ~15–25ms across N=100–1600, ratio ~1× — `lax.associativeScan` dispatches ⌈log₂N⌉+1 kernels, architecturally optimal for WebGPU. ✅
+- **Cases C and D**: ~48–1046ms, ratio ~2× per doubling — O(n) regardless of `jit()`. C (bare) and D (jit) show nearly identical timing, meaning `jit` provides no compiled-loop benefit for `lax.scan` on WebGPU in this case. ❌
 
-## Root cause
+## jax-js team clarification vs empirical findings
 
-`lax.associativeScan` fuses its compose calls into batched GPU kernels at each
-round (one dispatch per op per round).  `lax.scan` does **not** do the same: it
-iterates the step function from JS one step at a time, synchronously issuing
-the constituent GPU kernels for each step.
+The jax-js team provided this dispatch table:
 
-For a scan of length n with P ops in the body, the total GPU kernel launches are:
-- `associativeScan`: P × log₂(n)  (fused, batched per round)
-- `lax.scan`:        P × n         (one-by-one from JS)
+| | lax.scan | lax.associativeScan |
+|-|----------|---------------------|
+| WebGPU dispatches | 1 (in-shader for-loop) | ⌈log₂N⌉+1 (architecturally optimal) |
+| WASM invocations | 1 (entire loop in WASM) | ⌈log₂N⌉ (JS→WASM per round, fixable) |
 
-## Impact on dlm-js
+Empirical Case D contradicts the WebGPU row for `lax.scan`: `jit(lax.scan)` is
+O(n) dispatches, not 1.  Possible explanations:
 
-`dlmFit` on WebGPU calls `dlmSmo` twice (diffuse prior + final pass), each
-of which runs inside `jit(core)`.  The `core` function contains:
+1. **Compiled-loop is WASM-only** (`codegenNativeScanGeneral`): the "1 dispatch"
+   figure may apply to WASM and not yet to WebGPU.
+2. **Reduction ops prevent compilation**: `backwardStep` uses einsums with inner
+   sums (matmul-style contractions).  The compiled-loop codepath may only handle
+   elementwise bodies; `reductionEndpointEqns` in the body may bypass it.
+3. **Silent jit fallback**: shape variation (different N per call) may cause jit
+   to fall back to eager if the backend doesn't cache per-shape compiled shaders.
 
-1. **Forward filter**: `lax.associativeScan` — O(log n) — now fast ✅
-2. **Backward RTS smoother**: `lax.scan(backwardStep, ..., { reverse: true })` — O(n) ❌
+## Root cause in dlm-js
+
+`dlmFit` on WebGPU calls `dlmSmo` twice, each inside `jit(core)`.  `core` has:
+
+1. **Forward filter**: `lax.associativeScan` — ⌈log₂N⌉+1 dispatches — fast ✅
+2. **Backward RTS smoother**: `lax.scan(backwardStep, ..., {reverse:true})` — O(n) dispatches ❌
 3. Vectorised diagnostics (lik, yhat, ystd) — O(1) data-parallel ✅
 
-The backward smoother has ~5 ops per step (2 einsums + 2 more einsums + add).
-At N=100, Case C already costs 47ms vs 17ms for assocScan; at N=1600, 1054ms
-vs 23ms.  Matching the `bench:scaling` output where full `dlmFit` WebGPU
-took 869ms at N=100 and 9214ms at N=1600.
+`backwardStep` contains 5 ops (2 einsum transposes + 2 einsum matmuls + 1 add).
+At N=100 with ~0.5 ms/dispatch, the backward pass costs ~250 ms alone (2 dlmSmo
+calls × ~5 ops × N=100 steps), consistent with the observed ~870 ms total.
+
+## Architectural context (from jax-js team)
+
+`lax.associativeScan` on WebGPU at ⌈log₂N⌉+1 dispatches is **already the
+architectural optimum**.  True single-dispatch Kogge-Stone is impossible on
+WebGPU: `workgroupBarrier()` only synchronises within a workgroup; there is no
+cross-workgroup sync primitive.  Every round's results must be globally visible
+before the next round begins, requiring a separate `dispatchWorkgroups()` call.
+
+For `lax.scan`, a single-dispatch compiled loop *is* theoretically possible on
+WebGPU (the sequential dependency fits in one shader with a time-step loop), but
+it isn't working for bodies with reduction ops in the current implementation.
 
 ## Expected fix (upstream in jax-js)
 
-`lax.scan` should emit a native GPU loop / unrolled batched dispatch instead
-of iterating from JS.  Conceptually, option A (native loop) is preferred:
-the GPU driver can pipeline stages; JS overhead per step is eliminated.
+1. **Priority fix — WebGPU `lax.scan` compiled loop for reduction bodies**: Extend
+   `codegenNativeScanGeneral` (or equivalent) to handle scan bodies containing
+   reductions/einsums on WebGPU.  This would reduce dlm-js backward smoother
+   from O(n) to 1 dispatch, making the full `dlmFit` forward+backward cost
+   ⌈log₂N⌉+2 dispatches regardless of N.
 
-Option A — **native GPU loop**: compile the scan body to WGSL, emit a shader
-that loops `n` times internally.  One launch per op (P total launches regardless
-of n).  `O(1)` JS overhead.
-
-Option B — **batched dispatch from JS once at startup**: at trace/JIT time,
-pre-schedule all n dispatches into a `GPUCommandEncoder`; submit as a single
-`commandBuffer`.  This removes JS-to-GPU round-trip latency per step but still
-does P·n total GPU kernel executions.
-
-Option C — **keep as-is** (not recommended for large n): per-step JS dispatch
-at ~0.5ms/kernel means a 1000-step scan with 5 ops = 2.5s on WebGPU,
-regardless of what the GPU is actually computing.
+2. **Lower priority — WASM `lax.associativeScan` compiled module**: The current
+   ⌈log₂N⌉ JS→WASM crossings per round could be eliminated by compiling the
+   Kogge-Stone ladder into a single WASM module (analogous to
+   `codegenNativeScanGeneral` for `lax.scan`).
 
 ## Workaround in dlm-js
 
-No perfect workaround exists without changing jax-js.  Current mitigations:
-
-1. **WASM is preferred for performance** (`defaultDevice('wasm')`): WASM runs
-   the sequential scan as a tight native loop; no JS-per-step overhead.
-   ~22ms flat for N=100–102400 (see `bench:scaling` output).
-
-2. **Associative-scan backward smoother** (research): the backward RTS smoother
-   can be reformulated as a parallel associative scan (Solin 2021), enabling
-   O(log n) GPU depth.  This requires non-trivial algebra and is deferred until
-   `lax.scan` dispatch is fixed upstream, as it would be moot if upstream
-   emits a native loop.
+**WASM is preferred for performance** (`defaultDevice('wasm')`): `lax.scan`
+inside `jit` compiles to a single native WASM call; ~22 ms flat for
+N=100–102400.  WebGPU is only useful when the GPU compute benefit outweighs the
+dispatch overhead, which does not occur for dlm-js state sizes (m ≤ 8).
 
 ## References
 
 - Repro script: [`issues/repro-associativescan-dispatch.ts`](repro-associativescan-dispatch.ts)
-- Related upstream fix (assocScan fusion): [`issues/jax-js-webgpu-jit-einsum.md`](jax-js-webgpu-jit-einsum.md)
+- Related upstream fix (assocScan correctness): [`issues/jax-js-webgpu-jit-einsum.md`](jax-js-webgpu-jit-einsum.md)
 - Scaling benchmark: `pnpm run bench:scaling` → `assets/timings/bench-scaling.json`
 - dlm-js backward smoother: `src/index.ts` `backwardStep` function

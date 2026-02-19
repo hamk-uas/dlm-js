@@ -55,20 +55,24 @@
  *
  * ─── ACTUAL OUTPUT (jax-js fix/jit-scan-einsum-maxargs branch, commit 3112787c) ─
  *
- * A: lax.associativeScan  — FIXED — O(log n), ~17-22ms constant   ✓
- * B: jit(assocScan)       — FIXED — same as A                     ✓
- * C: lax.scan (backward)  — NOT fixed — O(n), 47→1054ms           ✗
+ * 4-case benchmark, WebGPU/Float32, m=2 (same ops as dlm-js Nile order=1):
+ *   A: bare assocScan          B: jit(assocScan)
+ *   C: bare lax.scan           D: jit(lax.scan)  <- how dlm-js backward smoother runs
  *
- *        N   A:assocScan  ratio   B:jit(scan)  ratio   C:lax.scan  ratio
- *      100          17.5      -          15.8      -         47.6      -
- *      200          16.8  0.96x          16.5  1.04x        102.4  2.15x
- *      400          20.3  1.21x          19.0  1.15x        201.1  1.96x
- *      800          20.8  1.02x          20.6  1.09x        380.4  1.89x
- *     1600          22.6  1.08x          23.0  1.11x       1053.5  2.77x
+ *        N   A:assocScan  ratio  B:jit(aScan)  ratio      C:scan  ratio  D:jit(scan)  ratio
+ *      100          15.5      -          15.4      -        48.0      -         50.7      -
+ *      200          17.5  1.12x          16.7  1.08x       104.8  2.18x        122.2  2.41x
+ *      400          21.6  1.24x          21.2  1.27x       240.5  2.30x        253.2  2.07x
+ *      800          24.2  1.12x          24.1  1.14x       526.0  2.19x        551.6  2.18x
+ *     1600          25.3  1.05x          25.5  1.06x      1046.2  1.99x       1045.5  1.90x
  *
- * lax.scan dispatches each of its n steps from JS individually.
- * This is the remaining O(n) bottleneck in dlm-js dlmFit WebGPU:
- * the backward RTS smoother uses lax.scan (not associativeScan).
+ * A/B: O(log n) ✓  lax.associativeScan fuses to ceil(log2 N)+1 dispatches.
+ *      Architecturally optimal for WebGPU Kogge-Stone (no cross-workgroup sync).
+ * C/D: O(n)    ✗  lax.scan is O(n) dispatches on WebGPU regardless of jit().
+ *      Either the compiled-loop is WASM-only, or it doesn't apply to bodies
+ *      containing reduction ops (einsum/matmul).  The dlm-js backward RTS
+ *      smoother, which runs lax.scan inside jit(core), is therefore the
+ *      remaining O(n) bottleneck for dlmFit on WebGPU.
  */
 
 import { numpy as np, lax, jit, DType, defaultDevice, init }
@@ -119,6 +123,8 @@ function makeElements(n: number) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Elem = { A: any; b: any; S: any };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Carry = { r: any; N: any };
 
 // compose(earlier, later): DLM Kalman chain rule, 5 ops
 function compose(earlier: Elem, later: Elem): Elem {
@@ -219,7 +225,26 @@ async function caseC(n: number) {
   return finalCarry.r;
 }
 
-// Pre-warm jit for Case B
+// Case D: jit(lax.scan backward) — how dlm-js backward smoother actually compiles
+// jit traces once per distinct input shape; warmup covers the first-N compilation cost.
+const jittedSeqScan = jit((carry0: Carry, elems: Elem) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  lax.scan(backwardStep, carry0, elems, { reverse: true }) as any
+);
+
+async function caseD(n: number) {
+  const elems = makeElements(n);
+  const carry0 = makeCarry();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [finalCarry, outs] = await jittedSeqScan(carry0, elems) as any;
+  carry0.r[Symbol.dispose](); carry0.N[Symbol.dispose]();
+  elems.A[Symbol.dispose](); elems.b[Symbol.dispose](); elems.S[Symbol.dispose]();
+  outs.r?.[Symbol.dispose]?.(); outs.N?.[Symbol.dispose]?.();
+  finalCarry.N[Symbol.dispose]();
+  return finalCarry.r;
+}
+
+// Pre-warm jit for Cases B and D
 {
   const e0 = makeElements(100);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -227,48 +252,70 @@ async function caseC(n: number) {
   r0.A[Symbol.dispose](); r0.b[Symbol.dispose](); r0.S[Symbol.dispose]();
   e0.A[Symbol.dispose](); e0.b[Symbol.dispose](); e0.S[Symbol.dispose]();
 }
+{
+  const e0 = makeElements(100);
+  const c0 = makeCarry();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [fc, outs] = await jittedSeqScan(c0, e0) as any;
+  c0.r[Symbol.dispose](); c0.N[Symbol.dispose]();
+  e0.A[Symbol.dispose](); e0.b[Symbol.dispose](); e0.S[Symbol.dispose]();
+  outs.r?.[Symbol.dispose]?.(); outs.N?.[Symbol.dispose]?.();
+  fc.r[Symbol.dispose](); fc.N[Symbol.dispose]();
+}
 
 console.log(`
 lax.associativeScan + lax.scan dispatch repro
 backend: webgpu/float32  m=${M}  warmup=${WARMUP}  runs=${RUNS} (median)
 
-  A: bare lax.associativeScan(compose, elems)
-  B: jit(fn)(elems)  where fn calls lax.associativeScan
-  C: lax.scan(backwardStep, carry, elems, {reverse:true})  <- sequential
+  A: bare lax.associativeScan(compose, elems)  -- no jit
+  B: jit(fn)(elems)     where fn = assocScan(compose)  -- jit-wrapped
+  C: bare lax.scan(backwardStep, carry, elems, {reverse:true})  -- no jit
+  D: jit(fn)(carry,elems) where fn = lax.scan(backwardStep)  -- jit-wrapped
 
-ratio ~1.0x per doubling of N  =>  O(log n) / O(1): kernel fusion working
-ratio ~2.0x per doubling of N  =>  O(n): per-step JS dispatch happening
+C = bare (eager) lax.scan runs one JS->GPU dispatch per step -> O(n)
+D = jit-compiled lax.scan runs as in-shader loop    -> expected O(1) dispatches
+
+ratio ~1.0x per doubling of N  =>  O(log n) or O(1): efficient
+ratio ~2.0x per doubling of N  =>  O(n): per-step dispatch
 `);
 
-const cols = [8, 14, 9, 14, 9, 13, 9];
+const cols = [8, 14, 9, 14, 9, 13, 9, 13, 9];
 console.log([
   "N".padStart(cols[0]),
   "A:assocScan".padStart(cols[1]),  "ratio".padStart(cols[2]),
-  "B:jit(scan)".padStart(cols[3]),  "ratio".padStart(cols[4]),
-  "C:lax.scan".padStart(cols[5]),   "ratio".padStart(cols[6]),
+  "B:jit(aScan)".padStart(cols[3]), "ratio".padStart(cols[4]),
+  "C:scan".padStart(cols[5]),       "ratio".padStart(cols[6]),
+  "D:jit(scan)".padStart(cols[7]),  "ratio".padStart(cols[8]),
 ].join("  "));
 console.log("-".repeat(cols.reduce((a, b) => a + b) + cols.length * 2));
 
-let [pA, pB, pC] = [null as number | null, null as number | null, null as number | null];
+let [pA, pB, pC, pD] = [
+  null as number | null, null as number | null,
+  null as number | null, null as number | null,
+];
 for (const n of N_VALUES) {
   const msA = await timedRun(n, caseA);
   const msB = await timedRun(n, caseB);
   const msC = await timedRun(n, caseC);
+  const msD = await timedRun(n, caseD);
   const r = (ms: number, p: number | null) => p !== null ? (ms/p).toFixed(2)+"x" : "-";
   console.log([
     String(n).padStart(cols[0]),
     msA.toFixed(1).padStart(cols[1]),  r(msA,pA).padStart(cols[2]),
     msB.toFixed(1).padStart(cols[3]),  r(msB,pB).padStart(cols[4]),
     msC.toFixed(1).padStart(cols[5]),  r(msC,pC).padStart(cols[6]),
+    msD.toFixed(1).padStart(cols[7]),  r(msD,pD).padStart(cols[8]),
   ].join("  "));
-  [pA, pB, pC] = [msA, msB, msC];
+  [pA, pB, pC, pD] = [msA, msB, msC, msD];
 }
 
 console.log(`
-Expected (ideal): A~1x (assocScan fused), B~1x (same inside jit),
-                  C~2x (sequential scan is O(n) depth, inherent)
-If B~2x (!=A), jit() changes associativeScan dispatch behaviour.
-If C >> A in absolute time, lax.scan dispatches each step from JS
-  rather than emitting a native GPU loop -- that is the remaining
-  bottleneck in dlm-js dlmFit WebGPU after the assocScan fix.
+Expected per jax-js team analysis:
+  A ~1x (assocScan: ceil(log2 N)+1 dispatches, already architecturally optimal for WebGPU)
+  B ~1x (same; jit wrapping does not change assocScan dispatch count)
+  C ~2x (bare lax.scan: eager O(n) JS dispatch, expected)
+  D ~1x (jit(lax.scan): in-shader compiled loop, 1 dispatch total)
+
+If D ~2x (not ~1x), jit is NOT compiling lax.scan to a native loop on this backend.
+If D ~1x, the dlm-js backward smoother (which runs inside jit(core)) is NOT the WebGPU bottleneck.
 `);
