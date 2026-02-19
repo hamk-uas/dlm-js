@@ -110,7 +110,6 @@ try {
   const likV = (await lik.consumeData())[0];
   const gradV = (await grad.consumeData())[0];
   console.log(`  PASS  lik=${likV.toFixed(4)}  grad=${gradV.toFixed(4)}`);
-  grad.dispose();
 } catch (e: any) {
   console.log(`  FAIL  ${e.message}`);
 }
@@ -122,7 +121,6 @@ try {
   const likV = (await lik.consumeData())[0];
   const gradV = (await grad.consumeData())[0];
   console.log(`  PASS  lik=${likV.toFixed(4)}  grad=${gradV.toFixed(4)}`);
-  grad.dispose();
 } catch (e: any) {
   console.log(`  FAIL  ${e.message}`);
 }

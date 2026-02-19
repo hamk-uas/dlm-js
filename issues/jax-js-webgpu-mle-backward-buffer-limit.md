@@ -1,4 +1,4 @@
-# jax-js: `jit(valueAndGrad)` over `lax.associativeScan` fails on WebGPU — buffer limit (v0.7.1–3, fixed in v0.7.4) / tracer disposal after result (v0.7.3–4)
+# jax-js: `jit(valueAndGrad)` over `lax.associativeScan` fails on WebGPU — buffer limit (v0.7.1–3, fixed in v0.7.4)
 
 ## Summary
 
@@ -10,14 +10,14 @@ compose body.  The error changed between versions:
 |---------|--------------------------|--------------------------------|
 | v0.7.1  | `Too many buffers (12) for WebGPU pipeline (max: 8)` | `Referenced tracer Array:float32[m,m] has been disposed` |
 | v0.7.2  | `Nonlinear operation in backward pass for concatenate` | `Nonlinear operation in backward pass for concatenate` |
-| v0.7.3  | `Too many buffers (9) for WebGPU pipeline (max: 8)` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
-| v0.7.4  | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` | **computes correctly**, then `Referenced tracer Array:float32[1] has been disposed` |
+| v0.7.3  | `Too many buffers (9) for WebGPU pipeline (max: 8)` | **computes correctly** (then disposal error from repro bug) |
+| v0.7.4  | **✅ PASS** `lik=284451.6875  grad=4813868.5000` | **✅ PASS** `lik=284451.6875  grad=4813868.5000` |
 
 `dlmFit` (forward smoother, no AD) works correctly on WebGPU in all versions.
 The WASM/CPU path for `valueAndGrad` over `lax.associativeScan` works fine in
 all versions (112/112 dlm-js tests pass on WASM with v0.7.4).
 
-This blocks `dlmMLE` from running on the WebGPU backend.
+**✅ Resolved in v0.7.4.** This blocks `dlmMLE` from running on WebGPU on v0.7.1–3.
 
 ## Context: where this arises in dlm-js
 
@@ -98,35 +98,21 @@ remained:
 - `jit(valueAndGrad)`: buffer count reduced 12 → 9, still 1 over limit.
 - `valueAndGrad` (no jit): computes correctly, then tracer disposal after result.
 
-## v0.7.4 status
+## v0.7.4 status — RESOLVED
 
-v0.7.4 fixes the buffer limit.  **Both** `jit(valueAndGrad(lossFn))` and bare
-`valueAndGrad(lossFn)` now compute the correct result:
-
-```
-lik=284451.6875  grad=4813868.5000   ← correct
-```
-
-One residual issue remains: a tracer disposal error thrown *after* the result
-is returned, in both cases:
+v0.7.4 fixes the buffer limit.  Both `jit(valueAndGrad(lossFn))` and bare
+`valueAndGrad(lossFn)` now pass cleanly:
 
 ```
-Referenced tracer Array:float32[1] has been disposed
+Test 1 [jit(valueAndGrad(lossFn))]:   PASS  lik=284451.6875  grad=4813868.5000
+Test 2 [valueAndGrad(lossFn), no jit]: PASS  lik=284451.6875  grad=4813868.5000
 ```
 
-The computation completes successfully before the error — the loss and gradient
-values are available.  The error occurs during backward-pass cleanup, suggesting
-an intermediate activation tensor reference is retained beyond its scope and
-then accessed after disposal.  The fix likely involves adjusting the lifetime
-or access order of saved activations in the WebGPU backward-pass finalisation.
-
-Note: the repro compose function uses `const` (not `using`) for returned values
-`a_new`/`b_new`/`c_new`, and the outer function uses `const lik` (not `using`)
-for the returned scalar.  Removing `using` from returned values does not affect
-the error — inside a traced body, jax-js intercepts `using` disposal and manages
-tensor lifetimes symbolically, so `using` on returned values is handled
-correctly.  The disposal error originates inside jax-js's own backward-pass
-finalisation, not in the user code.
+The `Referenced tracer Array:float32[1] has been disposed` error seen when
+testing v0.7.4 was a **repro script bug**: the repro called `grad.dispose()`
+after `consumeData()`, which already disposes the array.  The double-dispose
+triggered the tracer error.  Removing the extra `grad.dispose()` from the repro
+yields clean PASSes on both tests.  jax-js v0.7.4 is fully correct.
 
 ## Reproduction
 
@@ -150,34 +136,22 @@ deno run --no-check --unstable-webgpu --allow-read --allow-env \
 ```
 
 Tested on: v0.7.1 (buffer limit, 12), v0.7.2 (concatenate VJP error),
-v0.7.3 (buffer limit 9; bare `valueAndGrad` computes correctly then disposal
-error), v0.7.4 (buffer limit fixed; both paths compute correctly then disposal
-error).  `dlmFit` (no AD) works correctly on WebGPU with all versions.
+v0.7.3 (buffer limit 9), v0.7.4 (✅ both tests pass cleanly).
+`dlmFit` (no AD) works correctly on WebGPU with all versions.
 
 ## Expected behaviour
 
-`jit(valueAndGrad(fn))` (and bare `valueAndGrad(fn)`) where `fn` uses
-`lax.associativeScan` with a multi-output compose body should complete without
-error on WebGPU.  As of v0.7.4, computation is correct — only the post-result
-cleaning needs fixing:
-
-**Remaining: tracer disposal after result (v0.7.4)**
-- Fix the backward-pass cleanup order so that saved activation tensors are not
-  accessed after their scope has disposed them.
-- Alternatively, extend the lifetime of the relevant intermediate(s) until the
-  full backward finalisation is complete.
+**✅ Achieved in v0.7.4.** `jit(valueAndGrad(fn))` and bare `valueAndGrad(fn)`
+where `fn` uses `lax.associativeScan` with a multi-output compose body both
+complete without error on WebGPU.
 
 ## Impact
 
-- `dlmMLE` on WebGPU is almost unblocked as of v0.7.4 — the residual tracer
-  disposal error is thrown after the correct result is returned, so it only
-  prevents clean integration (exception propagation breaks the optimizer loop).
-- The issue affects any use of `jit(valueAndGrad)` or `valueAndGrad` over a
-  loss from `lax.associativeScan` with tuple-valued compose bodies.
-- Workaround in dlm-js: currently uses `makeKalmanLoss` (sequential scan,
-  CPU/WASM only) for MLE and generates a static placeholder SVG for the
-  WebGPU MLE animation.  Will enable the full WebGPU MLE path once the
-  disposal error is resolved.
+- `dlmMLE` on WebGPU is unblocked in v0.7.4.  `dlmFit` (smoother, forward-only,
+  no AD) also works fine on WebGPU.
+- dlm-js can now implement the full WebGPU MLE path using `makeKalmanLossAssoc`
+  with `jit(valueAndGrad)` and replace the static placeholder SVG with a real
+  WebGPU MLE animation.
 
 ## Related issues
 
