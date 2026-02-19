@@ -4,6 +4,14 @@
 
 `jit(fn)` crashed on the WebGPU backend when `fn` contained `lax.scan` or `lax.associativeScan` with einsum, matmul/transpose, or np.where in the step/compose body. **Resolved in `fix/jit-scan-einsum-maxargs` (commit f09121d) plus three API fixes and a DARE convention correction in dlm-js `src/index.ts`.**
 
+> **Follow-on finding (commit `3112787c`):** With the correctness fix in place,
+> profiling revealed that `lax.associativeScan` now dispatches O(log n) GPU
+> kernels (fusion working), but `lax.scan` still dispatches **O(n)** kernels —
+> one per step from JS.  This makes the backward RTS smoother the remaining
+> bottleneck for `dlmFit` WebGPU performance.  See
+> [`jax-js-webgpu-laxscan-sequential-dispatch.md`](jax-js-webgpu-laxscan-sequential-dispatch.md)
+> for measurements and repro.
+
 ## Resolution — COMPLETE ✅
 
 The fix branch (`fix/jit-scan-einsum-maxargs`, commit f09121d) resolves all JIT shape-inference failures, and `dlmFit` now runs correctly on WebGPU.

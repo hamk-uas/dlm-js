@@ -197,10 +197,10 @@ Requires the `fix/jit-scan-einsum-maxargs` branch of jax-js-nonconsuming (commit
 
 | Model | $n$ | $m$ | wasm / f64 (scan) | webgpu / f32 (assocScan) |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->674 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->783 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->843 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->923 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->669 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->793 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->894 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->920 ms<!-- /timing --> |
 
 **Why WebGPU is slower — and why there is no crossover with the current implementation:**
 
@@ -208,21 +208,21 @@ A crossover benchmark (Nile order=1, m=2) measured scaling at exponentially incr
 
 | N | wasm/f64 | µs/step | webgpu/f32 | ratio |
 |---|--------------|--------------|-----------------|-------|
-| 100 | <!-- timing:scale:wasm-f64:n100 -->25 ms<!-- /timing --> | 245 | <!-- timing:scale:webgpu-f32:n100 -->868 ms<!-- /timing --> | 36× |
-| 200 | <!-- timing:scale:wasm-f64:n200 -->21 ms<!-- /timing --> | 105 | <!-- timing:scale:webgpu-f32:n200 -->1213 ms<!-- /timing --> | 55× |
-| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | 52 | <!-- timing:scale:webgpu-f32:n400 -->2220 ms<!-- /timing --> | 105× |
-| 800 | <!-- timing:scale:wasm-f64:n800 -->22 ms<!-- /timing --> | 27 | <!-- timing:scale:webgpu-f32:n800 -->4209 ms<!-- /timing --> | 188× |
-| 1600 | <!-- timing:scale:wasm-f64:n1600 -->21 ms<!-- /timing --> | 13 | <!-- timing:scale:webgpu-f32:n1600 -->7767 ms<!-- /timing --> | 343× |
-| 3200 | <!-- timing:scale:wasm-f64:n3200 -->24 ms<!-- /timing --> | 7.5 | — | — |
-| 6400 | <!-- timing:scale:wasm-f64:n6400 -->32 ms<!-- /timing --> | 5.0 | — | — |
-| 12800 | <!-- timing:scale:wasm-f64:n12800 -->33 ms<!-- /timing --> | 2.6 | — | — |
-| 25600 | <!-- timing:scale:wasm-f64:n25600 -->51 ms<!-- /timing --> | 2.0 | — | — |
-| 51200 | <!-- timing:scale:wasm-f64:n51200 -->77 ms<!-- /timing --> | 1.5 | — | — |
-| 102400 | <!-- timing:scale:wasm-f64:n102400 -->143 ms<!-- /timing --> | 1.4 | — | — |
+| 100 | <!-- timing:scale:wasm-f64:n100 -->23 ms<!-- /timing --> | 245 | <!-- timing:scale:webgpu-f32:n100 -->869 ms<!-- /timing --> | 36× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->22 ms<!-- /timing --> | 105 | <!-- timing:scale:webgpu-f32:n200 -->1187 ms<!-- /timing --> | 55× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | 52 | <!-- timing:scale:webgpu-f32:n400 -->1960 ms<!-- /timing --> | 105× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->22 ms<!-- /timing --> | 27 | <!-- timing:scale:webgpu-f32:n800 -->3711 ms<!-- /timing --> | 188× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->23 ms<!-- /timing --> | 13 | <!-- timing:scale:webgpu-f32:n1600 -->9214 ms<!-- /timing --> | 343× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->25 ms<!-- /timing --> | 7.5 | — | — |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->27 ms<!-- /timing --> | 5.0 | — | — |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->36 ms<!-- /timing --> | 2.6 | — | — |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->60 ms<!-- /timing --> | 2.0 | — | — |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->84 ms<!-- /timing --> | 1.5 | — | — |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->151 ms<!-- /timing --> | 1.4 | — | — |
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly. The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->143 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly. The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->151 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
 
 2. **WebGPU scales as O(n)** — the ratio doubles with every doubling of N. The associativeScan O(log n) *depth* is never realised because jax-js dispatches each operation in the compose function (einsum $A_{comp}$, einsum $b_{comp}$, einsum $\Sigma_{comp}$, and the additions) as a separate sequential GPU kernel. The n−1 total compose calls therefore run serially, giving O(n × ops_per_compose) total GPU dispatches — more, not fewer, than the sequential O(n) filter. This is a kernel-fusion deficit: the associativeScan benefit can only be realised if all n/2 independent compose calls at each scan round are dispatched as a single batched kernel (one kernel per round × log n rounds). jax-js does not do this.
 
