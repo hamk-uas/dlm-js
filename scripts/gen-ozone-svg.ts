@@ -85,6 +85,10 @@ const w: number[] = Array.from(mInp.w as number[]);
 console.log(`Fitting DLM: N=${N} months (${time[0].toFixed(2)}–${time[N-1].toFixed(2)})`);
 console.log(`  ys=${ys.toExponential(3)}, ym=${ym.toFixed(4)}, w=[${w.map(v=>v.toExponential(2)).join(',')}]`);
 
+const t0fit = performance.now();
+await withLeakCheck(() => dlmFit(y_filled, s_filled, w, DType.Float64, { order: 1, trig: 2 }, X, isAssoc));
+const firstRunMs = performance.now() - t0fit;
+const warmStart = performance.now();
 const fit = await withLeakCheck(() =>
   dlmFit(
     y_filled, s_filled, w, DType.Float64,
@@ -93,6 +97,8 @@ const fit = await withLeakCheck(() =>
     isAssoc,
   )
 );
+const warmRunMs = performance.now() - warmStart;
+console.log(`  Timing: cold ${firstRunMs.toFixed(1)} ms, warm ${warmRunMs.toFixed(1)} ms`);
 
 // State layout (order=1, trig=2, q=3):
 //  x[0] = μ (level)
@@ -296,7 +302,7 @@ svg.push(`<line x1="${l1x}" y1="${l1y+45}" x2="${l1x+22}" y2="${l1y+45}" stroke=
 svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">15-year trend forecast ±2σ (level state)</text>`);
 
 // Title
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N) — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, ${scanLabel}</text>`);
+svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N) — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // ── Panel 2 ──────────────────────────────────────────────────────────────
 svg.push(...renderGridLines(yTicks2Raw, sy2, margin.left, margin.left + plotW));
@@ -335,9 +341,6 @@ svg.push(`<text x="${l2x+27}" y="${l2y+49}" fill="#374151" font-size="11">MATLAB
 
 // Panel 2 title
 svg.push(`<text x="${margin.left + plotW / 2}" y="${p2Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Proxy covariate contributions (solar + QBO)</text>`);
-
-// Attribution footnote
-svg.push(`<text x="${margin.left}" y="${H - 6}" fill="#9ca3af" font-size="9">Data: Laine, Latva-Pukkila &amp; Kyrölä (2014), Atmos. Chem. Phys. 14, 9707–9725, doi:10.5194/acp-14-9707-2014. Instruments: SAGE II &amp; GOMOS. Data file via github.com/mjlaine/dlm.</text>`);
 
 svg.push("</svg>");
 
