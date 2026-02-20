@@ -15,10 +15,12 @@ Quick start — commands you will need (copy/paste) ▶️
 - Generate API docs: `pnpm run docs` (outputs to `docs/`, opens at `docs/index.html`).
 - Generate Octave reference (requires `octave-cli`): `pnpm run test:octave` (produces `tests/*-out-m.json`).
 - Generate SVG plots: `pnpm run gen:svg` (produces `assets/*.svg`; also writes timing sidecars to `assets/timings/*.json` and auto-patches `<!-- timing:KEY -->` markers in all .md files).
+- Generate fit-demo SVGs only (no Deno/WebGPU, safe everywhere): `pnpm run gen:svg:fit` (nile, kaisaniemi, trigar, ozone, missing — scan + assoc variants each).
 - Update stale timing values in .md files: `pnpm run update:timings` (reads existing sidecars; no re-run). Inspect slots with `pnpm run update:timings:list`. Preview changes without writing with `pnpm run update:timings:dry`.
 - Benchmark all MLE comparison-table rows (Nile order=0, Kaisaniemi): `pnpm run bench:mle` (writes `assets/timings/collect-mle-benchmark.json` and auto-patches .md).
 - Benchmark `checkpoint` strategies: `pnpm run bench:checkpoint` (writes `assets/timings/bench-checkpoint.json` and auto-patches .md).
 - Benchmark cross-backend `dlmFit` (cpu/wasm × f32/f64): `pnpm run bench:backends` (writes `assets/timings/bench-backends.json` and auto-patches .md).
+- Remeasure **all WASM timings** in one shot: `pnpm run bench:wasm` (runs gen:svg:fit + nile/energy MLE frame collection scan+assoc + MLE anim SVGs + bench:backends + bench:mle + bench:checkpoint + update:timings; leaves WebGPU sidecars untouched).
 - Build for distribution: `pnpm run build`.
 - Full CI-local check: `pnpm run test` (runs lint + Octave reference + Node tests).
 
