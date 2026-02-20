@@ -111,7 +111,7 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 - **Joseph form overhead is negligible on WASM** — f32+joseph vs f64+none differ by <5 ms across all models, well within JIT variance. The stabilization choice is numerically important but not a performance concern.
 - **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
 - **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
-- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->152 ms<!-- /timing --> at N=102400. WebGPU/f32 `assoc` scales **sub-linearly (O(log n))**: a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->309 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->668 ms<!-- /timing -->). A crossover is plausible at N≈800k–1M.
+- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->156 ms<!-- /timing --> at N=102400. WebGPU/f32 `assoc` scales **sub-linearly (O(log n))**: a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->305 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->648 ms<!-- /timing -->). A crossover is plausible at N≈800k–1M.
 - **WebGPU results may differ slightly** from sequential WASM/f64 due to Float32 precision and operation reordering in the parallel scan, not from any algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). The missing-data demo uses the same Nile dataset with 23 observations removed. See the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md) for details.
@@ -148,10 +148,14 @@ const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
 // Fit a local linear trend model (order=1, state dim m=2)
 const result = await dlmFit(y, 120, [40, 10], { order: 1 }, { dtype: DType.Float64 });
 
-console.log(result.yhat);  // smoothed predictions
+console.log(result.yhat);  // smoothed predictions [n]
 console.log(result.x);     // smoothed states [m][n]
 console.log(result.lik);   // -2·log-likelihood
+// Also available: result.xstd [m][n], result.ystd [n], result.v [n],
+//   result.resid2 [n], result.mse, result.mape, result.ssy, result.s2, result.nobs
 ```
+
+For an order=1 model with `options.spline: true`, the W covariance is scaled to produce an integrated random walk (matches MATLAB `dlmfit` spline mode).
 
 ### CommonJS (Node.js)
 
@@ -310,40 +314,6 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
 // mle.fit.nobs reports the count of non-NaN observations used
 ```
 
-## Features
-✅ implemented, ❌ not implemented, — will not be implemented
-
-### Core computation
-
-| Feature | dlm&#8209;js | dlm | Description |
-| --- | --- | --- | --- |
-| Kalman filter + RTS smoother | ✅ | ✅ | Forward filter and backward smoother for arbitrary state dimension m ≥ 1. |
-| Two-pass initialization | ✅ | ✅ | Diffuse prior → smooth → refined initial state, matching MATLAB `dlmfit`. |
-| State space generation (`dlmGenSys`) | ✅ | ✅ | Polynomial trend (order 0/1/2), full seasonal, trigonometric seasonal, AR(p) components. |
-| Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
-| Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
-| Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
-| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff. Two loss paths: `algorithm: 'scan'` uses sequential `lax.scan`; `algorithm: 'assoc'` uses `lax.associativeScan` (O(log n) depth; exact 5-tuple from [1, Lemmas 1–2]). optax Adam optimizer, fully `jit()`-compiled. |
-| h-step-ahead forecasting | ✅ | ❌ | `dlmForecast`: propagate the last smoothed state h steps forward with no new observations. Returns `yhat` [h], `ystd` [h] (growing uncertainty), and full state+covariance trajectories. Supports all model types and covariates. |
-| float32 computation | ✅ | ❌ | Configurable via `dtype` in `DlmRunConfig`. `algorithm: 'scan'` with Float32 defaults to `stabilization: 'joseph'` (Joseph form covariance update + symmetrization); stable for m ≤ 2, higher dimensions may still diverge. `algorithm: 'assoc'` with Float32 uses its own numerically stable formulation and is stable even for larger m (no joseph needed or accepted). |
-| float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
-| Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
-| Synthetic ground-truth tests | ✅ | — | Tests against known true states from a seeded generating process — independent of any reference implementation. |
-| Covariates / proxies (X) | ✅ | ✅ | `dlmFit` X parameter: per-timestep regression matrix X[t] appends static β states to the state vector. Coefficient recovery verified in `covariate.test.ts`. |
-| Plotting | — | ✅ | dlm-js is computation-only. Plotting is not planned. |
-
-### MATLAB `dlmfit`/`dlmsmo` features not yet ported
-
-| Feature | MATLAB location | Why not yet ported |
-| --- | --- | --- |
-| ~~Covariates / proxies~~ | `dlmfit` X argument, `dlmsmo` X argument | ✅ **Ported** as `dlmFit` X parameter — appends static β states; tested in `covariate.test.ts`. |
-| Multivariate observations (p > 1) | `dlmsmo` `[p,m] = size(F)` | Biggest remaining lift — affects all matrix dimensions throughout the filter/smoother. dlm-js currently assumes scalar observations (p = 1). |
-| ~~Missing data (NaN handling)~~ | `dlmsmo` `ig = not(isnan(y(i,:)))` | ✅ **Ported** — `dlmFit`: forwardStep zeros K and v at NaN timesteps; backwardStep masks the Fisher-information (N) contribution; NaN-safe diagnostics (`nobs`, `lik`, `ssy`, `s2`, `mse`, `mape`). `dlmMLE`: loss scan masks K, v, and lik-term at NaN timesteps so autodiff and parameter estimation work through missing observations. Tested in `missing.test.ts` (filter/smoother) and `mle.test.ts` (MLE). |
-| ~~Parameter optimization~~ | `dlmfit` `options.opt` | ✅ **Ported** as `dlmMLE` — uses autodiff (gradient-based) instead of Nelder-Mead. Supports `fitar` for AR coefficient estimation. See [MLE estimation](#mle-parameter-estimation) below. |
-| MCMC parameter estimation | `dlmfit` `options.mcmc` | Depends on Marko Laine's external `mcmcrun` MCMC toolbox, which is not included in the dlm repository. Would require porting or replacing the entire MCMC engine. |
-| State sampling (disturbance smoother) | `dlmsmo` `sample` argument | Generates sampled state trajectories for Gibbs sampling. Only useful together with MCMC parameter estimation, so blocked on MCMC. |
-| Covariance symmetry enforcement | `dlmsmo` `triu(C) + triu(C,1)'` | MATLAB forces exact matrix symmetry at each step to counteract asymmetric floating-point rounding. dlm-js relies on algebraic symmetry; adding enforcement is low effort but has not been needed. |
-
 ## Numerical precision
 
 Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
@@ -372,7 +342,9 @@ Both passes dispatch ⌈log₂N⌉+1 kernel rounds (Kogge-Stone), giving O(log n
 ## TODO
 
 * Test the built library (in `dist/`)
-* Implement remaining dlm features (see [unported features table](#matlab-dlmfitdlmsmo-features-not-yet-ported) — multivariate observations)
+* Multivariate observations (p > 1) — biggest remaining gap; affects all matrix dimensions throughout the filter/smoother (dlm-js currently assumes scalar observations, p = 1)
+* MCMC parameter estimation — depends on Marko Laine's `mcmcrun` toolbox; would require porting or replacing the MCMC engine
+* State sampling (disturbance smoother) — blocked on MCMC
 * Human review the AI-generated DLM port
 
 ## Project structure
@@ -514,7 +486,7 @@ In addition to the Octave reference tests above, `synthetic.test.ts` generates s
 - **Noise reduction**: Smoother RMSE < observation RMSE (the smoother actually reduces noise)
 - **Calibrated uncertainty**: True states fall within the 95% posterior credible intervals at roughly the nominal rate
 
-Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m=2), trigonometric seasonal (m=6), and full seasonal (m=13). All run across the full device × dtype matrix. Float32 is skipped for m > 2 (see float32 row in the features table).
+Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m=2), trigonometric seasonal (m=6), and full seasonal (m=13). All run across the full device × dtype matrix. Float32 is skipped for m > 2 (see [scan algorithm / Float32 stabilization](#scan-algorithm)).
 
 ## Development
 
