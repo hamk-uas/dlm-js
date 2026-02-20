@@ -256,7 +256,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 - Missing-data (NaN) support: observed timesteps use per-step Kalman gain; NaN timesteps use $A = G$, $b = 0$, $C = W$, $\eta = 0$, $J = 0$ (pure prediction)
 
 **Backward smoother** (Särkkä & García-Fernández [1], Lemmas 5–6 — suffix scan):
-- Computes exact per-timestep smoother gains $E_k = C_{filt,k} G^\top (G C_{filt,k} G^\top + W)^{-1}$ from the forward-filtered covariances via batched `np.linalg.inv`
+- Computes exact per-timestep smoother gains $E_k = C_{filt,k} G^\top (G C_{filt,k} G^\top + W)^{-1}$ from the forward-filtered covariances via batched `adSafeInv` (analytic cofactor expansion for m ≤ 3, Schur-complement block inversion for m ≥ 4; float32 sub-blocks additionally regularized with ε·I to prevent near-singularity spikes in the loss)
 - Constructs smoother elements $(E_k, g_k, L_k)$ where $g_k = (I - E_k G) \bar{x}_k$ and $L_k$ uses Joseph form $(I - E_k G) C_{filt,k} (I - E_k G)^\top + E_k W E_k^\top$ for guaranteed PSD
 - Terminal element: $E_{n-1} = 0$, $g_{n-1} = \bar{x}_{n-1}$, $L_{n-1} = C_{filt,n-1}$
 - Composed via `lax.associativeScan(compose, elems, { reverse: true })` (suffix scan, O(log n) depth)
@@ -267,7 +267,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 |-----------|--------|---------------|
 | Forward per-timestep elements | [1, Lemma 1] — exact Kalman gains $K_t = W F^\top S_t^{-1}$ | None — exact per-timestep gains |
 | Forward prefix scan composition | [1, Lemma 2] — 5-tuple with $(I + C_i J_j + \epsilon I)^{-1}$ | Regularization $\epsilon$ for numerical stability; otherwise exact |
-| Backward smoother elements | [1, Lemmas 5–6] — Theorem 2 gives smoothed density as suffix scan | None — exact per-timestep gains $E_k$ from filtered covariances |
+| Backward smoother elements | [1, Lemmas 5–6] — Theorem 2 gives smoothed density as suffix scan | None — exact per-timestep gains $E_k$ from filtered covariances via `adSafeInv`; float32 sub-block ε·I prevents near-singularity |
 | Backward suffix scan composition | [1, §4] — same associative law as forward | None (algebraically identical to sequential RTS) |
 | Joseph form covariance | Standard Kalman filter stabilization | None — guarantees PSD by construction |
 
