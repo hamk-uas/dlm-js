@@ -302,7 +302,7 @@ svg.push(`<line x1="${l1x}" y1="${l1y+45}" x2="${l1x+22}" y2="${l1y+45}" stroke=
 svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">15-year trend forecast ±2σ (level state)</text>`);
 
 // Title
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N) — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
+svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // ── Panel 2 ──────────────────────────────────────────────────────────────
 svg.push(...renderGridLines(yTicks2Raw, sy2, margin.left, margin.left + plotW));

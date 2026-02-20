@@ -278,14 +278,7 @@ push(`<text x="${legX + 24}" y="${legY + 65}" dominant-baseline="middle" fill="#
 
 // ── Convergence miniplot (right half of legend) ────────────────────────────
 
-// Static sparkline labels rendered outside the clip group (always visible)
-lines.push(...renderSparklineLabels({
-  x0: sparkX_train, y0: sparkY, h: sparkH,
-  label: "\u22122\u00b7logL",
-  vmin: likMin, vmax: likMax,
-}));
-
-// JIT label + separator (rendered after sparkline labels, on top of jit fill rect)
+// JIT label + separator (rendered on top of jit fill rect)
 if (jitBarW > 0) {
   // "jit" text: fades in during JIT phase, stays visible
   push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
@@ -305,14 +298,25 @@ lines.push(...renderSparkline({
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
   noLabels: true,
+  noBaseline: true,
 }));
 push(`</g>`);
+
+// Baseline outside clip group (always visible, not affected by reveal)
+push(`<line x1="${r(sparkX_train)}" y1="${sparkY + sparkH}" x2="${r(sparkX_train + trainSparkW)}" y2="${sparkY + sparkH}" stroke="#eee" stroke-width="0.5"/>`);
+
+// Sparkline labels on top of baseline
+lines.push(...renderSparklineLabels({
+  x0: sparkX_train, y0: sparkY, h: sparkH,
+  label: "\u22122\u00b7logL",
+  vmin: likMin, vmax: likMax,
+}));
 
 // Sparkline x-axis labels
 const sparkAxisY = sparkY + sparkH + 9;
 const trainMs = Math.round(trainDuration * 1000);
 push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
-push(`<text x="${r(sparkX + sparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
 push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
 // "train Xms" label overlaid on center of loss sparkline, fades in at end of JIT phase
 push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);

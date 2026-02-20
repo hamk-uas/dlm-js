@@ -111,14 +111,15 @@ export function renderSparkline(opts: {
   vmaxFmt?: string;
   /** When true, omit the static label/vmin/vmax texts so they can be placed outside a clip group. */
   noLabels?: boolean;
+  /** When true, omit the horizontal baseline rule so it can be placed outside a reveal clip group. */
+  noBaseline?: boolean;
 }): string[] {
   const { points, color, x0, y0, w, h, label, vmin, vmax } = opts;
   const vmaxFmt = opts.vmaxFmt ?? vmax.toFixed(0);
   const vminFmt = opts.vminFmt ?? vmin.toFixed(0);
-  const polyAndRule = [
-    `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>`,
-    `<line x1="${x0}" y1="${y0 + h}" x2="${x0 + w}" y2="${y0 + h}" stroke="#eee" stroke-width="0.5"/>`,
-  ];
+  const poly = `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  const rule = `<line x1="${x0}" y1="${y0 + h}" x2="${x0 + w}" y2="${y0 + h}" stroke="#eee" stroke-width="0.5"/>`;
+  const polyAndRule = opts.noBaseline ? [poly] : [poly, rule];
   if (opts.noLabels) return polyAndRule;
   return [
     `<text x="${x0}" y="${y0 - 2}" fill="#666" font-size="8">${label}</text>`,

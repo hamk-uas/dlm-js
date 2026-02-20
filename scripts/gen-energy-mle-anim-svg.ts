@@ -279,21 +279,7 @@ push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#
 
 // ── Convergence miniplots (right half) ─────────────────────────────────────
 
-// Static labels outside the clip group (always visible)
-lines.push(...renderSparklineLabels({
-  x0: sparkX_train, y0: sparkY1, h: sparkH1,
-  label: "\u22122\u00b7logL",
-  vmin: likMin, vmax: likMax,
-}));
-lines.push(...renderSparklineLabels({
-  x0: sparkX_train, y0: sparkY2, h: sparkH2,
-  label: "\u03c6 (AR)",
-  vmin: arphiMin, vmax: arphiMax,
-  vminFmt: arphiMin.toFixed(2),
-  vmaxFmt: arphiMax.toFixed(2),
-}));
-
-// JIT label + separator (rendered after sparkline labels, on top of jit fill rect)
+// JIT label + separator (rendered on top of jit fill rect)
 if (jitBarW > 0) {
   // "jit" text: fades in during JIT phase, stays visible
   push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY1 + sparkH1 / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
@@ -314,6 +300,7 @@ lines.push(...renderSparkline({
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
   noLabels: true,
+  noBaseline: true,
 }));
 
 // arphi sparkline
@@ -326,15 +313,34 @@ lines.push(...renderSparkline({
   vminFmt: arphiMin.toFixed(2),
   vmaxFmt: arphiMax.toFixed(2),
   noLabels: true,
+  noBaseline: true,
 }));
 
 push(`</g>`);
+
+// Baseline lines outside clip group (always visible, not affected by reveal)
+push(`<line x1="${r(sparkX_train)}" y1="${sparkY1 + sparkH1}" x2="${r(sparkX_train + trainSparkW)}" y2="${sparkY1 + sparkH1}" stroke="#eee" stroke-width="0.5"/>`);
+push(`<line x1="${r(sparkX_train)}" y1="${sparkY2 + sparkH2}" x2="${r(sparkX_train + trainSparkW)}" y2="${sparkY2 + sparkH2}" stroke="#eee" stroke-width="0.5"/>`);
+
+// Sparkline labels on top of baselines
+lines.push(...renderSparklineLabels({
+  x0: sparkX_train, y0: sparkY1, h: sparkH1,
+  label: "\u22122\u00b7logL",
+  vmin: likMin, vmax: likMax,
+}));
+lines.push(...renderSparklineLabels({
+  x0: sparkX_train, y0: sparkY2, h: sparkH2,
+  label: "\u03c6 (AR)",
+  vmin: arphiMin, vmax: arphiMax,
+  vminFmt: arphiMin.toFixed(2),
+  vmaxFmt: arphiMax.toFixed(2),
+}));
 
 // Shared x-axis labels (training portion)
 const sparkAxisY = sparkY2 + sparkH2 + 8;
 const trainMs = Math.round(trainDuration * 1000);
 push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
-push(`<text x="${r(sparkX + sparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
 push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
 // "train Xms" label overlaid on center of loss sparkline, fades in at end of JIT phase
 push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${r(sparkY1 + sparkH1 / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);

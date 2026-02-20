@@ -167,9 +167,6 @@
 <rect x="338" y="84" width="12" height="10" fill="rgba(37,99,235,0.07)" stroke="#2563eb" stroke-width="0.5"/>
 <text x="354" y="89" dominant-baseline="middle" fill="#666" font-size="11">±2σ obs prediction (incl. noise)</text>
 <text x="354" y="103" dominant-baseline="middle" fill="#666" font-size="10">Final −2·logL: 1104.92</text>
-<text x="675" y="58" fill="#666" font-size="8">−2·logL</text>
-<text x="673" y="63" text-anchor="end" fill="#999" font-size="7">1132</text>
-<text x="673" y="90" text-anchor="end" fill="#999" font-size="7">1105</text>
 <text x="642.5" y="75.0" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.0556;0.1111;1" dur="2.7s" repeatCount="indefinite"/>
   jit
@@ -177,10 +174,13 @@
 <line x1="675.0" y1="60" x2="675.0" y2="90" stroke="#d1d5db" stroke-width="0.5" stroke-dasharray="2,2"/>
 <g clip-path="url(#spark-clip)">
 <polyline points="675.0,60.0 675.7,64.6 676.5,68.6 677.2,71.8 678.0,74.2 678.7,75.8 679.4,76.5 680.2,76.5 680.9,76.0 681.6,75.6 682.4,75.4 683.1,75.7 683.9,76.4 684.6,77.3 685.3,78.2 686.1,79.2 686.8,80.0 687.5,80.6 688.3,81.0 689.0,81.2 689.8,81.3 690.5,81.4 691.2,81.6 692.0,81.8 692.7,82.2 693.4,82.7 694.2,83.2 694.9,83.8 695.7,84.4 696.4,85.0 697.1,85.4 697.9,85.8 698.6,86.1 699.3,86.4 700.1,86.6 700.8,86.8 701.6,87.1 702.3,87.4 703.0,87.6 703.8,87.8 704.5,87.9 705.2,87.9 706.0,88.0 706.7,88.0 707.5,88.1 708.2,88.2 708.9,88.3 709.7,88.5 710.4,88.6 711.1,88.7 711.9,88.7 712.6,88.8 713.4,88.9 714.1,89.1 714.8,89.2 715.6,89.2 716.3,89.3 717.0,89.3 717.8,89.4 718.5,89.4 719.3,89.5 720.0,89.5 720.7,89.5 721.5,89.5 722.2,89.6 723.0,89.6 723.7,89.6 724.4,89.7 725.2,89.7 725.9,89.7 726.6,89.7 727.4,89.8 728.1,89.8 728.9,89.8 729.6,89.8 730.3,89.8 731.1,89.8 731.8,89.8 732.5,89.8 733.3,89.9 734.0,89.9 734.8,89.9 735.5,89.9 736.2,89.9 737.0,89.9 737.7,89.9 738.4,89.9 739.2,89.9 739.9,89.9 740.7,89.9 741.4,89.9 742.1,89.9 742.9,89.9 743.6,90.0 744.3,90.0 745.1,90.0 745.8,90.0 746.6,90.0 747.3,90.0 748.0,90.0 748.8,90.0 749.5,90.0 750.2,90.0 751.0,90.0 751.7,90.0 752.5,90.0 753.2,90.0 753.9,90.0 754.7,90.0 755.4,90.0 756.1,90.0 756.9,90.0 757.6,90.0 758.4,90.0 759.1,90.0 759.8,90.0 760.6,90.0 761.3,90.0 762.0,90.0 762.8,90.0 763.5,90.0 764.3,90.0 765.0,90.0" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linejoin="round"/>
-<line x1="675" y1="90" x2="765" y2="90" stroke="#eee" stroke-width="0.5"/>
 </g>
+<line x1="675.0" y1="90" x2="765.0" y2="90" stroke="#eee" stroke-width="0.5"/>
+<text x="675" y="58" fill="#666" font-size="8">−2·logL</text>
+<text x="673" y="63" text-anchor="end" fill="#999" font-size="7">1132</text>
+<text x="673" y="90" text-anchor="end" fill="#999" font-size="7">1105</text>
 <text x="675.0" y="99" text-anchor="middle" fill="#999" font-size="7">0</text>
-<text x="687.5" y="99" text-anchor="middle" fill="#999" font-size="7">iters</text>
+<text x="720.0" y="99" text-anchor="middle" fill="#999" font-size="7">iters</text>
 <text x="765.0" y="99" text-anchor="middle" fill="#999" font-size="7">122</text>
 <text x="720.0" y="75.0" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.1111;0.2666;1" dur="2.7s" repeatCount="indefinite"/>
