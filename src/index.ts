@@ -62,6 +62,7 @@ const dlmSmo = async (
   stateSize: number,
   dtype: DType = DType.Float64,
   FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
+  forceAssocScan?: boolean,
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y.length;
 
@@ -84,7 +85,7 @@ const dlmSmo = async (
   // ─────────────────────────────────────────────────────────────────────────
   const device = defaultDevice();
   const f32 = dtype === DType.Float32;
-  const useAssocScan = f32 && device === 'webgpu';
+  const useAssocScan = forceAssocScan || (f32 && device === 'webgpu');
 
   // Stack observations: shape [n, 1, 1] for matmul compatibility
   using y_arr = np.array(Array.from(y).map(yi => [[yi]]), { dtype });
@@ -525,21 +526,38 @@ const dlmSmo = async (
       J_arr.dispose();
 
       // ─── Recover sequential-convention diagnostics from filtered results ───
-      // x_pred[t] = x_{t-1|t-1} → prepend x0, drop last
-      // C_pred[t] = C_{t-1|t-1} → prepend C0, drop last
+      //
+      // The assocScan forward pass produces the standard Kalman filtered state
+      // x_{t|t} and C_{t|t}. But the MATLAB DLM sequential convention carries
+      // a hybrid predict+update state:
+      //
+      //   carry_{t+1} = G · x_{t|t}           (state prediction for next step)
+      //   carry_C_{t+1} = G · C_{t|t} · G' + W  (covariance prediction)
+      //
+      // The sequential path stores x_pred[t] = carry entering step t. So:
+      //   x_pred[0] = x0
+      //   x_pred[t] = G · x_filt[t-1]         for t >= 1
+      //   C_pred[0] = C0
+      //   C_pred[t] = G · C_filt[t-1] · G' + W  for t >= 1
       const xFiltParts = np.split(x_filt, [n - 1], 0);
       xFiltParts[1].dispose();
       using x_filt_head = xFiltParts[0];  // [n-1, m, 1]
+      // Apply G to get predicted state: G · x_filt[t-1]  [n-1, m, 1]
+      using x_filt_pred = np.einsum('ij,njk->nik', G, x_filt_head);
       using x0_1 = np.reshape(x0, [1, stateSize, 1]);
       // jax-js-lint: allow-non-using — stored in fwd.x_pred, disposed by caller
-      const x_pred_arr = np.concatenate([x0_1, x_filt_head], 0);  // [n, m, 1]
+      const x_pred_arr = np.concatenate([x0_1, x_filt_pred], 0);  // [n, m, 1]
 
       const cFiltParts = np.split(C_filt, [n - 1], 0);
       cFiltParts[1].dispose();
       using C_filt_head = cFiltParts[0];  // [n-1, m, m]
+      // Apply G·C·G' + W to get predicted covariance  [n-1, m, m]
+      using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt_head, G);
+      using W_bcast_pred = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n - 1, 1, 1]);
+      using C_filt_pred = np.add(GCGt, W_bcast_pred);
       using C0_1 = np.reshape(C0, [1, stateSize, stateSize]);
       // jax-js-lint: allow-non-using — stored in fwd.C_pred, disposed by caller
-      const C_pred_arr = np.concatenate([C0_1, C_filt_head], 0);  // [n, m, m]
+      const C_pred_arr = np.concatenate([C0_1, C_filt_pred], 0);  // [n, m, m]
 
       // v[t] = mask · (y - F·x_pred)  [n,1,1]
       using Fx_pred = np.einsum('nij,njk->nik', FF_scan, x_pred_arr); // [n,1,1]
@@ -807,6 +825,7 @@ export const dlmFit = async (
   dtype: DType = DType.Float64,
   options: DlmOptions = {},
   X?: ArrayLike<number>[],  // n×q: X[t] is the covariate row at time t
+  forceAssocScan?: boolean,
 ): Promise<DlmFitResult> => {
   const n = y.length;
   const FA = getFloatArrayType(dtype);
@@ -919,7 +938,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr, forceAssocScan);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -933,7 +952,7 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr, forceAssocScan);
 
   FF_arr?.dispose();
 
