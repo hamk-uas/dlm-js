@@ -237,7 +237,7 @@ const fmt2 = (v: number): string => (v / 1e9).toFixed(0);
 
 // ── Build SVG ─────────────────────────────────────────────────────────────
 const svg: string[] = [
-  `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">`,
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui,-apple-system,sans-serif" font-size="12">`,
   `<rect width="${W}" height="${H}" fill="white"/>`,
 ];
 
