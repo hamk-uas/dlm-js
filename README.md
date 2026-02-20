@@ -14,85 +14,104 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm (sequential scan)" src="assets/niledemo-scan.svg" />
 
-*Nile demo (sequential scan): first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:nile-demo:first -->96.83 ms<!-- /timing -->, warm run <!-- timing:nile-demo:warm -->47.06 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Nile demo (sequential scan): first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm (associative scan)" src="assets/niledemo-assoc.svg" />
 
-*Nile demo (associativeScan): same model via `forceAssocScan` — exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020). Results match sequential scan to within numerical tolerance (validated by `assocscan.test.ts`). Runtime (`wasm`/f64 backend): first run <!-- timing:nile-demo:assoc:first -->248.38 ms<!-- /timing -->, warm run <!-- timing:nile-demo:assoc:warm -->93.05 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Nile demo (assoc): same model via `run: { algorithm: 'assoc' }` — exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020). Results match sequential scan to within numerical tolerance (validated by `assocscan.test.ts`). Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave (sequential scan)" src="assets/kaisaniemi-scan.svg" />
 
-*Kaisaniemi seasonal demo (sequential scan, from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:kaisaniemi:first -->101.70 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:warm -->41.75 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (sequential scan, from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Kaisaniemi monthly temperatures (associative scan): smoothed level and combined signal from dlm-js via forceAssocScan" src="assets/kaisaniemi-assoc.svg" />
+<img alt="Kaisaniemi monthly temperatures (associative scan): smoothed level and combined signal from dlm-js via algorithm: assoc" src="assets/kaisaniemi-assoc.svg" />
 
-*Kaisaniemi seasonal demo (associativeScan): same model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). Results validated against Octave reference by `assocscan.test.ts`. Runtime (`wasm`/f64 backend): first run <!-- timing:kaisaniemi:assoc:first -->260.20 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:assoc:warm -->101.73 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (assoc): same model via `run: { algorithm: 'assoc' }` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). Results validated against Octave reference by `assocscan.test.ts`. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy demand demo with seasonal + AR model: smoothed level, seasonal, AR state, and combined signal from dlm-js and MATLAB/Octave (sequential scan)" src="assets/trigar-scan.svg" />
 
-*Energy demand demo (sequential scan, synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:trigar:first -->97.61 ms<!-- /timing -->, warm run <!-- timing:trigar:warm -->46.73 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Energy demand demo (sequential scan, synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy demand demo with seasonal + AR model (associative scan): smoothed states from dlm-js via forceAssocScan" src="assets/trigar-assoc.svg" />
+<img alt="Energy demand demo with seasonal + AR model (associative scan): smoothed states from dlm-js via algorithm: assoc" src="assets/trigar-assoc.svg" />
 
-*Energy demand demo (associativeScan): same model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). Results validated against Octave reference by `assocscan.test.ts`. Runtime (`wasm`/f64 backend): first run <!-- timing:trigar:assoc:first -->265.82 ms<!-- /timing -->, warm run <!-- timing:trigar:assoc:warm -->103.25 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Energy demand demo (assoc): same model via `run: { algorithm: 'assoc' }` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). Results validated against Octave reference by `assocscan.test.ts`. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Nile MLE optimization via lax.scan: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim-scan.svg" />
 
-*Nile MLE demo (`lax.scan`, sequential): parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Converged in <!-- timing:nile-mle:iterations -->122<!-- /timing --> iterations / <!-- timing:nile-mle:elapsed -->2810 ms<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo (`lax.scan`, sequential): parameter estimation via autodiff (`dlmMLE`). Orange dashed = initial variance-based guess, blue solid = MLE optimum. The entire optimization step — `valueAndGrad` (Kalman filter forward + AD backward) and Adam parameter update — is wrapped in a single `jit()` call. Estimated observation noise s = 121.1 (known: 122.9), -2·log-likelihood = 1105.0. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Nile MLE optimization via associativeScan: exact 5-tuple parallel prefix scan (Lemmas 1–2)" src="assets/nile-mle-anim-assoc.svg" />
+<img alt="Nile MLE optimization via assoc: exact 5-tuple parallel prefix scan (Lemmas 1–2)" src="assets/nile-mle-anim-assoc.svg" />
 
-*Nile MLE demo (`associativeScan`, parallel): same model estimated via `makeKalmanLossAssoc` — uses exact 5-tuple forward filter from Särkkä & García-Fernández [1, Lemmas 1–2] + O(log n) `lax.associativeScan` prefix scan. Converged in <!-- timing:nile-mle-assoc:iterations -->122<!-- /timing --> iterations / <!-- timing:nile-mle-assoc:elapsed -->727 ms<!-- /timing --> on the `wasm` backend (−2·logL ≈ <!-- timing:nile-mle-assoc:lik -->1104.9<!-- /timing -->). Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo (`assoc`, parallel): same model estimated via `makeKalmanLossAssoc` — uses exact 5-tuple forward filter from Särkkä & García-Fernández [1, Lemmas 1–2] + O(log n) `lax.associativeScan` prefix scan. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Nile MLE optimization via WebGPU: exact 5-tuple associativeScan parallel prefix scan on GPU" src="assets/nile-mle-anim-webgpu.svg" />
+<img alt="Nile MLE optimization via WebGPU: exact 5-tuple assoc parallel prefix scan on GPU" src="assets/nile-mle-anim-webgpu.svg" />
 
-*Nile MLE demo (WebGPU, `associativeScan`): same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:nile-mle-webgpu:iterations -->115<!-- /timing --> iterations / <!-- timing:nile-mle-webgpu:elapsed -->16188 ms<!-- /timing --> (−2·logL ≈ <!-- timing:nile-mle-webgpu:lik -->1104.9<!-- /timing -->). Slower than WASM at n=100 due to GPU dispatch overhead at small sequence lengths; WebGPU pays off at large N where O(log n) depth beats WASM's O(n) sequential filter. Regenerate with `pnpm run gen:svg`.*
+*Nile MLE demo (WebGPU, `assoc`): same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Slower than WASM at n=100 due to GPU dispatch overhead at small sequence lengths; WebGPU pays off at large N where O(log n) depth beats WASM's O(n) sequential filter. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Energy MLE optimization via lax.scan with AR coefficient estimation: joint estimation of observation noise, state noise, and AR coefficient via autodiff" src="assets/energy-mle-anim-scan.svg" />
 
-*Energy MLE demo (`lax.scan`, sequential) with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. <!-- timing:energy-mle:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle:elapsed -->6.5 s<!-- /timing --> on the `wasm` backend (Adam b2=0.9, `checkpoint: false`). Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo (`lax.scan`, sequential) with AR coefficient estimation: joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging from a variance-based initial guess (orange dashed) to the MLE optimum (blue solid). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85). Model: `order=1`, `trig=1`, `ns=12`, m=5. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy MLE optimization via associativeScan with AR estimation: exact 5-tuple parallel prefix scan" src="assets/energy-mle-anim-assoc.svg" />
+<img alt="Energy MLE optimization via assoc with AR estimation: exact 5-tuple parallel prefix scan" src="assets/energy-mle-anim-assoc.svg" />
 
-*Energy MLE demo (`associativeScan`, parallel) with AR coefficient estimation: same model via `makeKalmanLossAssoc`. Converged in <!-- timing:energy-mle-assoc:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle-assoc:elapsed -->4.9 s<!-- /timing --> on the `wasm` backend. Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo (`assoc`, parallel) with AR coefficient estimation: same model via `makeKalmanLossAssoc`. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy MLE optimization via WebGPU with AR coefficient estimation: exact 5-tuple associativeScan parallel prefix scan on GPU" src="assets/energy-mle-anim-webgpu.svg" />
+<img alt="Energy MLE optimization via WebGPU with AR coefficient estimation: exact 5-tuple assoc parallel prefix scan on GPU" src="assets/energy-mle-anim-webgpu.svg" />
 
-*Energy MLE demo (WebGPU, `associativeScan`) with AR coefficient estimation: same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:energy-mle-webgpu:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle-webgpu:elapsed -->29.4 s<!-- /timing --> (−2·logL ≈ <!-- timing:energy-mle-webgpu:lik -->443.1<!-- /timing -->). Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo (WebGPU, `assoc`) with AR coefficient estimation: same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Stratospheric ozone trend analysis (sequential scan): smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo-scan.svg" />
 
 *Stratospheric ozone demo (sequential scan, Laine, Latva-Pukkila & Kyrölä (2014), [ACP 14, 9707–9725](https://doi.org/10.5194/acp-14-9707-2014), replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011; data file from [mjlaine/dlm](https://github.com/mjlaine/dlm/tree/master/examples)) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red) and a 15-year (180-month) `dlmForecast` trend extrapolation beyond the last observation (dashed green, ± 2σ level-state uncertainty, shaded region — the level state x[0] is plotted rather than the full observation prediction, which would oscillate with the seasonal harmonics); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Forecast interpretation note: this is a conditional forecast under the chosen future proxy path assumptions (unknown future proxies are not inferred by the model). Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Stratospheric ozone trend analysis (associative scan): smoothed level and proxy covariate contributions from dlm-js via forceAssocScan" src="assets/ozone-demo-assoc.svg" />
+<img alt="Stratospheric ozone trend analysis (associative scan): smoothed level and proxy covariate contributions from dlm-js via algorithm: assoc" src="assets/ozone-demo-assoc.svg" />
 
-*Stratospheric ozone demo (associativeScan): same m=9 model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). The large state dimension (m=9) is a meaningful performance test of the associative scan path. Data: Laine, Latva-Pukkila & Kyrölä (2014), [ACP 14, 9707–9725](https://doi.org/10.5194/acp-14-9707-2014); SAGE II / GOMOS instruments; data file from [mjlaine/dlm](https://github.com/mjlaine/dlm/tree/master/examples). Regenerate with `pnpm run gen:svg`.*
+*Stratospheric ozone demo (assoc): same m=9 model via `run: { algorithm: 'assoc' }` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). The large state dimension (m=9) is a meaningful performance test of the associative scan path. Data: Laine, Latva-Pukkila & Kyrölä (2014), [ACP 14, 9707–9725](https://doi.org/10.5194/acp-14-9707-2014); SAGE II / GOMOS instruments; data file from [mjlaine/dlm](https://github.com/mjlaine/dlm/tree/master/examples). Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Missing-data demo: Nile flow with 23 NaN observations — smoothed level F·x_smooth ± 2σ from dlm-js and MATLAB/Octave, outer band shows observation prediction interval, gray shading over missing regions (sequential scan)" src="assets/missing-demo-scan.svg" />
 
-*Missing-data demo (sequential scan): Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->100.61 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->41.97 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Missing-data demo (sequential scan): Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Missing-data demo (associative scan): Nile flow with 23 NaN observations via forceAssocScan" src="assets/missing-demo-assoc.svg" />
+<img alt="Missing-data demo (associative scan): Nile flow with 23 NaN observations via algorithm: assoc" src="assets/missing-demo-assoc.svg" />
 
-*Missing-data demo (associativeScan): same NaN-handling model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). NaN masking validated against Octave reference by `assocscan.test.ts`. Runtime (`wasm`/f64 backend): first run <!-- timing:missing:assoc:first -->248.46 ms<!-- /timing -->, warm run <!-- timing:missing:assoc:warm -->93.63 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
-
-Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent. Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
+*Missing-data demo (assoc): same NaN-handling model via `run: { algorithm: 'assoc' }` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). NaN masking validated against Octave reference by `assocscan.test.ts`. Regenerate with `pnpm run gen:svg`.*
 
 ### Backend performance
 
-`dlmFit` warm-run timings across backends (jitted core, two sequential runs, second shown). Joseph form stabilization is active on all Float32 paths. WebGPU uses `lax.associativeScan` for both the forward filter (exact 5-tuple from [1, Lemmas 1–2]) and the backward smoother (Särkkä & García-Fernández 2020 parallel smoother, Lemmas 5–6, with per-timestep gains via batched `adSafeInv`). Note: WebGPU dispatch overhead makes it slower than WASM for the dataset sizes shown here; it is included as a research/experimental path.
+`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 4 models and all outputs: yhat, ystd, x, xstd) for each `DlmRunConfig` combination — backend × dtype × algorithm × stabilization. `assoc + joseph` is an invalid combination and throws. Regenerate with `pnpm run bench:full`. **†** marks the combination used when `run: {}` is passed: f64 → scan + none; f32 → scan + joseph; webgpu/f32 → assoc (no explicit stabilization).
 
-| Model | $n$ | $m$ | cpu / f32 | wasm / f32 | wasm / f64 | webgpu / f32 |
-|-------|-----|-----|-----------|------------|------------|--------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:cpu-f32 -->200 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f32 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->300 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:cpu-f32 -->375 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f32 -->22 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:cpu-f32 -->443 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f32 -->29 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->339 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:cpu-f32 -->443 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f32 -->21 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->356 ms<!-- /timing --> |
+Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
+
+| backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | max \|Δ\| | max \|Δ\|% |
+|---------|-------|-----------|------|----------|----------|------------|--------|----------|------------|
+| cpu | f64 | scan | none | **166 ms †** | **358 ms †** | **435 ms †** | **478 ms †** | 3.78e-8 | 1.62e-4 |
+| cpu | f64 | scan | joseph | 191 ms | 389 ms | 481 ms | 528 ms | 9.38e-11 | 3.56e-9 |
+| cpu | f64 | assoc | none | 74 ms | 201 ms | 853 ms | 1534 ms | 5.12e-9 | 2.17e-5 |
+| cpu | f32 | scan | none | 171 ms | 345 ms | 439 ms | 482 ms | ⚠️ 180 | ⚠️ 1.4e6 |
+| cpu | f32 | scan | joseph | **184 ms †** | **384 ms †** | **484 ms †** | **533 ms †** | 1.32e-2 | 0.17 |
+| cpu | f32 | assoc | none | 67 ms | 204 ms | 869 ms | 1552 ms | 4.93e-3 | 19.7 |
+| wasm | f64 | scan | none | **16 ms †** | **20 ms †** | **22 ms †** | **23 ms †** | 3.78e-8 | 1.62e-4 |
+| wasm | f64 | scan | joseph | 18 ms | 22 ms | 22 ms | 22 ms | 9.38e-11 | 3.56e-9 |
+| wasm | f64 | assoc | none | 24 ms | 25 ms | 32 ms | 39 ms | 5.12e-9 | 2.17e-5 |
+| wasm | f32 | scan | none | 15 ms | 20 ms | 21 ms | 19 ms | ⚠️ 7000 | ⚠️ 2e6 |
+| wasm | f32 | scan | joseph | **17 ms †** | **20 ms †** | **24 ms †** | **21 ms †** | 3.99e-2 | 1.37 |
+| wasm | f32 | assoc | none | 23 ms | 24 ms | 33 ms | 36 ms | 4.93e-3 | 21.9 |
+| webgpu | f32 | scan | none | 549 ms | 913 ms | 1011 ms | 1141 ms | ⚠️ 110 | ⚠️ 6.7e4 |
+| webgpu | f32 | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | 2.49e-2 | 1.32 |
+| webgpu | f32 | assoc | none | **325 ms †** | **353 ms †** | **356 ms †** | **372 ms †** | 4.93e-3 | 19.8 |
+
+⚠️ = numerically unstable: f32 + scan + none without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 4 benchmark models and all output variables (yhat, ystd, x, xstd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small xstd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
-- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — at short series the ~20 ms runtime is dominated by fixed JIT/marshaling overhead, not compute. The asymptotic per-step cost is ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->156 ms<!-- /timing --> at N=102400. WebGPU/f32 scales **sub-linearly (O(log n))**: both forward filter and backward smoother use `lax.associativeScan`, so a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->305 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->648 ms<!-- /timing -->). The WASM-to-WebGPU ratio **converges** as N grows: ~27× at N=100, ~7× at N=102400. A crossover is plausible at N≈800k–1M where WASM's linear growth outpaces WebGPU's logarithmic growth.
-- **Joseph form overhead is negligible** — wasm/f32 (Joseph form active) vs wasm/f64 (no Joseph form) differ by <25%, well within JIT variance.
+- **`assoc` on CPU is faster for small m, slower for large m** — for m=1–2, the scan composition is cheap and reduces interpreter overhead; for m=4–5 the extra matrix operations dominate (~2× slower than `scan` on CPU).
+- **`assoc` on WASM has no warm-run advantage over `scan`** — warm times are nearly identical (~20–40 ms) for all models; the first-run cost is ~5× higher due to extra JIT compilation paths, so prefer `scan` on WASM unless you need the parallel path explicitly.
+- **`assoc + joseph` is an error** — `stabilization: 'joseph'` combined with an explicit `algorithm: 'assoc'` throws at runtime. The assoc path always applies its own numerically stable formulation; use `assoc` without setting `stabilization`.
+- **f32 + scan + none is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph, as shown by the reasonable 4.93e-3 max error vs the ⚠️ 7000 for scan+none.
+- **Joseph form overhead is negligible on WASM** — f32+joseph vs f64+none differ by <5 ms across all models, well within JIT variance. The stabilization choice is numerically important but not a performance concern.
+- **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
+- **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
+- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->152 ms<!-- /timing --> at N=102400. WebGPU/f32 `assoc` scales **sub-linearly (O(log n))**: a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->309 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->668 ms<!-- /timing -->). A crossover is plausible at N≈800k–1M.
 - **WebGPU results may differ slightly** from sequential WASM/f64 due to Float32 precision and operation reordering in the parallel scan, not from any algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). The missing-data demo uses the same Nile dataset with 23 observations removed. See the [MLE comparison](https://github.com/hamk-uas/dlm-js/blob/main/mle-comparison.md) for details.
@@ -127,7 +146,7 @@ import { DType } from "@hamk-uas/jax-js-nonconsuming";
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
 
 // Fit a local linear trend model (order=1, state dim m=2)
-const result = await dlmFit(y, 120, [40, 10], DType.Float64, { order: 1 });
+const result = await dlmFit(y, 120, [40, 10], { order: 1 }, { dtype: DType.Float64 });
 
 console.log(result.yhat);  // smoothed predictions
 console.log(result.x);     // smoothed states [m][n]
@@ -172,7 +191,7 @@ const mle = await dlmMLE(
   300,                    // max iterations
   0.05,                   // Adam learning rate
   1e-6,                   // convergence tolerance
-  DType.Float64,
+  { dtype: DType.Float64 },
 );
 
 console.log(mle.s);           // estimated observation noise std dev
@@ -187,14 +206,14 @@ const mleAR = await dlmMLE(
   y,
   { order: 0, arphi: [0.5], fitar: true },  // initial arphi + fitar flag
   undefined,
-  300, 0.02, 1e-6, DType.Float64,
+  300, 0.02, 1e-6, { dtype: DType.Float64 },
 );
 console.log(mleAR.arphi);     // estimated AR coefficients (e.g. [0.81])
 ```
 
 The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. Noise parameters are unconstrained via log-space: `s = exp(θ_s)`, `w[i] = exp(θ_{w,i})`. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior).
 
-**Two MLE loss paths:** On CPU/WASM, the Kalman filter inside the loss function uses sequential `lax.scan` (O(n) depth). On WebGPU + Float32, `makeKalmanLossAssoc` replaces it with `lax.associativeScan` (O(log n) depth) using the exact 5-tuple forward filter from [1, Lemmas 1–2]. Both paths minimize the same prediction-error likelihood $-2\log L = \sum_t [v_t^2/C_p^{(t)} + \log C_p^{(t)}]$. See [mle-comparison.md](mle-comparison.md#makekalmanLossAssoc--parallel-mle-loss-via-associative-scan) for the full derivation.
+**Two MLE loss paths:** The Kalman filter inside the loss function follows the `run` config: `algorithm: 'scan'` (the default) uses sequential `lax.scan` (O(n) depth); `algorithm: 'assoc'` uses `makeKalmanLossAssoc` with `lax.associativeScan` (O(log n) depth), using the exact 5-tuple forward filter from [1, Lemmas 1–2]. Both paths minimize the same prediction-error likelihood $-2\log L = \sum_t [v_t^2/C_p^{(t)} + \log C_p^{(t)}]$. See [mle-comparison.md](mle-comparison.md#makekalmanLossAssoc--parallel-mle-loss-via-associative-scan) for the full derivation.
 
 **Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~122 iterations (~2.6 s) with the default Adam b2=0.9. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
@@ -211,10 +230,10 @@ import { DType } from "@hamk-uas/jax-js-nonconsuming";
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
 
 // Fit a local linear trend model
-const fit = await dlmFit(y, 120, [40, 10], DType.Float64, { order: 1 });
+const fit = await dlmFit(y, 120, [40, 10], { order: 1 }, { dtype: DType.Float64 });
 
 // Forecast 12 steps ahead
-const fc = await dlmForecast(fit, 120, 12, DType.Float64);
+const fc = await dlmForecast(fit, 120, 12, { dtype: DType.Float64 });
 
 console.log(fc.yhat);  // predicted observation means [h] = F·x_pred
 console.log(fc.ystd);  // observation prediction std devs [h] — grows monotonically
@@ -235,7 +254,7 @@ With covariates, pass `X_forecast` rows for each forecast step:
 
 ```js
 // Forecast 3 steps ahead with known future covariate values
-const fc = await dlmForecast(fit, 120, 3, DType.Float64, [
+const fc = await dlmForecast(fit, 120, 3, { dtype: DType.Float64 }, [
   [solarProxy[n], qbo1[n], qbo2[n]],    // step n+1
   [solarProxy[n+1], qbo1[n+1], qbo2[n+1]], // step n+2
   [solarProxy[n+2], qbo1[n+2], qbo2[n+2]], // step n+3
@@ -262,7 +281,7 @@ const y = [1120, 1160, 963, NaN, 1210, 1160, 1160, NaN, 813, /* ... */];
 const s2_w = 120;
 const s2_v = [40, 10];
 
-const result = await dlmFit(y, s2_w, s2_v, DType.Float64, { order: 1 });
+const result = await dlmFit(y, s2_w, s2_v, { order: 1 }, { dtype: DType.Float64 });
 
 // nobs: number of non-NaN observations actually used
 console.log(result.nobs);   // e.g. 77 when 23 of 100 values are NaN
@@ -304,9 +323,9 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
 | Spline mode | ✅ | ✅ | Modified W covariance for order=1 integrated random walk (`options.spline`). |
 | Log-likelihood | ✅ | ✅ | -2·log-likelihood via prediction error decomposition (`out.lik`). |
 | Diagnostic statistics | ✅ | ✅ | MSE, MAPE, scaled residuals, sum of squares (`out.mse`, `out.mape`, `out.resid2`, `out.ssy`, `out.s2`). |
-| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff. Two loss paths: sequential `lax.scan` (CPU/WASM) and `lax.associativeScan` (WebGPU+Float32, O(log n) depth; exact 5-tuple from [1, Lemmas 1–2]). optax Adam optimizer, fully `jit()`-compiled. |
+| MLE parameter estimation | ✅ | ✅ | `dlmMLE`: estimate observation noise `s`, state noise `w`, and optionally AR coefficients (`fitar: true`) by maximizing the Kalman filter log-likelihood via autodiff. Two loss paths: `algorithm: 'scan'` uses sequential `lax.scan`; `algorithm: 'assoc'` uses `lax.associativeScan` (O(log n) depth; exact 5-tuple from [1, Lemmas 1–2]). optax Adam optimizer, fully `jit()`-compiled. |
 | h-step-ahead forecasting | ✅ | ❌ | `dlmForecast`: propagate the last smoothed state h steps forward with no new observations. Returns `yhat` [h], `ystd` [h] (growing uncertainty), and full state+covariance trajectories. Supports all model types and covariates. |
-| float32 computation | ✅ | ❌ | Configurable dtype. Float32 uses Joseph form covariance update + symmetrization for numerical stability; numerically stable for m ≤ 2, higher dimensions may still diverge. Three-branch architecture: cpu/f32 (sequential+Joseph), wasm/f64 (sequential, unchanged), webgpu/f32 (associativeScan + Joseph; exact 5-tuple forward from [1, Lemmas 1–2]). |
+| float32 computation | ✅ | ❌ | Configurable via `dtype` in `DlmRunConfig`. `algorithm: 'scan'` with Float32 defaults to `stabilization: 'joseph'` (Joseph form covariance update + symmetrization); stable for m ≤ 2, higher dimensions may still diverge. `algorithm: 'assoc'` with Float32 uses its own numerically stable formulation and is stable even for larger m (no joseph needed or accepted). |
 | float64 computation | ✅ | ✅ | Results match MATLAB within ~2e-3 relative tolerance. See [numerical precision notes](#numerical-precision). |
 | Device × dtype test matrix | ✅ | — | Tests run on all available (device, dtype) combinations: cpu/f64, cpu/f32, wasm/f64, wasm/f32, webgpu/f32. |
 | Synthetic ground-truth tests | ✅ | — | Tests against known true states from a seeded generating process — independent of any reference implementation. |
@@ -329,32 +348,26 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
 
 Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
 
-However, the dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
+### scan algorithm
 
-### Float32 stabilization (Joseph form)
+`algorithm: 'scan'` uses sequential `lax.scan` for both the Kalman forward filter and RTS backward smoother. It is the default when `algorithm` is not set in `DlmRunConfig` and the `assoc` path is not auto-selected.
 
-Float32 paths use the Joseph form covariance update instead of the standard `C_filt = C_pred - K·F·C_pred`:
+The dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
+
+**Float32 stabilization (Joseph form):** When `dtype: DType.Float32`, the scan path defaults to `stabilization: 'joseph'`, replacing the standard covariance update `C_filt = C_pred - K·F·C_pred` with:
 
 $$C_{\text{filt}} = (I - K F) \, C_{\text{pred}} \, (I - K F)^\top + K \, V^2 \, K^\top$$
 
-This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. For m > 2, Float32 is still skipped in tests due to accumulated rounding.
+This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. Without Joseph form (`stabilization: 'none'`), Float32 + scan is numerically unstable for m ≥ 4 (see ⚠️ entries in the benchmark table). Float32 is still skipped in tests for m > 2 even with Joseph form, due to accumulated rounding in the smoother.
 
-### Three-branch architecture
+### assoc algorithm
 
-`dlmSmo` selects an execution path based on device and dtype:
+`algorithm: 'assoc'` uses `lax.associativeScan` to evaluate the **exact O(log N) parallel Kalman filter + smoother** from Särkkä & García-Fernández (2020) [1], Lemmas 1–6. Pass `{ algorithm: 'assoc' }` in `DlmRunConfig` to use it on any backend and any dtype. Combining `algorithm: 'assoc'` with `stabilization: 'joseph'` throws an error — the assoc path always applies its own numerically stable formulation.
 
-| Branch | Condition | Forward filter | Backward smoother | Stabilization |
-|--------|-----------|---------------|-------------------|---------------|
-| Float64 (default) | `dtype = Float64` | Sequential `lax.scan` | Sequential `lax.scan` (information form) | None needed |
-| CPU/WASM + Float32 | `dtype = Float32`, device ≠ `webgpu` | Sequential `lax.scan` | Sequential `lax.scan` (information form) | Joseph form + symmetrize |
-| WebGPU + Float32 | `dtype = Float32`, device = `webgpu` | `lax.associativeScan` (O(log n) depth) | `lax.associativeScan` reverse (O(log n) depth) | Joseph form + symmetrize; exact 5-tuple forward (Lemmas 1–2) |
+Both passes dispatch ⌈log₂N⌉+1 kernel rounds (Kogge-Stone), giving O(log n) total depth. Results are numerically equivalent to `scan` to within floating-point reordering (validated by `assocscan.test.ts`). See [mle-comparison.md](mle-comparison.md#implementation-status) for a detailed math provenance table.
 
-The WebGPU branch uses the **exact parallel Kalman filter + smoother** from Särkkä & García-Fernández (2020) [1], Lemmas 1–6. Both passes are unified under the same algebraic framework.
-
-- **Forward filter** (exact 5-tuple from [1, Lemmas 1–2]): Constructs per-timestep 5-tuple elements $(A_k, b_k, C_k, \eta_k, J_k)$ with exact Kalman gains per Lemma 1, composed via `lax.associativeScan` using Lemma 2 with regularized inverse and push-through identity. No approximation — produces the same filtered states as the sequential filter, up to floating-point reordering.
-- **Backward smoother** (Särkkä [1], Lemmas 5–6 + Theorem 2): Exact per-timestep smoother gains $E_k = C_{filt,k} G^\top (G C_{filt,k} G^\top + W)^{-1}$ are computed from the forward-filtered covariances via batched `adSafeInv` (AD-safe matrix inverse: analytic cofactor expansion for m ≤ 3, Schur-complement block inversion for m ≥ 4; float32 sub-blocks additionally regularized with ε·I to prevent near-singularity). Smoother elements $(E_k, g_k, L_k)$ with Joseph form $L_k$ are composed via `lax.associativeScan(compose, elems, { reverse: true })` (suffix scan). No accuracy loss — the backward smoother is algebraically equivalent to sequential RTS.
-
-Both scans dispatch ⌈log₂N⌉+1 GPU kernel rounds (Kogge-Stone), giving O(log n) total depth. The sequential CPU/WASM path serves as the reference for validation. See [mle-comparison.md](mle-comparison.md#implementation-status) for a detailed math provenance table. Requires jax-js-nonconsuming v0.7.4 or later (project uses v0.7.7).
+- **Forward filter** (exact 5-tuple from [1, Lemmas 1–2]): Constructs per-timestep 5-tuple elements $(A_k, b_k, C_k, \eta_k, J_k)$ with exact Kalman gains per Lemma 1, composed via `lax.associativeScan` using Lemma 2 with regularized inverse and push-through identity. No approximation — produces the same filtered states as sequential `scan`, up to floating-point reordering.
+- **Backward smoother** ([1], Lemmas 5–6 + Theorem 2): Exact per-timestep smoother gains $E_k = C_{filt,k} G^\top (G C_{filt,k} G^\top + W)^{-1}$ computed from the forward-filtered covariances via batched `np.linalg.inv`. Smoother elements $(E_k, g_k, L_k)$ with Joseph form $L_k$ composed via `lax.associativeScan(compose, elems, { reverse: true })` (suffix scan). No accuracy loss — the backward smoother is algebraically equivalent to sequential RTS.
 
 ## TODO
 
@@ -371,21 +384,21 @@ Both scans dispatch ⌈log₂N⌉+1 GPU kernel rounds (Kogge-Stone), giving O(lo
 │       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
 ├── assets/              # Generated images (committed to repo)
 │   ├── niledemo-scan.svg    # Nile demo plot, sequential scan (regenerate with `pnpm run gen:svg`)
-│   ├── niledemo-assoc.svg   # Nile demo plot, associativeScan / exact O(log N)
+│   ├── niledemo-assoc.svg   # Nile demo plot, assoc / exact O(log N)
 │   ├── kaisaniemi-scan.svg  # Kaisaniemi seasonal demo, sequential scan
-│   ├── kaisaniemi-assoc.svg # Kaisaniemi seasonal demo, associativeScan
+│   ├── kaisaniemi-assoc.svg # Kaisaniemi seasonal demo, assoc
 │   ├── trigar-scan.svg      # Energy demand demo, sequential scan
-│   ├── trigar-assoc.svg     # Energy demand demo, associativeScan
+│   ├── trigar-assoc.svg     # Energy demand demo, assoc
 │   ├── nile-mle-anim-scan.svg    # Nile MLE animation (lax.scan, sequential)
-│   ├── nile-mle-anim-assoc.svg   # Nile MLE animation (associativeScan, parallel)
-│   ├── nile-mle-anim-webgpu.svg  # Nile MLE animation (WebGPU, associativeScan)
+│   ├── nile-mle-anim-assoc.svg   # Nile MLE animation (assoc, parallel)
+│   ├── nile-mle-anim-webgpu.svg  # Nile MLE animation (WebGPU, assoc)
 │   ├── energy-mle-anim-scan.svg  # Energy MLE animation (lax.scan) with AR estimation
-│   ├── energy-mle-anim-assoc.svg # Energy MLE animation (associativeScan) with AR estimation
-│   ├── energy-mle-anim-webgpu.svg # Energy MLE animation (WebGPU, associativeScan) with AR estimation
+│   ├── energy-mle-anim-assoc.svg # Energy MLE animation (assoc) with AR estimation
+│   ├── energy-mle-anim-webgpu.svg # Energy MLE animation (WebGPU, assoc) with AR estimation
 │   ├── ozone-demo-scan.svg  # Stratospheric ozone demo, sequential scan
-│   ├── ozone-demo-assoc.svg # Stratospheric ozone demo, associativeScan
+│   ├── ozone-demo-assoc.svg # Stratospheric ozone demo, assoc
 │   ├── missing-demo-scan.svg # Missing-data demo, sequential scan
-│   ├── missing-demo-assoc.svg # Missing-data demo, associativeScan
+│   ├── missing-demo-assoc.svg # Missing-data demo, assoc
 │   └── timings/             # Timing sidecar JSON files written by gen-* / collect-* scripts
 │       ├── static-references.json   # Manually-measured Octave reference values + machine info
 │       └── *.json               # Per-script timing data (auto-written; patched into .md by update:timings)
@@ -415,7 +428,7 @@ Both scans dispatch ⌈log₂N⌉+1 GPU kernel rounds (Kogge-Stone), giving O(lo
 ├── src/                 # Library TypeScript sources
 │   ├── index.ts             # Main source: `dlmSmo` (Kalman+RTS, internal), `dlmFit` (two-pass fitting), `dlmForecast` (h-step-ahead forecast), `dlmGenSys` export
 │   ├── dlmgensys.ts         # State space generator: polynomial, seasonal, AR components
-│   ├── mle.ts               # `dlmMLE`: MLE via autodiff — two loss paths: sequential lax.scan (CPU/WASM), associativeScan with exact 5-tuple (WebGPU+Float32)
+│   ├── mle.ts               # `dlmMLE`: MLE via autodiff — two loss paths: sequential lax.scan (CPU/WASM), assoc with exact 5-tuple (WebGPU+Float32)
 │   └── types.ts             # TypeScript type definitions and helpers
 ├── tests/               # Test suite
 │   ├── octave/              # Octave reference output generators
