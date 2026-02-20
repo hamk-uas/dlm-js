@@ -29,15 +29,19 @@ const y: number[] = input.y;        // observations
 const s: number = input.s;          // observation noise std
 const w: number[] = input.w;        // state noise stds
 
+const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
+const isAssoc = variant === 'assoc';
+const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }));
+  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }, undefined, isAssoc));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }));
+  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }, undefined, isAssoc));
   const warmEnd = performance.now();
 
   return {
@@ -137,7 +141,7 @@ push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fil
 push(`<text x="${14}" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${margin.top + plotH / 2})">Annual flow</text>`);
 
 // Title
-push(`<text x="${margin.left + plotW / 2}" y="${16}" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — fit (order=1, trend), ${timed.warmRunMs.toFixed(0)} ms, WASM/f64</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="${16}" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — fit (order=1, trend), ${timed.warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // Legend
 const legX = W - margin.right - 255;
@@ -159,9 +163,9 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outPath = resolve(root, "assets", "niledemo.svg");
+const outPath = resolve(root, "assets", `niledemo-${variant}.svg`);
 writeSvg(lines, outPath);
-writeTimingsSidecar("gen-niledemo-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
+writeTimingsSidecar(isAssoc ? "gen-niledemo-svg-assoc" : "gen-niledemo-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`
 );

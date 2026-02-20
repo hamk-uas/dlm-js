@@ -29,13 +29,17 @@ const s: number = input.s;
 const w: number[] = input.w;
 const options = input.options;
 
+const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
+const isAssoc = variant === 'assoc';
+const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options));
+  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options));
+  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
   const warmEnd = performance.now();
 
   return {
@@ -140,7 +144,7 @@ const push = (s: string) => lines.push(s);
 
 push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui,-apple-system,sans-serif" font-size="12">`);
 push(`<rect width="${W}" height="${H}" fill="white"/>`);
-push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Kaisaniemi demo — fit (order=1, trig, s=2), ${timed.warmRunMs.toFixed(0)} ms, WASM/f64</text>`);
+push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Kaisaniemi demo — fit (order=1, trig, s=2), ${timed.warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 function drawPanel(
   panelTop: number,
@@ -201,9 +205,9 @@ push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#
 
 push(`</svg>`);
 
-const outPath = resolve(root, "assets", "kaisaniemi.svg");
+const outPath = resolve(root, "assets", `kaisaniemi-${variant}.svg`);
 writeSvg(lines, outPath);
-writeTimingsSidecar("gen-kaisaniemi-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
+writeTimingsSidecar(isAssoc ? "gen-kaisaniemi-svg-assoc" : "gen-kaisaniemi-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`
 );

@@ -37,17 +37,21 @@ const s: number  = input.s;
 const w: number[] = input.w;
 const opts = input.options;
 
+const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
+const isAssoc = variant === 'assoc';
+const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+
 const n = yRaw.length;
 const t: number[] = Array.from({ length: n }, (_, i) => 1871 + i);  // 1871–1970
 
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 
 const t0 = performance.now();
-await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, opts));
+await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, opts, undefined, isAssoc));
 const t1 = performance.now();
 
 const warmStart = performance.now();
-const jsResult = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, opts));
+const jsResult = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, opts, undefined, isAssoc));
 const warmEnd = performance.now();
 
 const firstRunMs = t1 - t0;
@@ -200,7 +204,7 @@ push(`<text x="${r(margin.left + plotW / 2)}" y="${H - 5}" text-anchor="middle" 
 push(`<text x="14" y="${r(margin.top + plotH / 2)}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${r(margin.top + plotH / 2)})">Annual flow</text>`);
 
 // Title
-push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (missing data, ${jsResult.nobs}/${y.length} observed) — fit (order=1, trend), ${warmRunMs.toFixed(0)} ms, WASM/f64</text>`);
+push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (missing data, ${jsResult.nobs}/${y.length} observed) — fit (order=1, trend), ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // Legend — top centre
 const legW = 255;
@@ -228,8 +232,8 @@ push("</svg>");
 
 // ── Write ─────────────────────────────────────────────────────────────────
 
-const outPath = resolve(root, "assets/missing-demo.svg");
+const outPath = resolve(root, `assets/missing-demo-${variant}.svg`);
 writeSvg(lines, outPath);
-writeTimingsSidecar("gen-missing-svg", { firstRunMs, warmRunMs });
+writeTimingsSidecar(isAssoc ? "gen-missing-svg-assoc" : "gen-missing-svg", { firstRunMs, warmRunMs });
 console.log(`nobs=${jsResult.nobs}  firstRun=${firstRunMs.toFixed(2)} ms  warmRun=${warmRunMs.toFixed(2)} ms`);
 

@@ -55,6 +55,20 @@ export const timingRegistry: Record<string, TimingSlot> = {
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Nile demo",
   },
+  "nile-demo:assoc:first": {
+    script:      "scripts/gen-niledemo-svg.ts",
+    sidecar:     "gen-niledemo-svg-assoc",
+    field:       "firstRunMs",
+    format:      "ms2",
+    description: "dlmFit first-run wall-clock — Nile demo (associativeScan)",
+  },
+  "nile-demo:assoc:warm": {
+    script:      "scripts/gen-niledemo-svg.ts",
+    sidecar:     "gen-niledemo-svg-assoc",
+    field:       "warmRunMs",
+    format:      "ms2",
+    description: "dlmFit warm-run wall-clock — Nile demo (associativeScan)",
+  },
 
   "kaisaniemi:first": {
     script:      "scripts/gen-kaisaniemi-svg.ts",
@@ -69,6 +83,20 @@ export const timingRegistry: Record<string, TimingSlot> = {
     field:       "warmRunMs",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Kaisaniemi demo",
+  },
+  "kaisaniemi:assoc:first": {
+    script:      "scripts/gen-kaisaniemi-svg.ts",
+    sidecar:     "gen-kaisaniemi-svg-assoc",
+    field:       "firstRunMs",
+    format:      "ms2",
+    description: "dlmFit first-run wall-clock — Kaisaniemi demo (associativeScan)",
+  },
+  "kaisaniemi:assoc:warm": {
+    script:      "scripts/gen-kaisaniemi-svg.ts",
+    sidecar:     "gen-kaisaniemi-svg-assoc",
+    field:       "warmRunMs",
+    format:      "ms2",
+    description: "dlmFit warm-run wall-clock — Kaisaniemi demo (associativeScan)",
   },
 
   "trigar:first": {
@@ -85,6 +113,20 @@ export const timingRegistry: Record<string, TimingSlot> = {
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — energy/trigar demo",
   },
+  "trigar:assoc:first": {
+    script:      "scripts/gen-trigar-svg.ts",
+    sidecar:     "gen-trigar-svg-assoc",
+    field:       "firstRunMs",
+    format:      "ms2",
+    description: "dlmFit first-run wall-clock — energy/trigar demo (associativeScan)",
+  },
+  "trigar:assoc:warm": {
+    script:      "scripts/gen-trigar-svg.ts",
+    sidecar:     "gen-trigar-svg-assoc",
+    field:       "warmRunMs",
+    format:      "ms2",
+    description: "dlmFit warm-run wall-clock — energy/trigar demo (associativeScan)",
+  },
 
   "missing:first": {
     script:      "scripts/gen-missing-svg.ts",
@@ -99,6 +141,20 @@ export const timingRegistry: Record<string, TimingSlot> = {
     field:       "warmRunMs",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — missing-data demo",
+  },
+  "missing:assoc:first": {
+    script:      "scripts/gen-missing-svg.ts",
+    sidecar:     "gen-missing-svg-assoc",
+    field:       "firstRunMs",
+    format:      "ms2",
+    description: "dlmFit first-run wall-clock — missing-data demo (associativeScan)",
+  },
+  "missing:assoc:warm": {
+    script:      "scripts/gen-missing-svg.ts",
+    sidecar:     "gen-missing-svg-assoc",
+    field:       "warmRunMs",
+    format:      "ms2",
+    description: "dlmFit warm-run wall-clock — missing-data demo (associativeScan)",
   },
 
   // ── dlmMLE benchmarks (collect-*.ts scripts) ────────────────────────────

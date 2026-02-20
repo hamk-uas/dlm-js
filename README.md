@@ -12,17 +12,29 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 🤖 AI generated code & documentation with gentle human supervision.
 
 
-<img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm" src="assets/niledemo.svg" />
+<img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm (sequential scan)" src="assets/niledemo-scan.svg" />
 
-*Nile demo: first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:nile-demo:first -->100.85 ms<!-- /timing -->, warm run <!-- timing:nile-demo:warm -->47.42 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Nile demo (sequential scan): first smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals). Runtime (dlm-js `dlmFit`, jitted core, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:nile-demo:first -->101.31 ms<!-- /timing -->, warm run <!-- timing:nile-demo:warm -->41.27 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave" src="assets/kaisaniemi.svg" />
+<img alt="Nile annual flow with smoothed level state x[0] ± 2σ from dlm-js and MATLAB/Octave dlm (associative scan)" src="assets/niledemo-assoc.svg" />
 
-*Kaisaniemi seasonal demo (from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:kaisaniemi:first -->97.31 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:warm -->47.86 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Nile demo (associativeScan): same model via `forceAssocScan` — exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020). Results match sequential scan to within numerical tolerance (validated by `assocscan.test.ts`). Runtime (`wasm`/f64 backend): first run <!-- timing:nile-demo:assoc:first -->251.85 ms<!-- /timing -->, warm run <!-- timing:nile-demo:assoc:warm -->93.23 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Energy demand demo with seasonal + AR model: smoothed level, seasonal, AR state, and combined signal from dlm-js and MATLAB/Octave" src="assets/trigar.svg" />
+<img alt="Kaisaniemi monthly temperatures with two panels: smoothed level state x[0] ± 2σ and covariance-aware combined signal x[0]+x[2] ± 2σ from dlm-js and MATLAB/Octave (sequential scan)" src="assets/kaisaniemi-scan.svg" />
 
-*Energy demand demo (synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:trigar:first -->108.31 ms<!-- /timing -->, warm run <!-- timing:trigar:warm -->48.66 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Kaisaniemi seasonal demo (sequential scan, from `mjlaine/dlm` example data): top panel shows level state `x[0] ± 2σ`; bottom panel shows covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`. Runtime (dlm-js `dlmFit`, jitted core, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:kaisaniemi:first -->103.24 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:warm -->41.28 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Kaisaniemi monthly temperatures (associative scan): smoothed level and combined signal from dlm-js via forceAssocScan" src="assets/kaisaniemi-assoc.svg" />
+
+*Kaisaniemi seasonal demo (associativeScan): same model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). Results validated against Octave reference by `assocscan.test.ts`. Runtime (`wasm`/f64 backend): first run <!-- timing:kaisaniemi:assoc:first -->309.37 ms<!-- /timing -->, warm run <!-- timing:kaisaniemi:assoc:warm -->132.96 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Energy demand demo with seasonal + AR model: smoothed level, seasonal, AR state, and combined signal from dlm-js and MATLAB/Octave (sequential scan)" src="assets/trigar-scan.svg" />
+
+*Energy demand demo (sequential scan, synthetic, 10 years monthly): data generated from the DLM state-space model itself with a seeded RNG. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states from the generating process (green dashed) are overlaid, showing how well the RTS smoother recovers the ground truth. dlm-js (solid blue) vs MATLAB/Octave (dashed red). Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5. Runtime (dlm-js `dlmFit`, jitted core, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:trigar:first -->103.13 ms<!-- /timing -->, warm run <!-- timing:trigar:warm -->47.54 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Energy demand demo with seasonal + AR model (associative scan): smoothed states from dlm-js via forceAssocScan" src="assets/trigar-assoc.svg" />
+
+*Energy demand demo (associativeScan): same model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). Results validated against Octave reference by `assocscan.test.ts`. Runtime (`wasm`/f64 backend): first run <!-- timing:trigar:assoc:first -->392.85 ms<!-- /timing -->, warm run <!-- timing:trigar:assoc:warm -->153.35 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Nile MLE optimization via lax.scan: observation noise s and state noise w estimated by autodiff, animated convergence" src="assets/nile-mle-anim-scan.svg" />
 
@@ -48,13 +60,21 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 
 *Energy MLE demo (WebGPU, `associativeScan`) with AR coefficient estimation: same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:energy-mle-webgpu:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle-webgpu:elapsed -->53.9 s<!-- /timing --> (−2·logL ≈ <!-- timing:energy-mle-webgpu:lik -->445.8<!-- /timing -->). Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
+<img alt="Stratospheric ozone trend analysis (sequential scan): smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo-scan.svg" />
 
-*Stratospheric ozone demo (Laine, Latva-Pukkila & Kyrölä (2014), [ACP 14, 9707–9725](https://doi.org/10.5194/acp-14-9707-2014), replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011; data file from [mjlaine/dlm](https://github.com/mjlaine/dlm/tree/master/examples)) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red) and a 15-year (180-month) `dlmForecast` trend extrapolation beyond the last observation (dashed green, ± 2σ level-state uncertainty, shaded region — the level state x[0] is plotted rather than the full observation prediction, which would oscillate with the seasonal harmonics); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Forecast interpretation note: this is a conditional forecast under the chosen future proxy path assumptions (unknown future proxies are not inferred by the model). Regenerate with `pnpm run gen:svg`.*
+*Stratospheric ozone demo (sequential scan, Laine, Latva-Pukkila & Kyrölä (2014), [ACP 14, 9707–9725](https://doi.org/10.5194/acp-14-9707-2014), replication via `dlmFit`): top panel shows O₃ density (SAGE II / GOMOS observations, 1984–2011; data file from [mjlaine/dlm](https://github.com/mjlaine/dlm/tree/master/examples)) with the smoothed level state ± 2σ (dlm-js solid blue, MATLAB/Octave dashed red) and a 15-year (180-month) `dlmForecast` trend extrapolation beyond the last observation (dashed green, ± 2σ level-state uncertainty, shaded region — the level state x[0] is plotted rather than the full observation prediction, which would oscillate with the seasonal harmonics); bottom panel shows proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9. Forecast interpretation note: this is a conditional forecast under the chosen future proxy path assumptions (unknown future proxies are not inferred by the model). Regenerate with `pnpm run gen:svg`.*
 
-<img alt="Missing-data demo: Nile flow with 23 NaN observations — smoothed level F·x_smooth ± 2σ from dlm-js and MATLAB/Octave, outer band shows observation prediction interval, gray shading over missing regions" src="assets/missing-demo.svg" />
+<img alt="Stratospheric ozone trend analysis (associative scan): smoothed level and proxy covariate contributions from dlm-js via forceAssocScan" src="assets/ozone-demo-assoc.svg" />
 
-*Missing-data demo: Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm` backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->103.10 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->40.59 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+*Stratospheric ozone demo (associativeScan): same m=9 model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). The large state dimension makes this a meaningful test of the Schur-complement `adSafeInv` path. Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Missing-data demo: Nile flow with 23 NaN observations — smoothed level F·x_smooth ± 2σ from dlm-js and MATLAB/Octave, outer band shows observation prediction interval, gray shading over missing regions (sequential scan)" src="assets/missing-demo-scan.svg" />
+
+*Missing-data demo (sequential scan): Nile flow (n=100) with 23 NaN observations — every 7th year and years 1900–1909 removed. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd` (wider over the gap — both the centre `F·x_smooth` and the width `ystd` are RTS-smoothed); inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. dlm-js (blue) vs MATLAB/Octave (dashed red). The smoother interpolates continuously through all gaps with no extra configuration: pass `NaN` in `y` and `result.nobs` = 77 (non-NaN count). Runtime (`dlmFit`, `wasm`/f64 backend, two sequential runs; machine-dependent): first run <!-- timing:missing:first -->99.95 ms<!-- /timing -->, warm run <!-- timing:missing:warm -->46.11 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
+
+<img alt="Missing-data demo (associative scan): Nile flow with 23 NaN observations via forceAssocScan" src="assets/missing-demo-assoc.svg" />
+
+*Missing-data demo (associativeScan): same NaN-handling model via `forceAssocScan` (exact O(log N) parallel filter+smoother, Särkkä & García-Fernández 2020). NaN masking validated against Octave reference by `assocscan.test.ts`. Runtime (`wasm`/f64 backend): first run <!-- timing:missing:assoc:first -->245.06 ms<!-- /timing -->, warm run <!-- timing:missing:assoc:warm -->94.22 ms<!-- /timing -->. Regenerate with `pnpm run gen:svg`.*
 
 Timing note: the runtime values above are measured on the `wasm` backend and are machine-dependent. Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
@@ -350,17 +370,22 @@ Both scans dispatch ⌈log₂N⌉+1 GPU kernel rounds (Kogge-Stone), giving O(lo
 │   └── workflows/           # GitHub Actions CI
 │       └── deploy-pages.yaml    # Build and deploy API docs to GitHub Pages
 ├── assets/              # Generated images (committed to repo)
-│   ├── niledemo.svg         # Nile demo plot (regenerate with `pnpm run gen:svg`)
-│   ├── kaisaniemi.svg       # Kaisaniemi seasonal demo plot (regenerate with `pnpm run gen:svg`)
-│   ├── trigar.svg           # Energy demand demo plot (regenerate with `pnpm run gen:svg`)
+│   ├── niledemo-scan.svg    # Nile demo plot, sequential scan (regenerate with `pnpm run gen:svg`)
+│   ├── niledemo-assoc.svg   # Nile demo plot, associativeScan / exact O(log N)
+│   ├── kaisaniemi-scan.svg  # Kaisaniemi seasonal demo, sequential scan
+│   ├── kaisaniemi-assoc.svg # Kaisaniemi seasonal demo, associativeScan
+│   ├── trigar-scan.svg      # Energy demand demo, sequential scan
+│   ├── trigar-assoc.svg     # Energy demand demo, associativeScan
 │   ├── nile-mle-anim-scan.svg    # Nile MLE animation (lax.scan, sequential)
 │   ├── nile-mle-anim-assoc.svg   # Nile MLE animation (associativeScan, parallel)
 │   ├── nile-mle-anim-webgpu.svg  # Nile MLE animation (WebGPU, associativeScan)
 │   ├── energy-mle-anim-scan.svg  # Energy MLE animation (lax.scan) with AR estimation
 │   ├── energy-mle-anim-assoc.svg # Energy MLE animation (associativeScan) with AR estimation
 │   ├── energy-mle-anim-webgpu.svg # Energy MLE animation (WebGPU, associativeScan) with AR estimation
-│   ├── ozone-demo.svg       # Stratospheric ozone trend analysis demo (regenerate with `pnpm run gen:svg`)
-│   ├── missing-demo.svg     # Missing-data demo with NaN interpolation (regenerate with `pnpm run gen:svg`)
+│   ├── ozone-demo-scan.svg  # Stratospheric ozone demo, sequential scan
+│   ├── ozone-demo-assoc.svg # Stratospheric ozone demo, associativeScan
+│   ├── missing-demo-scan.svg # Missing-data demo, sequential scan
+│   ├── missing-demo-assoc.svg # Missing-data demo, associativeScan
 │   └── timings/             # Timing sidecar JSON files written by gen-* / collect-* scripts
 │       ├── static-references.json   # Manually-measured Octave reference values + machine info
 │       └── *.json               # Per-script timing data (auto-written; patched into .md by update:timings)

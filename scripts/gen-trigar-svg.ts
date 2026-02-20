@@ -37,6 +37,10 @@ const w: number[] = input.w;
 const n = y.length;
 const options = { order: 1, trig: 1, ns: 12, arphi: [0.85] };
 
+const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
+const isAssoc = variant === 'assoc';
+const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+
 // Time axis: months 1..n (synthetic monthly data)
 const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
 
@@ -48,11 +52,11 @@ const trueCombined = trueLevel.map((v, i) => v + trueSeasonal[i] + trueAR[i]);
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options));
+  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options));
+  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
   const warmEnd = performance.now();
 
   return { result, firstRunMs: t1 - t0, warmRunMs: warmEnd - warmStart };
@@ -147,7 +151,7 @@ const push = (s: string) => lines.push(s);
 
 push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui,-apple-system,sans-serif" font-size="12">`);
 push(`<rect width="${W}" height="${H}" fill="white"/>`);
-push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — fit (order=1, trig, ns=12, AR(1)), ${timed.warmRunMs.toFixed(0)} ms, WASM/f64</text>`);
+push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — fit (order=1, trig, ns=12, AR(1)), ${timed.warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 interface PanelSpec {
   title: string;
@@ -287,9 +291,9 @@ push(`</svg>`);
 
 // ── Write output ───────────────────────────────────────────────────────────
 
-const outPath = resolve(root, "assets", "trigar.svg");
+const outPath = resolve(root, "assets", `trigar-${variant}.svg`);
 writeSvg(lines, outPath);
-writeTimingsSidecar("gen-trigar-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
+writeTimingsSidecar(isAssoc ? "gen-trigar-svg-assoc" : "gen-trigar-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`,
 );

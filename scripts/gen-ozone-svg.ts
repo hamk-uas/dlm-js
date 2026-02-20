@@ -29,6 +29,10 @@ import { defaultDevice, DType } from "@hamk-uas/jax-js-nonconsuming";
 
 defaultDevice("wasm");
 
+const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
+const isAssoc = variant === 'assoc';
+const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+
 import {
   r, makeLinearScale, polylinePoints, bandPathD,
   renderGridLines, renderYAxis, renderXAxis, renderAxesBorder, writeSvg,
@@ -86,6 +90,7 @@ const fit = await withLeakCheck(() =>
     y_filled, s_filled, w, DType.Float64,
     { order: 1, trig: 2 },
     X,
+    isAssoc,
   )
 );
 
@@ -291,7 +296,7 @@ svg.push(`<line x1="${l1x}" y1="${l1y+45}" x2="${l1x+22}" y2="${l1y+45}" stroke=
 svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">15-year trend forecast ±2σ (level state)</text>`);
 
 // Title
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N) — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, WASM/f64</text>`);
+svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone (45–55 km, 40°N–50°N) — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, ${scanLabel}</text>`);
 
 // ── Panel 2 ──────────────────────────────────────────────────────────────
 svg.push(...renderGridLines(yTicks2Raw, sy2, margin.left, margin.left + plotW));
@@ -336,5 +341,5 @@ svg.push(`<text x="${margin.left}" y="${H - 6}" fill="#9ca3af" font-size="9">Dat
 
 svg.push("</svg>");
 
-const outPath = resolve(root, "assets/ozone-demo.svg");
+const outPath = resolve(root, `assets/ozone-demo-${variant}.svg`);
 writeSvg(svg, outPath);
