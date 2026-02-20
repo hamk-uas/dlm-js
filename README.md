@@ -1,4 +1,4 @@
-# dlm-js — a minimal jax-js-nonconsuming port of dynamic linear model
+# dlm-js — TypeScript Kalman filter/smoother with autodiff MLE
 
 <strong>
   <a href="https://hamk-uas.github.io/dlm-js/">API Reference</a> |
@@ -7,7 +7,7 @@
   <a href="https://github.com/mjlaine/dlm">Original DLM GitHub</a>
 </strong>
 
-A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming) port of [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB).
+A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming), inspired by [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). Extends the original with autodiff-based MLE via `jit(valueAndGrad + Adam)` and an exact O(log N) parallel filter+smoother via `lax.associativeScan` (Särkkä & García-Fernández 2020).
 
 🤖 AI generated code & documentation with gentle human supervision.
 
@@ -60,7 +60,7 @@ Timing note: the runtime values above are measured on the `wasm` backend and are
 
 ### Backend performance
 
-`dlmFit` warm-run timings across backends (jitted core, two sequential runs, second shown). Joseph form stabilization is active on all Float32 paths. WebGPU uses `lax.associativeScan` for both the forward filter (exact 5-tuple from [1, Lemmas 1–2]) and the backward smoother (Särkkä & García-Fernández 2020 parallel smoother, Lemmas 5–6, with per-timestep gains via batched `np.linalg.inv`).
+`dlmFit` warm-run timings across backends (jitted core, two sequential runs, second shown). Joseph form stabilization is active on all Float32 paths. WebGPU uses `lax.associativeScan` for both the forward filter (exact 5-tuple from [1, Lemmas 1–2]) and the backward smoother (Särkkä & García-Fernández 2020 parallel smoother, Lemmas 5–6, with per-timestep gains via batched `adSafeInv`). Note: WebGPU dispatch overhead makes it slower than WASM for the dataset sizes shown here; it is included as a research/experimental path.
 
 | Model | $n$ | $m$ | cpu / f32 | wasm / f32 | wasm / f64 | webgpu / f32 |
 |-------|-----|-----|-----------|------------|------------|--------------|
