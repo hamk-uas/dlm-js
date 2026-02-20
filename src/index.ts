@@ -1,6 +1,6 @@
 import { DType, numpy as np, lax, jit, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmSmoResult, DlmFitResult, DlmForecastResult, FloatArray } from "./types";
-import { getFloatArrayType } from "./types";
+import { getFloatArrayType, adSafeInv } from "./types";
 import { dlmGenSys } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 
@@ -10,102 +10,6 @@ export type { DlmOptions, DlmSystem } from "./dlmgensys";
 export { dlmGenSys, findArInds } from "./dlmgensys";
 export { dlmMLE } from "./mle";
 export type { DlmMleResult } from "./mle";
-
-/**
- * Solve the Discrete Algebraic Riccati Equation (DARE) to find the
- * steady-state Kalman gain K_ss and associated matrices.
- *
- * Iterates the standard Kalman predict-update cycle starting from C0
- * until the predicted covariance converges. Uses the Joseph form for
- * the filtered covariance update to maintain positive-definiteness
- * in Float32.
- *
- * Result:
- *   K_ss  [m, 1]  — steady-state Kalman gain (standard formulation)
- *   A_ss  [m, m]  — (I - K_ss·F)·G  — state transition after update
- *   Sigma_base [m, m] — (I - K_ss·F)·W·(I - K_ss·F)' — base covariance
- *   KKt   [m, m]  — K_ss · K_ss' — for per-timestep V²-scaled term
- *
- * The returned K_ss uses the standard formulation:
- *   x̄_t = G·x_{t-1}  (predict)
- *   K_t  = C̄_t·F' / (F·C̄_t·F' + V²)  (gain from predicted cov)
- *   x_t  = x̄_t + K_t·(y_t - F·x̄_t)   = (I - K_t·F)·G·x_{t-1} + K_t·y_t
- *
- * This is NOT the same as the MATLAB DLM convention used in the sequential
- * filter (K_m = G·C·F'/Cp). The two produce algebraically different gains
- * but converge to the same steady state. The standard formulation is used
- * here because it gives a symmetric compose rule for associativeScan:
- *   (A₂, b₂, Σ₂) ⊕ (A₁, b₁, Σ₁) = (A₂·A₁, A₂·b₁ + b₂, A₂·Σ₁·A₂' + Σ₂)
- *
- * @internal
- */
-const solveDAREForKss = async (
-  G_data: number[][],
-  F_data: number[],
-  W_data: number[][],
-  C0_data: number[][],
-  V2_scalar: number,
-  m: number,
-  dtype: DType,
-  maxIter: number = 50,
-): Promise<{
-  K_ss: np.Array;        // [m, 1]
-  A_ss: np.Array;        // [m, m]
-  Sigma_base: np.Array;  // [m, m]
-  KKt: np.Array;         // [m, m]
-}> => {
-  // Work eagerly (no jit) — this is a cheap O(maxIter·m³) pre-computation
-  // Uses MATLAB DLM convention: K = G·C·F'/(F·C·F'+V²) directly from filtered cov C,
-  // so that the assocScan forward pass (A_ss = G−K_ss·F) is consistent with the
-  // sequential MATLAB filter and the backward smoother K recovery.
-  using G = np.array(G_data, { dtype });
-  using F_mat = np.array([F_data], { dtype });        // [1, m]
-  using W_mat = np.array(W_data, { dtype });
-  using V2 = np.array([[V2_scalar]], { dtype });       // [1, 1]
-
-  let C = np.array(C0_data, { dtype });                // [m, m] filtered cov
-
-  for (let i = 0; i < maxIter; i++) {
-    // MATLAB convention: Cp = F·C·F' + V²  (using filtered C, not predicted)
-    using Cp = np.add(np.einsum('ij,jk,lk->il', F_mat, C, F_mat), V2);
-
-    // MATLAB gain: K = G·C·F' / Cp  [m,1]
-    using GCFt = np.einsum('ij,jk,lk->il', G, C, F_mat);
-    using K = np.divide(GCFt, Cp);
-
-    // L = G − K·F  (MATLAB convention smoother matrix)
-    using KF = np.matmul(K, F_mat);                    // [m, m]
-    using L = np.subtract(G, KF);                      // [m, m]
-
-    // Joseph form update: C_new = L·C·L' + K·V²·K' + W
-    using LCLt = np.einsum('ij,jk,lk->il', L, C, L);
-    using KV2Kt = np.multiply(V2, np.matmul(K, np.transpose(K)));
-    using sum1 = np.add(LCLt, KV2Kt);
-    // jax-js-lint: allow-non-using
-    const C_new = np.add(sum1, W_mat);
-    C.dispose();
-    C = C_new;
-  }
-
-  // Compute converged K_ss and A_ss using MATLAB convention
-  using Cp_ss = np.add(np.einsum('ij,jk,lk->il', F_mat, C, F_mat), V2);
-  using GCFt_ss = np.einsum('ij,jk,lk->il', G, C, F_mat);
-  const K_ss = np.divide(GCFt_ss, Cp_ss);              // [m, 1]
-
-  // A_ss = G − K_ss·F  (MATLAB convention: the smoother matrix L_ss)
-  using KF_ss = np.matmul(K_ss, F_mat);
-  const A_ss = np.subtract(G, KF_ss);                  // [m, m]
-
-  // Sigma_base = W  (MATLAB Joseph form: C_new = A_ss·C·A_ss' + K·V²·K' + W,
-  // so the V²-independent part contributed each step is just W)
-  const Sigma_base = np.add(W_mat, np.zerosLike(W_mat)); // copy of W [m, m]
-
-  // KKt = K_ss · K_ss'  (for V²-scaled measurement noise part)
-  const KKt = np.matmul(K_ss, np.transpose(K_ss));     // [m, m]
-
-  C.dispose();
-  return { K_ss, A_ss, Sigma_base, KKt };
-};
 
 /**
  * DLM Smoother - Kalman filter (forward) + Rauch-Tung-Striebel smoother (backward).
@@ -158,9 +62,6 @@ const dlmSmo = async (
   stateSize: number,
   dtype: DType = DType.Float64,
   FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
-  /** Plain-JS system matrix data — only needed for associativeScan DARE.
-   *  Passed from dlmFit which already has them. */
-  sysData?: { G_data: number[][]; F_data: number[]; W_data: number[][] },
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y.length;
 
@@ -211,22 +112,6 @@ const dlmSmo = async (
   const FF_scan: np.Array = FF_arr !== undefined
     ? FF_arr
     : np.tile(np.reshape(F, [1, 1, stateSize]), [n, 1, 1]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Pre-compute steady-state Kalman gain for associativeScan path (webgpu).
-  // Done eagerly before core (outside JIT) — cheap O(50·m³).
-  // ─────────────────────────────────────────────────────────────────────────
-  let dare: { K_ss: np.Array; A_ss: np.Array; Sigma_base: np.Array; KKt: np.Array } | null = null;
-  if (useAssocScan && sysData) {
-    // Use mean V² across timesteps for the DARE
-    let v2sum = 0;
-    for (let i = 0; i < V_std.length; i++) v2sum += V_std[i] * V_std[i];
-    const v2mean = v2sum / V_std.length;
-    dare = await solveDAREForKss(
-      sysData.G_data, sysData.F_data, sysData.W_data,
-      C0_data, v2mean, stateSize, dtype,
-    );
-  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Step functions receive FF_t ([1, m]) from the scan pytree.
@@ -453,112 +338,191 @@ const dlmSmo = async (
     let x_smooth: np.Array;
     let C_smooth: np.Array;
 
-    if (useAssocScan && dare) {
-      // ─── Associative Scan Forward Filter (webgpu + f32) ───
-      //
-      // Uses steady-state Kalman gain from DARE to construct per-timestep
-      // elements (A, b, Σ) and composes them via lax.associativeScan.
-      //
-      // Standard Kalman formulation (NOT the MATLAB convention):
-      //   x̄_t = G·x_{t-1|t-1}           (predict)
-      //   K_t  = C̄_t·F'/(F·C̄_t·F'+V²)   (gain)
-      //   x_{t|t} = (I-K_t·F)·G · x_{t-1|t-1} + K_t·y_t
-      //   C_{t|t} = A·C_{t-1|t-1}·A' + Σ  where A=(I-K·F)·G
-      //
-      // The steady-state approximation uses K_ss for all steps (converges
-      // within ~5 steps for typical DLMs), giving constant A_ss and Σ_base.
-      // NaN steps use A=G, b=0, Σ=W (prediction only, no update).
+    if (useAssocScan) {
+      // ─── Exact Parallel Forward Filter (Särkkä & García-Fernández 2020, Lemmas 1–2) ───
+      // 5-tuple elements: (A, b, C, eta, J)
+      type ForwardElem = { A: np.Array; b: np.Array; C: np.Array; eta: np.Array; J: np.Array };
+      type BackwardElem = { A: np.Array; b: np.Array; S: np.Array };
 
-      const { K_ss, A_ss, Sigma_base, KKt } = dare!;
-
-      // Build NaN mask [n, 1, 1]: 1.0 observed, 0.0 NaN
       using is_nan = np.isnan(y_arr);                    // [n,1,1] bool
       using zero_n11 = np.zerosLike(y_arr);              // [n,1,1]
       using one_n11 = np.onesLike(y_arr);                // [n,1,1]
       // jax-js-lint: allow-non-using — stored in fwd.mask, disposed after backward pass
       const mask_arr = np.where(is_nan, zero_n11, one_n11); // [n,1,1]
-
-      // NaN-safe y: replace NaN with 0
       using y_safe_arr = np.where(is_nan, zero_n11, y_arr); // [n,1,1]
 
-      // Per-timestep b = mask · K_ss · y_safe  [n, m, 1]
-      // K_ss is [m,1], y_safe is [n,1,1] → via einsum: [n,m,1]
-      // b[t] = mask[t] · K_ss · y_safe[t]  (0 when NaN)
-      using y_safe_flat = np.squeeze(y_safe_arr, [2]);    // [n, 1]
-      using Ky_all = np.einsum('ij,nj->ni', K_ss, y_safe_flat);  // [m,1]@... → [n, m]
-      using Ky_expand = np.expandDims(Ky_all, 2);       // [n, m, 1]
-      using b_arr = np.multiply(mask_arr, Ky_expand);    // [n, m, 1]: 0 at NaN
-
-      // Per-timestep A [n, m, m]: A_ss where observed, G where NaN
-      // mask_mm [n,1,1] broadcasts to [n,m,m]
-      using A_ss_expanded = np.tile(np.reshape(A_ss, [1, stateSize, stateSize]), [n, 1, 1]);
+      using I_eye = np.eye(stateSize, undefined, { dtype });
+      using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
       using G_expanded = np.tile(np.reshape(G, [1, stateSize, stateSize]), [n, 1, 1]);
-      // is_nan [n,1,1] bool — NaN→G, observed→A_ss (branches swapped vs float-mask form)
-      using A_arr = np.where(
-        np.tile(is_nan, [1, stateSize, stateSize]),
-        G_expanded,
-        A_ss_expanded,
-      );                                                  // [n, m, m]
-
-      // Per-timestep Σ [n, m, m]:
-      //   observed: Sigma_base + V²[t]·KKt
-      //   NaN:      W
-      using V2_mm = np.reshape(V2_arr, [n, 1, 1]);       // [n,1,1]
-      using KKt_expanded = np.tile(np.reshape(KKt, [1, stateSize, stateSize]), [n, 1, 1]);
-      using Sigma_V2 = np.multiply(V2_mm, KKt_expanded); // [n,m,m]
-      using Sigma_base_exp = np.tile(np.reshape(Sigma_base, [1, stateSize, stateSize]), [n, 1, 1]);
-      using Sigma_obs = np.add(Sigma_base_exp, Sigma_V2); // [n,m,m]
       using W_expanded = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n, 1, 1]);
-      // is_nan [n,1,1] bool — NaN→W, observed→Sigma_obs (branches swapped vs float-mask form)
-      using Sigma_arr = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_expanded, Sigma_obs); // [n, m, m]
 
-      // ─── Compose function for associativeScan ───
-      // Pytree: { A: [k,m,m], b: [k,m,1], S: [k,m,m] }
-      // compose(earlier, later) chains the affine maps:
-      //   A_comp = A_later · A_earlier
-      //   b_comp = A_later · b_earlier + b_later
-      //   S_comp = A_later · S_earlier · A_later' + S_later
-      type ScanElem = { A: np.Array; b: np.Array; S: np.Array };
+      // Per-step observed-element construction (Lemma 1, time-varying F via FF_scan)
+      using S_obs = np.add(np.einsum('nij,jk,nlk->nil', FF_scan, W, FF_scan), V2_arr); // [n,1,1]
+      using WFt = np.einsum('ij,nkj->nik', W, FF_scan);                                 // [n,m,1]
+      using K_obs = np.divide(WFt, S_obs);                                              // [n,m,1]
 
-      const compose = (a: ScanElem, b_elem: ScanElem): ScanElem => {
-        // A_comp = B.A @ A.A  — batched [k,m,m]
-        const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
-        // b_comp = B.A @ A.b + B.b  — [k,m,1]
-        using Ab = np.einsum('nij,njk->nik', b_elem.A, a.b);
-        const b_comp = np.add(Ab, b_elem.b);
-        // S_comp = B.A @ A.S @ B.A' + B.S  — [k,m,m]
-        using ASAt = np.einsum('nij,njk,nlk->nil', b_elem.A, a.S, b_elem.A);
-        const S_comp = np.add(ASAt, b_elem.S);
-        return { A: A_comp, b: b_comp, S: S_comp };
+      using KF_obs = np.einsum('nij,njk->nik', K_obs, FF_scan);                         // [n,m,m]
+      using ImKF_obs = np.subtract(I_exp, KF_obs);                                       // [n,m,m]
+      using A_obs = np.einsum('nij,jk->nik', ImKF_obs, G);                              // [n,m,m]
+      using C_obs = np.einsum('nij,jk->nik', ImKF_obs, W);                              // [n,m,m]
+      using b_obs = np.multiply(K_obs, y_safe_arr);                                     // [n,m,1]
+
+      using Ft = np.einsum('nij->nji', FF_scan);                                         // [n,m,1]
+      using Ft_over_S = np.divide(Ft, S_obs);                                            // [n,m,1]
+      using Gt = np.transpose(G);                                                        // [m,m]
+      using eta_obs_base = np.einsum('ij,njk->nik', Gt, Ft_over_S);                      // [n,m,1]
+      using eta_obs = np.multiply(eta_obs_base, y_safe_arr);                             // [n,m,1]
+      using FtF_over_S = np.einsum('nij,njk->nik', Ft_over_S, FF_scan);                  // [n,m,m]
+      using J_obs = np.einsum('ij,njk,kl->nil', Gt, FtF_over_S, G);                      // [n,m,m]
+
+      // NaN handling for k>=2 elements: pure prediction for missing y
+      using A_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), G_expanded, A_obs);
+      using b_all = np.multiply(mask_arr, b_obs);
+      using C_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_expanded, C_obs);
+      using zero_nmm = np.zerosLike(J_obs);
+      using eta_all = np.multiply(mask_arr, eta_obs);
+      using J_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), zero_nmm, J_obs);
+
+      // First element (k=1): exact initialization from prior (A1=0, b1/C1 from x0/C0)
+      const F_parts = np.split(FF_scan, [1], 0);
+      const V2_parts = np.split(V2_arr, [1], 0);
+      const y_parts = np.split(y_safe_arr, [1], 0);
+      const mask_parts = np.split(mask_arr, [1], 0);
+      const A_parts = np.split(A_all, [1], 0);
+      const b_parts = np.split(b_all, [1], 0);
+      const C_parts = np.split(C_all, [1], 0);
+      const eta_parts = np.split(eta_all, [1], 0);
+      const J_parts = np.split(J_all, [1], 0);
+
+      using F1 = F_parts[0];
+      using V2_1 = V2_parts[0];
+      using y1 = y_parts[0];
+      using mask1 = mask_parts[0];
+
+      using C0_first = np.reshape(C0, [1, stateSize, stateSize]);
+      using x0_first = np.reshape(x0, [1, stateSize, 1]);
+
+      using S1 = np.add(np.einsum('nij,njk,nlk->nil', F1, C0_first, F1), V2_1);          // [1,1,1]
+      using C0Ft1 = np.einsum('ij,nkj->nik', C0, F1);                                     // [1,m,1]
+      using K1_obs = np.divide(C0Ft1, S1);                                                // [1,m,1]
+      using K1 = np.multiply(mask1, K1_obs);                                              // [1,m,1]
+
+      using Fx0_1 = np.einsum('nij,njk->nik', F1, x0_first);                              // [1,1,1]
+      using innov1 = np.subtract(y1, Fx0_1);                                              // [1,1,1]
+      using Kinnov1 = np.multiply(K1, innov1);                                            // [1,m,1]
+      const b1 = np.add(x0_first, Kinnov1);                                               // [1,m,1]
+
+      using K1S1 = np.multiply(K1, S1);                                                   // [1,m,1]
+      using K1S1K1t = np.einsum('nij,nkj->nik', K1S1, K1);                                // [1,m,m]
+      const C1 = np.subtract(C0_first, K1S1K1t);                                           // [1,m,m]
+
+      const A1 = np.zeros([1, stateSize, stateSize], { dtype });                         // [1,m,m]
+      const eta1 = np.zeros([1, stateSize, 1], { dtype });                                // [1,m,1]
+      const J1 = np.zeros([1, stateSize, stateSize], { dtype });                          // [1,m,m]
+
+      // Replace timestep 0 with exact first element; keep k>=2 elements from Lemma 1
+      const A_arr = np.concatenate([A1, A_parts[1]], 0);
+      const b_arr = np.concatenate([b1, b_parts[1]], 0);
+      const C_arr = np.concatenate([C1, C_parts[1]], 0);
+      const eta_arr = np.concatenate([eta1, eta_parts[1]], 0);
+      const J_arr = np.concatenate([J1, J_parts[1]], 0);
+
+      F_parts[1].dispose();
+      V2_parts[1].dispose();
+      y_parts[1].dispose();
+      mask_parts[1].dispose();
+      A_parts[0].dispose();
+      A_parts[1].dispose();
+      b_parts[0].dispose();
+      b_parts[1].dispose();
+      C_parts[0].dispose();
+      C_parts[1].dispose();
+      eta_parts[0].dispose();
+      eta_parts[1].dispose();
+      J_parts[0].dispose();
+      J_parts[1].dispose();
+
+      const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
+        // Compose later (j=b_elem) after earlier (i=a)
+        // M = (I + C_i J_j)^-1
+        using I1 = np.reshape(np.eye(stateSize, undefined, { dtype }), [1, stateSize, stateSize]);
+        using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
+        using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
+        using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
+        using X_reg = np.add(np.add(I1, CiJj), regI);
+        using M = adSafeInv(X_reg, stateSize, dtype);
+
+        // A_ij = A_j M A_i
+        using AjM = np.einsum('nij,njk->nik', b_elem.A, M);
+        const A_comp = np.einsum('nij,njk->nik', AjM, a.A);
+
+        // b_ij = A_j M (b_i + C_i eta_j) + b_j
+        using CiEtaj = np.einsum('nij,njk->nik', a.C, b_elem.eta);
+        using bi_plus = np.add(a.b, CiEtaj);
+        using AjM_b = np.einsum('nij,njk->nik', AjM, bi_plus);
+        const b_comp = np.add(AjM_b, b_elem.b);
+
+        // C_ij = A_j M C_i A_j' + C_j
+        using AjMCi = np.einsum('nij,njk->nik', AjM, a.C);
+        using C_tmp = np.einsum('nij,njk->nik', AjMCi, np.einsum('nij->nji', b_elem.A));
+        const C_comp = np.add(C_tmp, b_elem.C);
+
+        // eta_ij = A_i' (I + J_j C_i)^-1 (eta_j - J_j b_i) + eta_i
+        // Derive (I + J_j C_i)^-1 via push-through identity:
+        // N = I - J_j (I + C_i J_j)^-1 C_i = I - J_j M C_i
+        using JjCi = np.einsum('nij,njk->nik', b_elem.J, a.C);
+        JjCi.dispose();
+        using MCi = np.einsum('nij,njk->nik', M, a.C);
+        using JjMCi = np.einsum('nij,njk->nik', b_elem.J, MCi);
+        using N = np.subtract(I1, JjMCi);
+        using Jjbi = np.einsum('nij,njk->nik', b_elem.J, a.b);
+        using eta_diff = np.subtract(b_elem.eta, Jjbi);
+        using N_eta = np.einsum('nij,njk->nik', N, eta_diff);
+        using AtNeta = np.einsum('nji,njk->nik', a.A, N_eta);
+        const eta_comp = np.add(AtNeta, a.eta);
+
+        // J_ij = A_i' (I + J_j C_i)^-1 J_j A_i + J_i
+        using NJ = np.einsum('nij,njk->nik', N, b_elem.J);
+        using NJAi = np.einsum('nij,njk->nik', NJ, a.A);
+        using AtNJAi = np.einsum('nji,njk->nik', a.A, NJAi);
+        const J_comp = np.add(AtNJAi, a.J);
+
+        return { A: A_comp, b: b_comp, C: C_comp, eta: eta_comp, J: J_comp };
       };
 
-      // Run associative scan — O(log n) depth
       const scanned = lax.associativeScan(
-        compose,
-        { A: A_arr, b: b_arr, S: Sigma_arr },
-      ) as ScanElem;
+        composeForward,
+        { A: A_arr, b: b_arr, C: C_arr, eta: eta_arr, J: J_arr },
+      ) as ForwardElem;
 
-      // scanned.A[t], scanned.b[t], scanned.S[t] are the composed transformations
-      // from step 0..t inclusive. To get filtered state:
-      //   x_filt[t] = scanned.A[t] · x0 + scanned.b[t]
-      //   C_filt[t] = scanned.A[t] · C0 · scanned.A[t]' + scanned.S[t]
-
-      // x_filt = A_comp @ x0 + b_comp  [n, m, 1]
       using x0_exp = np.tile(np.reshape(x0, [1, stateSize, 1]), [n, 1, 1]);
       using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
       const x_filt = np.add(Ax0, scanned.b);             // [n, m, 1]
 
-      // C_filt = A_comp @ C0 @ A_comp' + S_comp  [n, m, m]
       using C0_exp = np.tile(np.reshape(C0, [1, stateSize, stateSize]), [n, 1, 1]);
       using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
-      using C_filt_raw = np.add(AC0At, scanned.S);
+      using C_filt_raw = np.add(AC0At, scanned.C);
 
-      // Symmetrize C_filt (f32 stabilization — always true on this path)
       using C_filt_t = np.einsum('nij->nji', C_filt_raw);
       using C_filt_sum = np.add(C_filt_raw, C_filt_t);
       const C_filt = np.multiply(np.array(0.5, { dtype }), C_filt_sum); // [n,m,m]
 
-      tree.dispose(scanned);
+      scanned.A.dispose();
+      scanned.b.dispose();
+      scanned.C.dispose();
+      scanned.eta.dispose();
+      scanned.J.dispose();
+
+      A1.dispose();
+      b1.dispose();
+      C1.dispose();
+      eta1.dispose();
+      J1.dispose();
+      A_arr.dispose();
+      b_arr.dispose();
+      C_arr.dispose();
+      eta_arr.dispose();
+      J_arr.dispose();
 
       // ─── Recover sequential-convention diagnostics from filtered results ───
       // x_pred[t] = x_{t-1|t-1} → prepend x0, drop last
@@ -622,7 +586,7 @@ const dlmSmo = async (
         using S_mat = np.add(GCGt, W_bcast);
 
         // Batched matrix inverse S^{-1}  [n, m, m]
-        using S_inv = np.linalg.inv(S_mat);
+        using S_inv = adSafeInv(S_mat, stateSize, dtype);
 
         // E_k = C_filt,k · G' · S_k^{-1}  [n, m, m]
         using CGt = np.einsum('nij,kj->nik', C_filt, G);
@@ -657,12 +621,21 @@ const dlmSmo = async (
         // jax-js-lint: allow-non-using — L_all disposed after scan
         const L_all = np.multiply(np.array(0.5, { dtype }), L_sum);
 
-        // Suffix scan via reverse associativeScan (same compose as forward)
+        const composeBackward = (a: BackwardElem, b_elem: BackwardElem): BackwardElem => {
+          const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
+          using Ab = np.einsum('nij,njk->nik', b_elem.A, a.b);
+          const b_comp = np.add(Ab, b_elem.b);
+          using ASAt = np.einsum('nij,njk,nlk->nil', b_elem.A, a.S, b_elem.A);
+          const S_comp = np.add(ASAt, b_elem.S);
+          return { A: A_comp, b: b_comp, S: S_comp };
+        };
+
+        // Suffix scan via reverse associativeScan (RTS backward compose)
         const smoothed = lax.associativeScan(
-          compose,
+          composeBackward,
           { A: E_all, b: g_all, S: L_all },
           { reverse: true }
-        ) as ScanElem;
+        ) as BackwardElem;
 
         // Smoothed estimates: x_smooth = g_comp, C_smooth = L_comp
         x_smooth = smoothed.b;      // [n, m, 1]
@@ -788,14 +761,6 @@ const dlmSmo = async (
   
   // Run core — one jit wrapping both scans + all diagnostics
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, r0, N0);
-
-  // Dispose DARE tensors — they live outside jit, so manual cleanup is needed.
-  if (dare) {
-    dare.K_ss.dispose();
-    dare.A_ss.dispose();
-    dare.Sigma_base.dispose();
-    dare.KKt.dispose();
-  }
 
   if (FF_arr === undefined) FF_scan.dispose(); // we own it (created by np.tile)
 
@@ -948,20 +913,13 @@ export const dlmFit = async (
     Array.from({ length: m }, (_, j) => (i === j ? c0 : 0.0))
   );
 
-  // Plain-JS system data for DARE (associativeScan steady-state Kalman gain).
-  // F_data is extended to m dimensions (base F + zeros for covariate states).
-  const F_data_ext: number[] = q > 0
-    ? [...sys.F, ...new Array(q).fill(0)]
-    : sys.F;
-  const sysData = { G_data, F_data: F_data_ext, W_data };
-
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 1: Initial smoother to refine starting values
   // ─────────────────────────────────────────────────────────────────────────
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr, sysData);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -975,7 +933,7 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr, sysData);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr);
 
   FF_arr?.dispose();
 

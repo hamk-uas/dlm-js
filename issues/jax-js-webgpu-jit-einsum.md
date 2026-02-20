@@ -2,7 +2,7 @@
 
 ## Summary
 
-`jit(fn)` crashed on the WebGPU backend when `fn` contained `lax.scan` or `lax.associativeScan` with einsum, matmul/transpose, or np.where in the step/compose body. **Resolved in `fix/jit-scan-einsum-maxargs` (commit f09121d) plus three API fixes and a DARE convention correction in dlm-js `src/index.ts`.**
+`jit(fn)` crashed on the WebGPU backend when `fn` contained `lax.scan` or `lax.associativeScan` with einsum, matmul/transpose, or np.where in the step/compose body. **Resolved in `fix/jit-scan-einsum-maxargs` (commit f09121d) plus three API fixes and a DARE convention correction (now historical — DARE has been replaced with the exact 5-tuple forward filter) in dlm-js `src/index.ts`.**
 
 > **Follow-on finding (commit `3112787c`):** With the correctness fix in place,
 > profiling revealed that `lax.associativeScan` now dispatches O(log n) GPU
@@ -32,9 +32,9 @@ After installing `fix/jit-scan-einsum-maxargs`, three API incompatibilities in `
 | `np.where(float_mask, ...)` — requires boolean condition | Swapped to `np.where(is_nan_bool, ...)` with branches reordered |
 | `np.slice(arr, start, end)` — method doesn't exist | Replaced with `np.split(arr, [k], axis)` pattern |
 
-### DARE convention fix (critical for correctness) — *historical; DARE planned for removal*
+### DARE convention fix (critical for correctness) — *historical; DARE has been removed*
 
-> **Note:** The DARE forward filter described here is planned for replacement with the exact parallel forward Kalman filter from Särkkä & García-Fernández (2020) Lemmas 1–2. See [dare-to-exact-parallel.md](dare-to-exact-parallel.md).
+> **Note:** The DARE forward filter described here has been replaced with the exact 5-tuple parallel forward Kalman filter from Särkkä & García-Fernández (2020) Lemmas 1–2. See `README.md` and `mle-comparison.md` for the current implementation.
 
 `solveDAREForKss` was using the **standard** Kalman formulation (K = C_pred·F'/(F·C_pred·F'+V²) where C_pred = G·C·G'+W), while the rest of the codebase uses the **MATLAB DLM** convention (K = G·C·F'/(F·C·F'+V²) using the filtered covariance C directly). This caused the assocScan-computed `C_filt` to be inconsistent with the K/Cp recovery used by the backward smoother, producing diverging smoothed states.
 
@@ -203,7 +203,7 @@ Test 1 (`np.add(carry.C, inp.W)`) passes because `np.add` broadcast resolution a
 
 ## Impact
 
-This blocks running `dlmFit` (Kalman filter + RTS smoother) on WebGPU entirely. The library has a complete WebGPU code path (currently: DARE steady-state Kalman gain + `lax.associativeScan` forward filter + Joseph-form stabilization; planned: exact 5-tuple forward from [Särkkä 2020, Lemmas 1–2]) that cannot be activated until `jit(lax.scan)` with einsum/transpose in the step body works correctly on WebGPU.
+This blocked running `dlmFit` (Kalman filter + RTS smoother) on WebGPU. The library now uses the exact 5-tuple forward filter from [Särkkä 2020, Lemmas 1–2] + `lax.associativeScan` + Joseph-form stabilization on the WebGPU code path.
 
 ## Additional note: np.eye(N, opts) API ambiguity
 

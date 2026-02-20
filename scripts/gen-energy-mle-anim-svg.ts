@@ -24,8 +24,8 @@ import {
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const variant = (process.argv[2] || "scan") as "scan" | "assoc" | "webgpu";
 
-const variantLabel: Record<string, string> = { scan: "lax.scan", assoc: "assocScan", webgpu: "WebGPU" };
-const backendLabel = variant === "webgpu" ? "WebGPU" : "WASM";
+const variantLabel: Record<string, string> = { scan: "scan", assoc: "associative scan", webgpu: "associative scan" };
+const backendLabel = variant === "webgpu" ? "WebGPU/f32" : "WASM/f64";
 const inputPath = resolve(root, `tmp/mle-frames-energy-${variant}.json`);
 const data = JSON.parse(readFileSync(inputPath, "utf8"));
 
@@ -221,7 +221,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Energy demand — MLE via ${variantLabel[variant]} with AR estimation (${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s ${backendLabel})</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE via ${variantLabel[variant]} (order=1, trig, ns=12, AR(1)), ${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s, ${backendLabel}</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 

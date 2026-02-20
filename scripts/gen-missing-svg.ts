@@ -200,7 +200,7 @@ push(`<text x="${r(margin.left + plotW / 2)}" y="${H - 5}" text-anchor="middle" 
 push(`<text x="14" y="${r(margin.top + plotH / 2)}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${r(margin.top + plotH / 2)})">Annual flow</text>`);
 
 // Title
-push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Missing-data demo — Nile flow with 23 NaN observations (nobs=${jsResult.nobs})</text>`);
+push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (missing data, ${jsResult.nobs}/${y.length} observed) — fit (order=1, trend), ${warmRunMs.toFixed(0)} ms, WASM/f64</text>`);
 
 // Legend — top centre
 const legW = 255;

@@ -2,7 +2,7 @@
  * Collect per-frame data for the animated energy MLE SVG — WebGPU variant.
  *
  * Uses WebGPU + Float32. dlmMLE auto-dispatches to makeKalmanLossAssoc
- * (DARE steady-state + lax.associativeScan) when device=webgpu + dtype=Float32.
+ * (exact 5-tuple + lax.associativeScan) when device=webgpu + dtype=Float32.
  *
  * Must be run with Deno (WebGPU requires --unstable-webgpu):
  *   deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run \

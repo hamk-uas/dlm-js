@@ -1,7 +1,7 @@
 import { DType, numpy as np, lax, jit, valueAndGrad, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray } from "./types";
-import { getFloatArrayType } from "./types";
+import { getFloatArrayType, adSafeInv } from "./types";
 import { dlmGenSys, findArInds } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
@@ -244,30 +244,15 @@ const makeKalmanLoss = (
  * dispatches O(n) GPU kernels. The associative scan reduces depth to
  * O(log n) (⌈log₂N⌉+1 Kogge-Stone rounds).
  *
- * ## Why DARE must be inside the AD tape
+ * Uses the exact parallel forward Kalman filter algebra from Särkkä &
+ * García-Fernández (2020), Lemmas 1–2, with 5-tuple scan elements
+ * `(A, b, C, eta, J)`.
  *
- * Unlike `dlmFit`'s forward filter (which runs eagerly and can compute
- * K_ss once before the scan), the MLE loss is differentiated by
- * `valueAndGrad`. K_ss depends on W = diag(exp(θ)²) and V² = exp(θ₀)²,
- * so if DARE ran outside the tape, ∂L/∂W would be zero. The 50 Riccati
- * iterations are unrolled as standard matrix ops (einsum, matmul, add,
- * divide) — all have defined JVP/VJP rules — and produce O(m²) traced
- * intermediates, negligible relative to the O(n·m²) scan.
+ * Missing observations (NaN) are handled by masking each timestep to the
+ * no-observation transition: `A=G, b=0, C=W, eta=0, J=0`.
  *
- * ## DARE covariance update — full Joseph form
- *
- * Each Riccati iteration uses the Joseph form:
- *
- *     C_filt = (I − KF) C_pred (I − KF)ᵀ + K V² Kᵀ
- *
- * This guarantees PSD at every iterate despite Float32 rounding.
- *
- * ## Heterogeneous V² policy
- *
- * When `fixedV2_arr` provides per-timestep observation noise V²(t),
- * DARE uses `mean(V²)` as a representative scalar (it must produce a
- * single K_ss independent of t). The per-step V²(t) values are applied
- * faithfully in the scan element Σ_t and in the likelihood C_p^(t).
+ * The first element is initialized exactly from the prior `(x0, C0)`
+ * (A₁=0, b₁/C₁ from the one-step update), matching the sequential filter.
  *
  * ## Prediction-error likelihood
  *
@@ -281,7 +266,7 @@ const makeKalmanLoss = (
  *
  * - Särkkä & García-Fernández (2020), IEEE TAC 66(1), §3 — associative
  *   affine-map composition for the forward filter.
- * - Standard Kalman DARE — e.g. Anderson & Moore (1979), §4.4.
+ * - Särkkä & García-Fernández (2020), Lemmas 1–2.
  *
  * @internal
  */
@@ -297,23 +282,51 @@ const makeKalmanLossAssoc = (
   arInds: number[] = [],
   fixedV2_arr?: np.Array,  // [n, 1, 1] when s is fixed
   mask_arr?: np.Array,     // [n, 1, 1]: 1=observed, 0=NaN; undefined = all observed
-  dareIter: number = 50,
 ) => {
   const nar = arInds.length;
   const fixS = fixedV2_arr !== undefined;
   const nSwParams = (fixS ? 0 : 1) + m;
   const nTheta = nSwParams + nar;
 
-  // ─── Compose function for associativeScan (theta-independent) ───
-  type ScanElem = { A: np.Array; b: np.Array; S: np.Array };
+  type ForwardElem = { A: np.Array; b: np.Array; C: np.Array; eta: np.Array; J: np.Array };
 
-  const compose = (a: ScanElem, b_elem: ScanElem): ScanElem => {
-    const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
-    using Ab = np.einsum('nij,njk->nik', b_elem.A, a.b);
-    const b_comp = np.add(Ab, b_elem.b);
-    using ASAt = np.einsum('nij,njk,nlk->nil', b_elem.A, a.S, b_elem.A);
-    const S_comp = np.add(ASAt, b_elem.S);
-    return { A: A_comp, b: b_comp, S: S_comp };
+  const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
+    using I1 = np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]);
+    using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
+    using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
+    using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
+    using X_reg = np.add(np.add(I1, CiJj), regI);
+    using M = adSafeInv(X_reg, m, dtype);
+
+    using AjM = np.einsum('nij,njk->nik', b_elem.A, M);
+    const A_comp = np.einsum('nij,njk->nik', AjM, a.A);
+
+    using CiEtaj = np.einsum('nij,njk->nik', a.C, b_elem.eta);
+    using bi_plus = np.add(a.b, CiEtaj);
+    using AjM_b = np.einsum('nij,njk->nik', AjM, bi_plus);
+    const b_comp = np.add(AjM_b, b_elem.b);
+
+    using AjMCi = np.einsum('nij,njk->nik', AjM, a.C);
+    using C_tmp = np.einsum('nij,njk->nik', AjMCi, np.einsum('nij->nji', b_elem.A));
+    const C_comp = np.add(C_tmp, b_elem.C);
+
+    using JjCi = np.einsum('nij,njk->nik', b_elem.J, a.C);
+    JjCi.dispose();
+    using MCi = np.einsum('nij,njk->nik', M, a.C);
+    using JjMCi = np.einsum('nij,njk->nik', b_elem.J, MCi);
+    using N = np.subtract(I1, JjMCi);
+    using Jjbi = np.einsum('nij,njk->nik', b_elem.J, a.b);
+    using eta_diff = np.subtract(b_elem.eta, Jjbi);
+    using N_eta = np.einsum('nij,njk->nik', N, eta_diff);
+    using AtNeta = np.einsum('nji,njk->nik', a.A, N_eta);
+    const eta_comp = np.add(AtNeta, a.eta);
+
+    using NJ = np.einsum('nij,njk->nik', N, b_elem.J);
+    using NJAi = np.einsum('nij,njk->nik', NJ, a.A);
+    using AtNJAi = np.einsum('nji,njk->nik', a.A, NJAi);
+    const J_comp = np.add(AtNJAi, a.J);
+
+    return { A: A_comp, b: b_comp, C: C_comp, eta: eta_comp, J: J_comp };
   };
 
   return (theta: np.Array): np.Array => {
@@ -325,16 +338,9 @@ const makeKalmanLossAssoc = (
       ? buildG(G_base, theta, arInds, m, nSwParams, nTheta, dtype)
       : G_base;
 
-    // V2 scalar [1, 1] — traced
-    let V2: np.Array;
-    if (fixS) {
-      // Policy: heterogeneous V2[t] → use mean(V2) for DARE convergence.
-      // The DARE produces a single steady-state K_ss independent of t, so a
-      // representative scalar is the best we can do.  Per-timestep V2[t] is
-      // still applied faithfully in the scan elements and likelihood terms.
-      using fixedMean = np.mean(fixedV2_arr!);
-      V2 = np.reshape(fixedMean, [1, 1]);
-    } else {
+    // V2 scalar [1, 1] for estimated-s case
+    let V2: np.Array | undefined;
+    if (!fixS) {
       using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
       using sVal = np.dot(expTheta, mask_s);
       V2 = np.reshape(np.square(sVal), [1, 1]);
@@ -343,96 +349,142 @@ const makeKalmanLossAssoc = (
     // W = diag(w²) [m, m] — traced
     const W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
 
-    // ─── Traced DARE: unrolled Riccati iteration (~dareIter steps) ───
-    // Produces K_ss [m, 1] as a traced tensor dependent on W and V2.
-    let C_dare = np.add(C0, np.zerosLike(C0));  // copy of C0 [m, m]
-    for (let i = 0; i < dareIter; i++) {
-      // Predicted covariance via G: C_pred = G·C·G' + W
-      using C_pred = np.add(np.einsum('ij,jk,lk->il', G, C_dare, G), W);
-
-      // Innovation covariance: S = F·C_pred·F' + V2  [1, 1]
-      using S = np.add(np.einsum('ij,jk,lk->il', F, C_pred, F), V2);
-
-      // Kalman gain (standard): K = C_pred·F' / S  [m, 1]
-      using C_pred_Ft = np.matmul(C_pred, np.transpose(F));
-      using K = np.divide(C_pred_Ft, S);
-
-      // Filtered covariance (Joseph form): C_filt = (I-K·F)·C_pred·(I-K·F)' + K·V2·K'
-      using KF = np.matmul(K, F);
-      using ImKF = np.subtract(np.eye(m, undefined, { dtype }), KF);
-      using ImKF_C = np.einsum('ij,jk,lk->il', ImKF, C_pred, ImKF);
-      using KV2Kt = np.multiply(V2, np.matmul(K, np.transpose(K)));
-      // jax-js-lint: allow-non-using — accumulator swap
-      const C_dare_new = np.add(ImKF_C, KV2Kt);
-      C_dare.dispose();
-      C_dare = C_dare_new;
-    }
-
-    // Final steady-state gain from converged C_dare
-    using C_pred_final = np.add(np.einsum('ij,jk,lk->il', G, C_dare, G), W);
-    using S_final = np.add(np.einsum('ij,jk,lk->il', F, C_pred_final, F), V2);
-    using C_pred_Ft_final = np.matmul(C_pred_final, np.transpose(F));
-    const K_ss = np.divide(C_pred_Ft_final, S_final);  // [m, 1] — traced
-
-    // A_ss = (I - K_ss·F)·G  [m, m] — traced
-    using KF_ss = np.matmul(K_ss, F);
-    using ImKF_ss = np.subtract(np.eye(m, undefined, { dtype }), KF_ss);
-    const A_ss = np.matmul(ImKF_ss, G);  // [m, m]
-
-    // KKt = K_ss · K_ss' [m, m] — for V²-scaled noise term
-    using KKt = np.matmul(K_ss, np.transpose(K_ss));
-
-    C_dare.dispose();
-    K_ss.dispose();
-
-    // ─── Build per-timestep scan elements [n, ...] ───
+    // ─── Build per-timestep exact forward elements [n, ...] ───
     // Mask: use provided mask or create all-ones
     const mask_n = mask_arr ?? np.ones([n, 1, 1], { dtype });
     const ownsMask = mask_arr === undefined;
 
-    // b[t] = mask · K_ss · y[t]  [n, m, 1]
-    using y_flat = np.squeeze(y_arr, [2]);                // [n, 1]
-    using Ky = np.einsum('ij,nj->ni', K_ss, y_flat);     // [n, m]
-    using Ky_exp = np.expandDims(Ky, 2);                  // [n, m, 1]
-    // jax-js-lint: allow-non-using — disposed after scan
-    const b_arr = np.multiply(mask_n, Ky_exp);            // [n, m, 1]
+    // Per-step V2(t): fixed array or broadcast scalar
+    const V2_per_step = fixS
+      ? fixedV2_arr!
+      : np.tile(np.reshape(V2!, [1, 1, 1]), [n, 1, 1]);
+    const ownsV2ps = !fixS;
 
-    // A[t] = mask ? A_ss : G  [n, m, m]
-    // Use float mask to blend: A = mask·A_ss + (1-mask)·G
-    using mask_mm = np.tile(mask_n, [1, m, m]);           // [n, m, m]
+    using y_flat = np.squeeze(y_arr, [2]);                     // [n,1]
+    using mask_mm = np.tile(mask_n, [1, m, m]);               // [n,m,m]
     using one_mm = np.onesLike(mask_mm);
     using inv_mask_mm = np.subtract(one_mm, mask_mm);
-    using A_ss_exp = np.tile(np.reshape(A_ss, [1, m, m]), [n, 1, 1]);
-    using G_exp = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
-    using A_obs = np.multiply(mask_mm, A_ss_exp);
-    using A_nan = np.multiply(inv_mask_mm, G_exp);
-    // jax-js-lint: allow-non-using — disposed after scan
-    const A_arr = np.add(A_obs, A_nan);                   // [n, m, m]
 
-    // Σ[t] = mask ? (W + V2·KKt) : W  [n, m, m]
-    // For time-varying V2: use per-timestep V2[t]
-    const V2_per_step = fixS
-      ? fixedV2_arr!                                      // [n, 1, 1]
-      : np.tile(np.reshape(V2, [1, 1, 1]), [n, 1, 1]);   // [n, 1, 1]
-    const ownsV2ps = !fixS;
-    using V2_mm = np.reshape(V2_per_step, [n, 1, 1]);
-    using KKt_exp = np.tile(np.reshape(KKt, [1, m, m]), [n, 1, 1]);
-    using V2KKt = np.multiply(V2_mm, KKt_exp);           // [n, m, m]
+    using G_exp = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
     using W_exp = np.tile(np.reshape(W, [1, m, m]), [n, 1, 1]);
-    using Sigma_obs = np.add(W_exp, V2KKt);               // [n, m, m]
-    // Blend: Σ = mask·Σ_obs + (1-mask)·W
-    using Sigma_obs_masked = np.multiply(mask_mm, Sigma_obs);
-    using W_nan = np.multiply(inv_mask_mm, W_exp);
+    using F_exp = np.tile(np.reshape(F, [1, 1, m]), [n, 1, 1]);
+    using Ft = np.transpose(F);
+    using Ft_exp = np.tile(np.reshape(Ft, [1, m, 1]), [n, 1, 1]);
+    using I_exp = np.tile(np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]), [n, 1, 1]);
+
+    // Lemma 1 observed-step terms
+    using FW = np.einsum('nij,njk->nik', F_exp, W_exp);        // [n,1,m]
+    using FWFt = np.einsum('nij,njk->nik', FW, Ft_exp);        // [n,1,1]
+    using S_obs = np.add(FWFt, V2_per_step);                   // [n,1,1]
+
+    using WFt = np.einsum('nij,njk->nik', W_exp, Ft_exp);      // [n,m,1]
+    using K_obs_raw = np.divide(WFt, S_obs);                   // [n,m,1]
+    using K_obs = np.multiply(mask_n, K_obs_raw);              // [n,m,1]
+
+    using KF = np.einsum('nij,njk->nik', K_obs, F_exp);        // [n,m,m]
+    using ImKF = np.subtract(I_exp, KF);
+
+    using A_obs = np.einsum('nij,njk->nik', ImKF, G_exp);      // [n,m,m]
+    using C_obs = np.einsum('nij,njk->nik', ImKF, W_exp);      // [n,m,m]
+
+    using Ky = np.einsum('nij,nj->ni', K_obs, y_flat);         // [n,m]
+    using b_obs = np.expandDims(Ky, 2);                        // [n,m,1]
+
+    using y_col = np.reshape(y_flat, [n, 1, 1]);
+    using FG = np.einsum('nij,njk->nik', F_exp, G_exp);        // [n,1,m]
+    using FGt = np.einsum('nij->nji', FG);                     // [n,m,1]
+    using eta_num = np.multiply(FGt, y_col);                   // [n,m,1]
+    using eta_obs_raw = np.divide(eta_num, S_obs);             // [n,m,1]
+    using eta_obs = np.multiply(mask_n, eta_obs_raw);          // [n,m,1]
+
+    using J_num = np.einsum('nij,njk->nik', FGt, FG);          // [n,m,m]
+    using J_obs_raw = np.divide(J_num, S_obs);                 // [n,m,m]
+    using J_obs = np.multiply(mask_mm, J_obs_raw);             // [n,m,m]
+
+    // Missing-step blend: A=G, b=0, C=W, eta=0, J=0
+    using A_obs_mask = np.multiply(mask_mm, A_obs);
+    using A_nan = np.multiply(inv_mask_mm, G_exp);
+    using A_all = np.add(A_obs_mask, A_nan);
+
+    using b_all = np.multiply(mask_n, b_obs);
+
+    using C_obs_mask = np.multiply(mask_mm, C_obs);
+    using C_nan = np.multiply(inv_mask_mm, W_exp);
+    using C_all = np.add(C_obs_mask, C_nan);
+
+    using eta_all = np.multiply(mask_n, eta_obs);
+    using J_all = np.multiply(mask_mm, J_obs);
+
+    // First element (k=1): exact initialization from prior
+    const F_parts = np.split(F_exp, [1], 0);
+    const V2_parts = np.split(V2_per_step, [1], 0);
+    const y_parts = np.split(y_arr, [1], 0);
+    const mask_parts = np.split(mask_n, [1], 0);
+    const A_parts = np.split(A_all, [1], 0);
+    const b_parts = np.split(b_all, [1], 0);
+    const C_parts = np.split(C_all, [1], 0);
+    const eta_parts = np.split(eta_all, [1], 0);
+    const J_parts = np.split(J_all, [1], 0);
+
+    using F1 = F_parts[0];
+    using V2_1 = V2_parts[0];
+    using y1 = y_parts[0];
+    using mask1 = mask_parts[0];
+
+    using C0_first = np.reshape(C0, [1, m, m]);
+    using x0_first = np.reshape(x0, [1, m, 1]);
+
+    using S1 = np.add(np.einsum('nij,njk,nlk->nil', F1, C0_first, F1), V2_1);
+    using C0Ft1 = np.einsum('ij,nkj->nik', C0, F1);
+    using K1_obs = np.divide(C0Ft1, S1);
+    using K1 = np.multiply(mask1, K1_obs);
+
+    using Fx0_1 = np.einsum('nij,njk->nik', F1, x0_first);
+    using innov1 = np.subtract(y1, Fx0_1);
+    using Kinnov1 = np.multiply(K1, innov1);
+    const b1 = np.add(x0_first, Kinnov1);
+
+    using K1S1 = np.multiply(K1, S1);
+    using K1S1K1t = np.einsum('nij,nkj->nik', K1S1, K1);
+    const C1 = np.subtract(C0_first, K1S1K1t);
+
+    const A1 = np.zeros([1, m, m], { dtype });
+    const eta1 = np.zeros([1, m, 1], { dtype });
+    const J1 = np.zeros([1, m, m], { dtype });
+
     // jax-js-lint: allow-non-using — disposed after scan
-    const Sigma_arr = np.add(Sigma_obs_masked, W_nan);    // [n, m, m]
+    const A_arr = np.concatenate([A1, A_parts[1]], 0);
+    // jax-js-lint: allow-non-using — disposed after scan
+    const b_arr = np.concatenate([b1, b_parts[1]], 0);
+    // jax-js-lint: allow-non-using — disposed after scan
+    const C_arr = np.concatenate([C1, C_parts[1]], 0);
+    // jax-js-lint: allow-non-using — disposed after scan
+    const eta_arr = np.concatenate([eta1, eta_parts[1]], 0);
+    // jax-js-lint: allow-non-using — disposed after scan
+    const J_arr = np.concatenate([J1, J_parts[1]], 0);
+
+    F_parts[1].dispose();
+    V2_parts[1].dispose();
+    y_parts[1].dispose();
+    mask_parts[1].dispose();
+    A_parts[0].dispose();
+    A_parts[1].dispose();
+    b_parts[0].dispose();
+    b_parts[1].dispose();
+    C_parts[0].dispose();
+    C_parts[1].dispose();
+    eta_parts[0].dispose();
+    eta_parts[1].dispose();
+    J_parts[0].dispose();
+    J_parts[1].dispose();
 
     if (ownsV2ps) V2_per_step.dispose();
 
     // ─── Associative prefix scan ───
     const scanned = lax.associativeScan(
-      compose,
-      { A: A_arr, b: b_arr, S: Sigma_arr },
-    ) as ScanElem;
+      composeForward,
+      { A: A_arr, b: b_arr, C: C_arr, eta: eta_arr, J: J_arr },
+    ) as ForwardElem;
 
     // x_filt[t] = scanned.A[t] · x0 + scanned.b[t]  [n, m, 1]
     // Note: np.add creates NEW arrays — x_filt and C_filt are independent of
@@ -444,13 +496,27 @@ const makeKalmanLossAssoc = (
     // C_filt[t] = scanned.A[t]·C0·scanned.A[t]' + scanned.S[t]  [n, m, m]
     using C0_exp = np.tile(np.reshape(C0, [1, m, m]), [n, 1, 1]);
     using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
-    using C_filt = np.add(AC0At, scanned.S);
+    using C_filt_raw = np.add(AC0At, scanned.C);
+    using C_filt_t = np.einsum('nij->nji', C_filt_raw);
+    using C_filt_sum = np.add(C_filt_raw, C_filt_t);
+    using C_filt = np.multiply(np.array(0.5, { dtype }), C_filt_sum);
 
-    tree.dispose(scanned);
+    scanned.A.dispose();
+    scanned.b.dispose();
+    scanned.C.dispose();
+    scanned.eta.dispose();
+    scanned.J.dispose();
+
+    A1.dispose();
+    b1.dispose();
+    C1.dispose();
+    eta1.dispose();
+    J1.dispose();
     A_arr.dispose();
     b_arr.dispose();
-    Sigma_arr.dispose();
-    A_ss.dispose();
+    C_arr.dispose();
+    eta_arr.dispose();
+    J_arr.dispose();
 
     // ─── Compute -2·logL from filtered outputs (split, no concatenate) ───
     // np.concatenate lacks VJP in jax-js, so we compute the likelihood in
@@ -478,8 +544,8 @@ const makeKalmanLossAssoc = (
       v2Split[0].dispose();
       V2_rest = v2Split[1];
     } else {
-      V2_0 = np.reshape(V2, [1, 1]);
-      V2_rest = np.tile(np.reshape(V2, [1, 1, 1]), [n - 1, 1, 1]);
+      V2_0 = np.reshape(V2!, [1, 1]);
+      V2_rest = np.tile(np.reshape(V2!, [1, 1, 1]), [n - 1, 1, 1]);
     }
 
     // ── Step 0: v₀ = y₀ − F·x₀,  Cp₀ = F·C₀·F' + V² ──
@@ -529,7 +595,7 @@ const makeKalmanLossAssoc = (
     mask_rest!.dispose();
 
     if (ownsMask) mask_n.dispose();
-    V2.dispose();
+    if (!fixS) V2!.dispose();
     W.dispose();
     if (nar > 0) G.dispose();
 

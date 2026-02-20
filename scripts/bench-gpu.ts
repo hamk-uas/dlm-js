@@ -2,7 +2,7 @@
  * WebGPU `dlmFit` benchmark — float32 with associativeScan forward filter.
  *
  * Runs the same models as bench-backends.ts but on the WebGPU backend,
- * which triggers the DARE steady-state Kalman gain + associativeScan path.
+ * which triggers the exact 5-tuple parallel forward filter + associativeScan path.
  *
  * Must be run with Deno (WebGPU requires --unstable-webgpu):
  *   pnpm run bench:gpu
@@ -82,7 +82,7 @@ const models: Model[] = [
 async function timedFit(model: Model): Promise<{ firstMs: number; warmMs: number }> {
   const { y, s, w, options } = model;
 
-  // First run (JIT compilation + DARE)
+  // First run (JIT compilation)
   const t0 = performance.now();
   const r1 = await dlmFit(y, s, w, DType.Float32, options);
   const t1 = performance.now();

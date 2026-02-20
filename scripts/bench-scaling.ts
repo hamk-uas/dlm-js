@@ -61,7 +61,7 @@ function median(arr: number[]): number {
 async function timedMedian(n: number, dtype: DType): Promise<number> {
   const y = makeY(n);
 
-  // First run (JIT compilation / DARE steady-state computation)
+  // First run (JIT compilation)
   const r0 = await dlmFit(y, s, w, dtype, options);
   r0[Symbol.dispose]?.();
 

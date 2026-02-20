@@ -140,7 +140,7 @@ const push = (s: string) => lines.push(s);
 
 push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui,-apple-system,sans-serif" font-size="12">`);
 push(`<rect width="${W}" height="${H}" fill="white"/>`);
-push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Kaisaniemi demo — level and covariance-aware combined signal</text>`);
+push(`<text x="${outer.left + plotW / 2}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Kaisaniemi demo — fit (order=1, trig, s=2), ${timed.warmRunMs.toFixed(0)} ms, WASM/f64</text>`);
 
 function drawPanel(
   panelTop: number,

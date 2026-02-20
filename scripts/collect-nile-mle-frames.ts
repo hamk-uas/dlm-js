@@ -2,7 +2,7 @@
  * Collect per-frame data for the animated Nile MLE SVG.
  *
  * Runs `dlmMLE` twice — once with sequential `lax.scan` (default) and once
- * with `forceAssocScan` (DARE + `lax.associativeScan`) — capturing theta at
+ * with `forceAssocScan` (exact 5-tuple + `lax.associativeScan`) — capturing theta at
  * every iteration, sampling frames, and running `dlmFit` at each.
  *
  * Output:
