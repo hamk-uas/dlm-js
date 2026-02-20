@@ -64,10 +64,10 @@ Timing note: the runtime values above are measured on the `wasm` backend and are
 
 | Model | $n$ | $m$ | cpu / f32 | wasm / f32 | wasm / f64 | webgpu / f32 |
 |-------|-----|-----|-----------|------------|------------|--------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:cpu-f32 -->196 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f32 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->479 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:cpu-f32 -->368 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f32 -->23 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->551 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:cpu-f32 -->443 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f32 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->571 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:cpu-f32 -->436 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f32 -->22 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->599 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:cpu-f32 -->196 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f32 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->300 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:cpu-f32 -->368 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f32 -->23 ms<!-- /timing --> | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:cpu-f32 -->443 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f32 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->339 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:cpu-f32 -->436 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f32 -->22 ms<!-- /timing --> | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->356 ms<!-- /timing --> |
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.

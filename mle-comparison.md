@@ -281,10 +281,10 @@ Requires jax-js-nonconsuming v0.7.4 or later (project uses v0.7.7). See [upstrea
 
 | Model | $n$ | $m$ | wasm / f64 (scan) | webgpu / f32 (assocScan) |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->479 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->551 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->571 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->599 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->300 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->339 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->356 ms<!-- /timing --> |
 
 **WebGPU scaling: O(log n) with high fixed overhead.**
 
