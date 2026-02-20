@@ -71,6 +71,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
   );
 
   const elapsed = mle.elapsed;
+  const jitMs = mle.jitMs;
   const totalIters = mle.iterations;
   const likHistory = mle.likHistory;
 
@@ -122,6 +123,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
     s_init: Math.exp(thetaHistory[0][0]),
     w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),
     elapsed: Math.round(elapsed),
+    jitMs,
     iterations: totalIters,
     targetFps: TARGET_FPS,
     holdSeconds: HOLD_SECONDS,

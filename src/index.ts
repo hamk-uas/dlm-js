@@ -1,6 +1,6 @@
 import { DType, numpy as np, lax, jit, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmSmoResult, DlmFitResult, DlmForecastResult, FloatArray } from "./types";
-import { getFloatArrayType, adSafeInv } from "./types";
+import { getFloatArrayType } from "./types";
 import { dlmGenSys } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 
@@ -451,7 +451,7 @@ const dlmSmo = async (
         using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
         using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
         using X_reg = np.add(np.add(I1, CiJj), regI);
-        using M = adSafeInv(X_reg, stateSize, dtype);
+        using M = np.linalg.inv(X_reg);
 
         // A_ij = A_j M A_i
         using AjM = np.einsum('nij,njk->nik', b_elem.A, M);
@@ -604,7 +604,7 @@ const dlmSmo = async (
         using S_mat = np.add(GCGt, W_bcast);
 
         // Batched matrix inverse S^{-1}  [n, m, m]
-        using S_inv = adSafeInv(S_mat, stateSize, dtype);
+        using S_inv = np.linalg.inv(S_mat);
 
         // E_k = C_filt,k · G' · S_k^{-1}  [n, m, m]
         using CGt = np.einsum('nij,kj->nik', C_filt, G);

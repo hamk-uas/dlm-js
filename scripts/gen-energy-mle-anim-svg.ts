@@ -32,6 +32,7 @@ const data = JSON.parse(readFileSync(inputPath, "utf8"));
 const {
   t, y, n,
   elapsed: elapsedMs,
+  jitMs,
   iterations,
   holdSeconds,
   likHistory,
@@ -42,6 +43,7 @@ const {
   y: number[];
   n: number;
   elapsed: number;
+  jitMs: number;
   iterations: number;
   holdSeconds: number;
   likHistory: number[];
@@ -86,26 +88,45 @@ const sy = makeLinearScale(yMin, yMax, margin.top + plotH, margin.top);
 
 // ── Animation timing ───────────────────────────────────────────────────────
 
-const animDuration = elapsedMs / 1000;
+const animDuration = elapsedMs / 1000;       // total play duration (jit + training)
+const jitDuration = jitMs / 1000;            // JIT phase duration
+const trainDuration = animDuration - jitDuration; // actual training duration
 const totalDuration = animDuration + holdSeconds;
 const numFrames = frames.length;
 
-const keyTimes = computeKeyTimes(numFrames, animDuration, totalDuration);
-const keyTimesStr = keyTimes.map(kt => kt.toFixed(4)).join(";");
+// Fractional positions in the [0,1] normalized timeline
+const jitEndFrac = jitDuration / totalDuration;
+const trainEndFrac = animDuration / totalDuration;
+
+// Main plot: hold frame0 during JIT phase, then animate N frames, then hold.
+// keyTimes: length numFrames+2.  values: length numFrames+2.
+const mainKeyTimes: string = [
+  (0).toFixed(4),
+  ...Array.from({ length: numFrames }, (_, i) => {
+    const kt = numFrames === 1
+      ? jitEndFrac
+      : jitEndFrac + (i / (numFrames - 1)) * (trainEndFrac - jitEndFrac);
+    return kt.toFixed(4);
+  }),
+  (1).toFixed(4),
+].join(";");
 
 // ── Pre-compute polyline points and band paths per frame ───────────────────
+// Values arrays extended with JIT-phase copy: len numFrames+2.
 
-const polylineValues = buildAnimPolylineValues(
+const _trainingPolyValues = buildAnimPolylineValues(
   frames.map((f: any) => f.combined as number[]), t, sx, sy,
 );
+const polylineValues = [_trainingPolyValues[0], ..._trainingPolyValues];
 
-const bandValues = buildAnimBandValues(
+const _trainingBandValues = buildAnimBandValues(
   frames.map((f: any) => ({
     upper: f.combined.map((v: number, i: number) => v + 2 * f.combinedStd[i]),
     lower: f.combined.map((v: number, i: number) => v - 2 * f.combinedStd[i]),
   })),
   t, sx, sy,
 );
+const bandValues = [_trainingBandValues[0], ..._trainingBandValues];
 
 // ── Legend layout ──────────────────────────────────────────────────────────
 
@@ -126,17 +147,23 @@ const sparkX = legX + legW - sparkMarginRight - sparkW;
 const sparkY1 = legY + sparkMarginTop;
 const sparkY2 = sparkY1 + sparkH1 + sparkGap;
 
-// −2·logL sparkline
+// JIT/training split within sparkline area
+const jitFrac = Math.min(0.95, jitMs / elapsedMs);
+const jitBarW = Math.round(jitFrac * sparkW);
+const trainSparkW = sparkW - jitBarW;
+const sparkX_train = sparkX + jitBarW;
+
+// −2·logL sparkline (training portion only)
 const likMin = Math.min(...likHistory);
 const likMax = Math.max(...likHistory);
 
-const sparkLikPoints = sparklinePoints(likHistory, sparkX, sparkY1, sparkW, sparkH1, likMin, likMax);
+const sparkLikPoints = sparklinePoints(likHistory, sparkX_train, sparkY1, trainSparkW, sparkH1, likMin, likMax);
 
-// arphi sparkline
+// arphi sparkline (training portion only)
 const arphiMin = Math.min(...arphiHistory) * 0.95;
 const arphiMax = Math.max(...arphiHistory) * 1.05;
 
-const sparkArphiPoints = sparklinePoints(arphiHistory, sparkX, sparkY2, sparkW, sparkH2, arphiMin, arphiMax);
+const sparkArphiPoints = sparklinePoints(arphiHistory, sparkX_train, sparkY2, trainSparkW, sparkH2, arphiMin, arphiMax);
 
 // ── Ticks ──────────────────────────────────────────────────────────────────
 
@@ -173,10 +200,10 @@ push(`<rect width="${W}" height="${H}" fill="white"/>`);
 // Clip paths
 push(`<defs>`);
 push(`  <clipPath id="plot-clip"><rect x="${margin.left}" y="${margin.top}" width="${plotW}" height="${plotH}"/></clipPath>`);
-// Clip covers only the polyline area so reveal is in sync with the main plot.
+// Clip covers only the training section; starts revealing at jitEndFrac.
 push(`  <clipPath id="spark-clip">`);
-push(`    <rect x="${sparkX}" y="${sparkY1 - 12}" width="0" height="${sparkH1 + sparkGap + sparkH2 + 14}">`);
-push(`      <animate attributeName="width" values="0;${sparkW};${sparkW}" keyTimes="0;${(animDuration / totalDuration).toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+push(`    <rect x="${r(sparkX_train)}" y="${sparkY1 - 12}" width="0" height="${sparkH1 + sparkGap + sparkH2 + 14}">`);
+push(`      <animate attributeName="width" values="0;0;${r(trainSparkW)};${r(trainSparkW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
 push(`    </rect>`);
 push(`  </clipPath>`);
 push(`</defs>`);
@@ -190,12 +217,12 @@ push(`<g clip-path="url(#plot-clip)">`);
 
 // Confidence band
 push(`<path fill="${bandColor}" stroke="none">`);
-push(`  <animate attributeName="d" values="${bandValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+push(`  <animate attributeName="d" values="${bandValues.join(";") }" keyTimes="${mainKeyTimes}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
 push(`</path>`);
 
 // Combined signal line
 push(`<polyline fill="none" stroke="${lineColor}" stroke-width="2">`);
-push(`  <animate attributeName="points" values="${polylineValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+push(`  <animate attributeName="points" values="${polylineValues.join(";") }" keyTimes="${mainKeyTimes}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
 push(`</polyline>`);
 
 push(`</g>`);
@@ -246,26 +273,39 @@ push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#
 
 // Static labels outside the clip group (always visible)
 lines.push(...renderSparklineLabels({
-  x0: sparkX, y0: sparkY1, h: sparkH1,
+  x0: sparkX_train, y0: sparkY1, h: sparkH1,
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
 }));
 lines.push(...renderSparklineLabels({
-  x0: sparkX, y0: sparkY2, h: sparkH2,
+  x0: sparkX_train, y0: sparkY2, h: sparkH2,
   label: "\u03c6 (AR)",
   vmin: arphiMin, vmax: arphiMax,
   vminFmt: arphiMin.toFixed(2),
   vmaxFmt: arphiMax.toFixed(2),
 }));
 
-// Polylines inside the clip group (progressively revealed)
+// JIT overhead box (fills during JIT phase, holds afterward)
+if (jitBarW > 0) {
+  const jitBoxH = sparkH1 + sparkGap + sparkH2;
+  push(`<rect x="${r(sparkX)}" y="${sparkY1 + 1}" width="0" height="${jitBoxH - 2}" fill="#f3f4f6" rx="2">`);
+  push(`  <animate attributeName="width" values="0;${r(jitBarW)};${r(jitBarW)};${r(jitBarW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+  push(`</rect>`);
+  push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY1 + jitBoxH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
+  push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${(jitEndFrac * 0.5).toFixed(4)};${jitEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+  push(`  jit ${jitMs}ms`);
+  push(`</text>`);
+  push(`<line x1="${r(sparkX_train)}" y1="${sparkY1}" x2="${r(sparkX_train)}" y2="${sparkY2 + sparkH2}" stroke="#d1d5db" stroke-width="0.5" stroke-dasharray="2,2"/>`);
+}
+
+// Polylines inside the clip group (progressively revealed during training)
 push(`<g clip-path="url(#spark-clip)">`);
 
 // −2·logL sparkline
 lines.push(...renderSparkline({
   points: sparkLikPoints,
   color: sparkLikColor,
-  x0: sparkX, y0: sparkY1, w: sparkW, h: sparkH1,
+  x0: sparkX_train, y0: sparkY1, w: trainSparkW, h: sparkH1,
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
   noLabels: true,
@@ -275,7 +315,7 @@ lines.push(...renderSparkline({
 lines.push(...renderSparkline({
   points: sparkArphiPoints,
   color: sparkArColor,
-  x0: sparkX, y0: sparkY2, w: sparkW, h: sparkH2,
+  x0: sparkX_train, y0: sparkY2, w: trainSparkW, h: sparkH2,
   label: "\u03c6 (AR)",
   vmin: arphiMin, vmax: arphiMax,
   vminFmt: arphiMin.toFixed(2),
@@ -285,11 +325,11 @@ lines.push(...renderSparkline({
 
 push(`</g>`);
 
-// Shared x-axis labels
+// Shared x-axis labels (training portion)
 const sparkAxisY = sparkY2 + sparkH2 + 8;
-push(`<text x="${sparkX}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
-push(`<text x="${sparkX + sparkW / 2}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
-push(`<text x="${sparkX + sparkW}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
+push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
 
 push(`</svg>`);
 

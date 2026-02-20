@@ -1,7 +1,7 @@
 import { DType, numpy as np, lax, jit, valueAndGrad, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray } from "./types";
-import { getFloatArrayType, adSafeInv } from "./types";
+import { getFloatArrayType } from "./types";
 import { dlmGenSys, findArInds } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
@@ -22,8 +22,10 @@ export interface DlmMleResult {
   fit: DlmFitResult;
   /** Optimization history: lik at each iteration */
   likHistory: number[];
-  /** Wall-clock time in ms */
+  /** Wall-clock time in ms (total: setup + all iterations + final dlmFit) */
   elapsed: number;
+  /** Wall-clock time in ms for the first optimizer step (JIT compilation + one gradient pass) */
+  jitMs: number;
 }
 
 /**
@@ -296,7 +298,7 @@ const makeKalmanLossAssoc = (
     using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
     using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
     using X_reg = np.add(np.add(I1, CiJj), regI);
-    using M = adSafeInv(X_reg, m, dtype);
+using M = np.linalg.inv(X_reg);
 
     using AjM = np.einsum('nij,njk->nik', b_elem.A, M);
     const A_comp = np.einsum('nij,njk->nik', AjM, a.A);
@@ -785,11 +787,14 @@ export const dlmMLE = async (
   let prevLik = Infinity;
   let iter = 0;
   let patienceCount = 0;
+  let jitMs = 0;
   const PATIENCE = 5; // require 5 consecutive steps below tol before stopping
 
   for (iter = 0; iter < maxIter; iter++) {
+    const t0iter = iter === 0 ? performance.now() : NaN;
     const [newTheta, newOptState, likVal] = optimStep(theta, optState);
     const likNum = (await likVal.consumeData() as Float64Array | Float32Array)[0];
+    if (iter === 0) jitMs = Math.round(performance.now() - t0iter);
     likHistory.push(likNum);
 
     // Notify callback with updated theta
@@ -849,5 +854,6 @@ export const dlmMLE = async (
     fit,
     likHistory,
     elapsed,
+    jitMs,
   };
 };

@@ -1,9 +1,10 @@
-# `np.linalg.inv` VJP returns wrong gradient
+# `np.linalg.inv` VJP returns wrong gradient — ✅ RESOLVED in v0.7.8
 
 **Discovered**: 2025-06-14 during dlm-js development  
-**Affects**: `np.linalg.inv`, `np.linalg.solve` — both have broken backward pass  
-**Severity**: High — any gradient flowing through matrix inverse is wrong  
-**Workaround**: `adSafeInv` in `src/types.ts` (analytic cofactor expansion for m ≤ 3; Schur-complement block inversion for m ≥ 4)
+**Resolved**: v0.7.8 — `np.linalg.inv` VJP is now correct; `adSafeInv` workaround removed from dlm-js  
+**Affects**: `np.linalg.inv`, `np.linalg.solve` — both had broken backward pass  
+**Severity**: High — any gradient flowing through matrix inverse was wrong  
+**Workaround (historical)**: `adSafeInv` in `src/types.ts` (analytic cofactor expansion for m ≤ 3; Schur-complement block inversion for m ≥ 4) — **removed in dlm-js alongside v0.7.8 upgrade**
 
 ## Summary
 

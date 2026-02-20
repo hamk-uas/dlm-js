@@ -32,6 +32,7 @@ const data = JSON.parse(readFileSync(inputPath, "utf8"));
 const {
   t, y, n,
   elapsed: elapsedMs,
+  jitMs,
   iterations,
   holdSeconds,
   likHistory,
@@ -41,6 +42,7 @@ const {
   y: number[];
   n: number;
   elapsed: number;
+  jitMs: number;
   iterations: number;
   holdSeconds: number;
   likHistory: number[];
@@ -84,36 +86,58 @@ const sy = makeLinearScale(yMin, yMax, margin.top + plotH, margin.top);
 
 // ── Animation timing ───────────────────────────────────────────────────────
 
-const animDuration = elapsedMs / 1000;
+const animDuration = elapsedMs / 1000;       // total play duration (jit + training)
+const jitDuration = jitMs / 1000;            // JIT phase duration
+const trainDuration = animDuration - jitDuration; // actual training duration
 const totalDuration = animDuration + holdSeconds;
 const numFrames = frames.length;
 
-const keyTimes = computeKeyTimes(numFrames, animDuration, totalDuration);
-const keyTimesStr = keyTimes.map(t => t.toFixed(4)).join(";");
+// Fractional positions in the [0,1] normalized timeline
+const jitEndFrac = jitDuration / totalDuration;
+const trainEndFrac = animDuration / totalDuration;
+
+// Main plot: hold frame0 during JIT phase, then animate N frames, then hold.
+// keyTimes: length numFrames+2.  values: length numFrames+2.
+const mainKeyTimes: string = [
+  (0).toFixed(4),
+  ...Array.from({ length: numFrames }, (_, i) => {
+    const kt = numFrames === 1
+      ? jitEndFrac
+      : jitEndFrac + (i / (numFrames - 1)) * (trainEndFrac - jitEndFrac);
+    return kt.toFixed(4);
+  }),
+  (1).toFixed(4),
+].join(";");
 
 // ── Pre-compute polyline points and band paths per frame ───────────────────
 
-const polylineValues = buildAnimPolylineValues(
+// Values arrays are extended with a JIT-phase entry: [frame0(JIT hold), frame0..frameN-1(training), frameN-1(hold)]
+// buildAnimPolylineValues returns N+1 items; prepend frame0 → N+2 to match mainKeyTimes.
+
+const _trainingPolyValues = buildAnimPolylineValues(
   frames.map((f: any) => f.level as number[]), t, sx, sy,
 );
+const polylineValues = [_trainingPolyValues[0], ..._trainingPolyValues];
 
 // State uncertainty band (narrow, more opaque)
-const stateBandValues = buildAnimBandValues(
+const _trainingStateBandValues = buildAnimBandValues(
   frames.map((f: any) => ({
     upper: f.level.map((v: number, i: number) => v + 2 * f.std[i]),
     lower: f.level.map((v: number, i: number) => v - 2 * f.std[i]),
   })),
   t, sx, sy,
 );
+const stateBandValues = [_trainingStateBandValues[0], ..._trainingStateBandValues];
 
 // Observation prediction band (wider = includes obs noise, lighter fill)
-const obsBandValues = buildAnimBandValues(
+const _trainingObsBandValues = buildAnimBandValues(
   frames.map((f: any) => ({
     upper: f.level.map((v: number, i: number) => v + 2 * f.ystd[i]),
     lower: f.level.map((v: number, i: number) => v - 2 * f.ystd[i]),
   })),
   t, sx, sy,
 );
+const obsBandValues = [_trainingObsBandValues[0], ..._trainingObsBandValues];
 
 // ── Loss sparkline (drawn in legend area) ──────────────────────────────────
 
@@ -131,10 +155,17 @@ const legY = margin.top + 8;
 const sparkX = legX + legW - sparkMarginRight - sparkW;
 const sparkY = legY + sparkMarginTop;
 
+// JIT/training split within sparkline area
+const jitFrac = Math.min(0.95, jitMs / elapsedMs);   // fraction of total time used by JIT
+const jitBarW = Math.round(jitFrac * sparkW);          // pixel width of JIT box
+const trainSparkW = sparkW - jitBarW;                   // pixel width of training sparkline
+const sparkX_train = sparkX + jitBarW;                  // left edge of training sparkline
+
 const likMin = Math.min(...likHistory);
 const likMax = Math.max(...likHistory);
 
-const sparkPoints = sparklinePoints(likHistory, sparkX, sparkY, sparkW, sparkH, likMin, likMax);
+// Sparkline points are computed over the training section only
+const sparkPoints = sparklinePoints(likHistory, sparkX_train, sparkY, trainSparkW, sparkH, likMin, likMax);
 
 // ── Ticks ──────────────────────────────────────────────────────────────────
 
@@ -167,10 +198,10 @@ push(`<rect width="${W}" height="${H}" fill="white"/>`);
 // Clip path for main plot area (prevents band overflow)
 push(`<defs>`);
 push(`  <clipPath id="plot-clip"><rect x="${margin.left}" y="${margin.top}" width="${plotW}" height="${plotH}"/></clipPath>`);
-// Clip for sparkline progressive reveal — covers only the polyline area so reveal is in sync with the main plot.
+// Clip for sparkline progressive reveal — covers only the training section, starts revealing at jitEndFrac.
 push(`  <clipPath id="spark-clip">`);
-push(`    <rect x="${sparkX}" y="${sparkY - 12}" width="0" height="${sparkH + 14}">`);
-push(`      <animate attributeName="width" values="0;${sparkW};${sparkW}" keyTimes="0;${(animDuration / totalDuration).toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+push(`    <rect x="${r(sparkX_train)}" y="${sparkY - 12}" width="0" height="${sparkH + 14}">`);
+push(`      <animate attributeName="width" values="0;0;${r(trainSparkW)};${r(trainSparkW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
 push(`    </rect>`);
 push(`  </clipPath>`);
 push(`</defs>`);
@@ -184,17 +215,17 @@ push(`<g clip-path="url(#plot-clip)">`);
 
 // Observation prediction band (wider, behind state band)
 push(`<path fill="${obsBandColor}" stroke="none">`);
-push(`  <animate attributeName="d" values="${obsBandValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+push(`  <animate attributeName="d" values="${obsBandValues.join(";") }" keyTimes="${mainKeyTimes}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
 push(`</path>`);
 
 // State uncertainty band (narrower, more opaque)
 push(`<path fill="${stateBandColor}" stroke="none">`);
-push(`  <animate attributeName="d" values="${stateBandValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+push(`  <animate attributeName="d" values="${stateBandValues.join(";") }" keyTimes="${mainKeyTimes}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
 push(`</path>`);
 
 // Level line
 push(`<polyline fill="none" stroke="${lineColor}" stroke-width="2">`);
-push(`  <animate attributeName="points" values="${polylineValues.join(";")}" keyTimes="${keyTimesStr}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
+push(`  <animate attributeName="points" values="${polylineValues.join(";") }" keyTimes="${mainKeyTimes}" dur="${r(totalDuration)}s" repeatCount="indefinite" calcMode="discrete"/>`);
 push(`</polyline>`);
 
 push(`</g>`);
@@ -241,27 +272,42 @@ push(`<text x="${legX + 24}" y="${legY + 65}" dominant-baseline="middle" fill="#
 
 // Static sparkline labels rendered outside the clip group (always visible)
 lines.push(...renderSparklineLabels({
-  x0: sparkX, y0: sparkY, h: sparkH,
+  x0: sparkX_train, y0: sparkY, h: sparkH,
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
 }));
-// Sparkline polyline inside clip group (progressively revealed)
+
+// JIT overhead box (fills during JIT phase, holds afterward)
+if (jitBarW > 0) {
+  push(`<rect x="${r(sparkX)}" y="${sparkY + 1}" width="0" height="${sparkH - 2}" fill="#f3f4f6" rx="2">`);
+  push(`  <animate attributeName="width" values="0;${r(jitBarW)};${r(jitBarW)};${r(jitBarW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+  push(`</rect>`);
+  // "jit" label: fades in during JIT phase, stays visible
+  push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
+  push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${(jitEndFrac * 0.5).toFixed(4)};${jitEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+  push(`  jit ${jitMs}ms`);
+  push(`</text>`);
+  // Separator between jit and training sections
+  push(`<line x1="${r(sparkX_train)}" y1="${sparkY}" x2="${r(sparkX_train)}" y2="${sparkY + sparkH}" stroke="#d1d5db" stroke-width="0.5" stroke-dasharray="2,2"/>`);
+}
+
+// Sparkline polyline inside clip group (progressively revealed during training)
 push(`<g clip-path="url(#spark-clip)">`);
 lines.push(...renderSparkline({
   points: sparkPoints,
   color: sparkColor,
-  x0: sparkX, y0: sparkY, w: sparkW, h: sparkH,
+  x0: sparkX_train, y0: sparkY, w: trainSparkW, h: sparkH,
   label: "\u22122\u00b7logL",
   vmin: likMin, vmax: likMax,
   noLabels: true,
 }));
 push(`</g>`);
 
-// Sparkline iteration axis labels: "0", "iters", "199"
+// Sparkline iteration axis labels
 const sparkAxisY = sparkY + sparkH + 9;
-push(`<text x="${sparkX}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
-push(`<text x="${sparkX + sparkW / 2}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
-push(`<text x="${sparkX + sparkW}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
+push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
 
 push(`</svg>`);
 
