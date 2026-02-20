@@ -180,9 +180,10 @@
 <line x1="687" y1="90" x2="765" y2="90" stroke="#eee" stroke-width="0.5"/>
 </g>
 <text x="687.0" y="99" text-anchor="middle" fill="#999" font-size="7">0</text>
-<text x="726.0" y="99" text-anchor="middle" fill="#999" font-size="7" opacity="0">
+<text x="687.5" y="99" text-anchor="middle" fill="#999" font-size="7">iters</text>
+<text x="765.0" y="99" text-anchor="middle" fill="#999" font-size="7">122</text>
+<text x="726.0" y="75.0" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2898;0.5863;1" dur="4.8s" repeatCount="indefinite"/>
   train 1434ms
 </text>
-<text x="765.0" y="99" text-anchor="middle" fill="#999" font-size="7">122</text>
 </svg>

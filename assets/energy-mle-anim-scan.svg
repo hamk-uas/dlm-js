@@ -174,7 +174,7 @@
 <text x="14" y="180" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,180)">Energy demand</text>
 <text x="422.5" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, trig, ns=12, AR(1)), 300 iters, 6.4 s, scan/WASM/f64</text>
 <rect x="70" y="38" width="400" height="72" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>
-<rect x="320.0" y="70" width="0" height="11" fill="#f3f4f6">
+<rect x="320.0" y="57" width="0" height="11" fill="#f3f4f6">
   <animate attributeName="width" values="0;42.0;42.0;42.0" keyTimes="0;0.2285;0.7618;1" dur="8.4s" repeatCount="indefinite"/>
 </rect>
 <circle cx="84" cy="52" r="2.5" fill="#555" opacity="0.5"/>
@@ -190,7 +190,7 @@
 <text x="362" y="76" fill="#666" font-size="8">φ (AR)</text>
 <text x="360" y="81" text-anchor="end" fill="#999" font-size="7">0.90</text>
 <text x="360" y="98" text-anchor="end" fill="#999" font-size="7">0.49</text>
-<text x="341.0" y="75.0" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">
+<text x="341.0" y="62.0" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.1142;0.2285;1" dur="8.4s" repeatCount="indefinite"/>
   jit
 </text>
@@ -202,9 +202,10 @@
 <line x1="362" y1="98" x2="460" y2="98" stroke="#eee" stroke-width="0.5"/>
 </g>
 <text x="362.0" y="106" text-anchor="middle" fill="#999" font-size="7">0</text>
-<text x="411.0" y="106" text-anchor="middle" fill="#999" font-size="7" opacity="0">
+<text x="390.0" y="106" text-anchor="middle" fill="#999" font-size="7">iters</text>
+<text x="460.0" y="106" text-anchor="middle" fill="#999" font-size="7">300</text>
+<text x="411.0" y="62.0" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.2285;0.7618;1" dur="8.4s" repeatCount="indefinite"/>
   train 4477ms
 </text>
-<text x="460.0" y="106" text-anchor="middle" fill="#999" font-size="7">300</text>
 </svg>

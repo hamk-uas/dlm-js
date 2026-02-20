@@ -31,7 +31,7 @@ const data = JSON.parse(readFileSync(inputPath, "utf8"));
 const {
   t, y, n,
   elapsed: elapsedMs,
-  jitMs,
+  jitMs = 0,
   iterations,
   holdSeconds,
   likHistory,
@@ -42,7 +42,7 @@ const {
   y: number[];
   n: number;
   elapsed: number;
-  jitMs: number;
+  jitMs?: number;
   iterations: number;
   holdSeconds: number;
   likHistory: number[];
@@ -255,9 +255,8 @@ push(`<rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" rx="4" fill
 
 // JIT fill rect — placed immediately after legend background so it renders behind all text/lines
 if (jitBarW > 0) {
-  const jitBoxTotalH = sparkH1 + sparkGap + sparkH2;
   const jitBarH = 11;
-  const jitBarY = Math.round(sparkY1 + (jitBoxTotalH - jitBarH) / 2);
+  const jitBarY = Math.round(sparkY1 + (sparkH1 - jitBarH) / 2);
   push(`<rect x="${r(sparkX)}" y="${jitBarY}" width="0" height="${jitBarH}" fill="#f3f4f6">`);
   push(`  <animate attributeName="width" values="0;${r(jitBarW)};${r(jitBarW)};${r(jitBarW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
   push(`</rect>`);
@@ -296,9 +295,8 @@ lines.push(...renderSparklineLabels({
 
 // JIT label + separator (rendered after sparkline labels, on top of jit fill rect)
 if (jitBarW > 0) {
-  const jitBoxTotalH = sparkH1 + sparkGap + sparkH2;
   // "jit" text: fades in during JIT phase, stays visible
-  push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY1 + jitBoxTotalH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
+  push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY1 + sparkH1 / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
   push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${(jitEndFrac * 0.5).toFixed(4)};${jitEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
   push(`  jit`);
   push(`</text>`);
@@ -336,11 +334,13 @@ push(`</g>`);
 const sparkAxisY = sparkY2 + sparkH2 + 8;
 const trainMs = Math.round(trainDuration * 1000);
 push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
-push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7" opacity="0">`);
+push(`<text x="${r(sparkX + sparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
+// "train Xms" label overlaid on center of loss sparkline, fades in at end of JIT phase
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${r(sparkY1 + sparkH1 / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
 push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
 push(`  train ${trainMs}ms`);
 push(`</text>`);
-push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
 
 push(`</svg>`);
 
