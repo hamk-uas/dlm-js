@@ -139,6 +139,7 @@ const output = {
   w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),
   arphi_init: [thetaHistory[0][nSwParams]],
   elapsed: Math.round(elapsed),
+  jitMs: mle.jitMs,
   iterations: totalIters,
   targetFps: TARGET_FPS,
   holdSeconds: HOLD_SECONDS,
