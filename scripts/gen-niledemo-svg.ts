@@ -31,7 +31,7 @@ const w: number[] = input.w;        // state noise stds
 
 const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
 const isAssoc = variant === 'assoc';
-const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
 
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 

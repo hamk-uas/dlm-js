@@ -24,8 +24,7 @@ import {
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const variant = (process.argv[2] || "scan") as "scan" | "assoc" | "webgpu";
 
-const variantLabel: Record<string, string> = { scan: "scan", assoc: "associative scan", webgpu: "associative scan" };
-const backendLabel = variant === "webgpu" ? "WebGPU/f32" : "WASM/f64";
+const backendLabel: Record<string, string> = { scan: "scan/WASM/f64", assoc: "associativeScan/WASM/f64", webgpu: "associativeScan/WebGPU/f32" }[variant] ?? "scan/WASM/f64";
 const inputPath = resolve(root, `tmp/mle-frames-nile-${variant}.json`);
 const data = JSON.parse(readFileSync(inputPath, "utf8"));
 
@@ -246,11 +245,20 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — MLE via ${variantLabel[variant]} (order=1, trend), ${iterations} iters, ${elapsedMs} ms, ${backendLabel}</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — MLE (order=1, trend), ${iterations} iters, ${elapsedMs} ms, ${backendLabel}</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 
 push(`<rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>`);
+
+// JIT fill rect — placed immediately after legend background so it renders behind all text/lines
+if (jitBarW > 0) {
+  const jitBarH = 11;
+  const jitBarY = Math.round(sparkY + (sparkH - jitBarH) / 2);
+  push(`<rect x="${r(sparkX)}" y="${jitBarY}" width="0" height="${jitBarH}" fill="#f3f4f6">`);
+  push(`  <animate attributeName="width" values="0;${r(jitBarW)};${r(jitBarW)};${r(jitBarW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+  push(`</rect>`);
+}
 
 // Observations
 push(`<circle cx="${legX + 14}" cy="${legY + 14}" r="3" fill="${obsColor}" opacity="0.6"/>`);
@@ -277,15 +285,12 @@ lines.push(...renderSparklineLabels({
   vmin: likMin, vmax: likMax,
 }));
 
-// JIT overhead box (fills during JIT phase, holds afterward)
+// JIT label + separator (rendered after sparkline labels, on top of jit fill rect)
 if (jitBarW > 0) {
-  push(`<rect x="${r(sparkX)}" y="${sparkY + 1}" width="0" height="${sparkH - 2}" fill="#f3f4f6" rx="2">`);
-  push(`  <animate attributeName="width" values="0;${r(jitBarW)};${r(jitBarW)};${r(jitBarW)}" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
-  push(`</rect>`);
-  // "jit" label: fades in during JIT phase, stays visible
+  // "jit" text: fades in during JIT phase, stays visible
   push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
   push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${(jitEndFrac * 0.5).toFixed(4)};${jitEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
-  push(`  jit ${jitMs}ms`);
+  push(`  jit`);
   push(`</text>`);
   // Separator between jit and training sections
   push(`<line x1="${r(sparkX_train)}" y1="${sparkY}" x2="${r(sparkX_train)}" y2="${sparkY + sparkH}" stroke="#d1d5db" stroke-width="0.5" stroke-dasharray="2,2"/>`);
@@ -305,8 +310,12 @@ push(`</g>`);
 
 // Sparkline iteration axis labels
 const sparkAxisY = sparkY + sparkH + 9;
+const trainMs = Math.round(trainDuration * 1000);
 push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
-push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7" opacity="0">`);
+push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
+push(`  train ${trainMs}ms`);
+push(`</text>`);
 push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
 
 push(`</svg>`);

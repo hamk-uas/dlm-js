@@ -39,7 +39,7 @@ const options = { order: 1, trig: 1, ns: 12, arphi: [0.85] };
 
 const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
 const isAssoc = variant === 'assoc';
-const scanLabel = isAssoc ? 'assocScan/WASM/f64' : 'WASM/f64';
+const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
 
 // Time axis: months 1..n (synthetic monthly data)
 const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
