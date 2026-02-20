@@ -181,6 +181,11 @@ export function getFloatArrayType(dtype: DType): FloatArrayConstructor {
  * with smaller dimension, bottoming out at the m ≤ 3 analytic cases.
  * Maximum recursion depth: ⌈log₂(m/2)⌉ for the D block.
  *
+ * Float32 sub-block stabilization: before inverting D, an extra ε·I is added
+ * to prevent near-singularity.  The outer ε·I that callers add to the full
+ * m×m matrix does not protect extracted sub-blocks when float32 rounding
+ * makes (C·J) diagonal entries approach −1.
+ *
  * @param X - Batched matrix [n, m, m]
  * @param m - Matrix dimension (state size)
  * @param dtype - Computation dtype
@@ -299,7 +304,22 @@ export function adSafeInv(X: np.Array, m: number, dtype: DType): np.Array {
   const C = botCols[0], D = botCols[1];
 
   // D⁻¹  [n,j,j]
-  using Dinv = adSafeInv(D, j, dtype);
+  //
+  // Float32: add another ε·I before recursing into the j×j block.  The outer
+  // ε·I in composeForward regularises the full m×m matrix, but after Schur
+  // partitioning the extracted D sub-block can still be near-singular when
+  // float32 rounding makes (C·J) diagonal entries approach −1.  One extra level
+  // of regularisation here prevents single-iteration loss spikes.
+  // jax-js-lint: allow-non-using
+  const D_inv_src = (dtype === DType.Float32)
+    ? (() => {
+        using v  = np.array(1e-6, { dtype });
+        using Ij = np.reshape(np.eye(j, undefined, { dtype }), [1, j, j]);
+        return np.add(D, np.multiply(v, Ij));
+      })()
+    : D;
+  using Dinv = adSafeInv(D_inv_src, j, dtype);
+  if (D_inv_src !== D) D_inv_src.dispose();
 
   // B·D⁻¹  [n,k,j]
   using BDinv = np.einsum('nij,njk->nik', B, Dinv);

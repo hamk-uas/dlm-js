@@ -100,5 +100,13 @@ Implemented `adSafeInv(X, m, dtype)` in `src/types.ts`:
   recursion bottoms out at m ≤ 3. Covers kaisaniemi (m=6), energy (m=6),
   ar2 (m=4), trigar (m=5), ozone (m=7).
 
+  **Float32 sub-block stabilization**: before inverting D, another ε·I is
+  added. The outer ε·I that `composeForward` applies to the full m×m matrix
+  does not protect extracted Schur sub-blocks when float32 rounding makes
+  `(C·J)` diagonal entries approach −1. Without this, energy WebGPU/f32
+  training exhibited a single-iteration loss spike to ~139 600 at iter 148
+  that immediately recovered but contaminated Adam's moment estimates.
+  With sub-block regularization the spike is eliminated.
+
 All ops used (einsum, add, subtract, multiply, split, concatenate) have correct VJPs.
 All 112 tests pass, and ASSOC/SCAN gradients match exactly for all model sizes.

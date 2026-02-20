@@ -46,7 +46,7 @@ A minimal [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming)
 
 <img alt="Energy MLE optimization via WebGPU with AR coefficient estimation: exact 5-tuple associativeScan parallel prefix scan on GPU" src="assets/energy-mle-anim-webgpu.svg" />
 
-*Energy MLE demo (WebGPU, `associativeScan`) with AR coefficient estimation: same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:energy-mle-webgpu:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle-webgpu:elapsed -->56.4 s<!-- /timing --> (−2·logL ≈ <!-- timing:energy-mle-webgpu:lik -->448.2<!-- /timing -->). Regenerate with `pnpm run gen:svg`.*
+*Energy MLE demo (WebGPU, `associativeScan`) with AR coefficient estimation: same model via `makeKalmanLossAssoc` on the `webgpu` backend + Float32. Converged in <!-- timing:energy-mle-webgpu:iterations -->300<!-- /timing --> iterations / <!-- timing:energy-mle-webgpu:elapsed -->53.9 s<!-- /timing --> (−2·logL ≈ <!-- timing:energy-mle-webgpu:lik -->445.8<!-- /timing -->). Regenerate with `pnpm run gen:svg`.*
 
 <img alt="Stratospheric ozone trend analysis: smoothed level state and proxy covariate contributions (solar, QBO) from dlm-js and MATLAB/Octave" src="assets/ozone-demo.svg" />
 
