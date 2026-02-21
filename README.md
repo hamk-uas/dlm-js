@@ -11,6 +11,14 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 
 🤖 AI generated code & documentation with gentle human supervision.
 
+### Features at a glance
+- **Kalman filter & RTS smoother**: Sequential (`scan`) and exact O(log N) parallel (`assoc`) algorithms.
+- **Autodiff MLE**: Jointly estimate observation noise, process noise, and AR coefficients via `jit(valueAndGrad + Adam)`.
+- **Multiple backends**: Runs on CPU, WASM (recommended for speed), and WebGPU.
+- **Missing data & irregular timestamps**: Built-in support for NaN observations and arbitrary time steps.
+- **Forecasting**: Propagate states $h$ steps ahead with calibrated uncertainty bounds.
+- **Cross-platform**: Works in Node.js and the browser (ESM & CommonJS).
+
 > ⚠️ **Warning:** The API is not yet frozen and may change before the 1.0 release.
 
 ## Installation
