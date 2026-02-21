@@ -436,6 +436,14 @@ export interface DlmStabilization {
    */
   nDiag?: boolean;
   /**
+   * Take abs of diagonal of N after each backward step: diag(N) = |diag(N)|.
+   * Stronger than nDiag: rather than flooring at 0, sign-flips negative entries.
+   * Rationale: if rounding makes N_ii barely negative the true value was near
+   * zero and the magnitude is still informative; reflecting it back to +|N_ii|
+   * preserves the scale of the correction rather than discarding it.
+   */
+  nDiagAbs?: boolean;
+  /**
    * Multiply N by (1 - 1e-5) after each backward step.
    * Slight forgetting that prevents N from accumulating unboundedly over long
    * series, which would cause C·N·C to overshoot and produce negative C_smooth.
@@ -453,6 +461,14 @@ export interface DlmStabilization {
    * at the cost of a small bias in the smoothed covariance estimates.
    */
   cEps?: boolean;
+  /**
+   * Take abs of diagonal of C_smooth after symmetrize: diag(C) = |diag(C)|.
+   * Unlike cDiag (clamp to 1e-7) this is magnitude-preserving: if catastrophic
+   * cancellation yields C_ii = -0.003 the true value was ~+0.003, and abs
+   * gives back that physically meaningful value. Off-diagonal entries (which
+   * can legitimately be negative, representing correlation) are left intact.
+   */
+  cDiagAbs?: boolean;
 }
 
 /**

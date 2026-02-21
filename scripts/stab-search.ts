@@ -1,7 +1,7 @@
 /**
  * Greedy stabilization search for the Float32 sequential backward smoother.
  *
- * Tests 5 incremental stabilization flags (nSym, nDiag, nLeak, cDiag, cEps)
+ * Tests 7 incremental stabilization flags (nSym, nDiag, nDiagAbs, nLeak, cDiag, cEps, cDiagAbs)
  * on top of the default joseph+symmetrize baseline across 5 models with m > 2.
  * Uses a greedy algorithm: each round adds the flag that most reduces the error
  * metric, until no further improvement is found.
@@ -72,14 +72,16 @@ const MODELS: ModelDef[] = [
 
 // ── Candidate flags ──────────────────────────────────────────────────────────
 
-const CANDIDATES: (keyof DlmStabilization)[] = ['nSym', 'nDiag', 'nLeak', 'cDiag', 'cEps'];
+const CANDIDATES: (keyof DlmStabilization)[] = ['nSym', 'nDiag', 'nDiagAbs', 'nLeak', 'cDiag', 'cEps', 'cDiagAbs'];
 
 const FLAG_DESC: Record<keyof DlmStabilization, string> = {
-  nSym:  'sym N each step',
-  nDiag: 'clamp diag(N)≥0',
-  nLeak: 'N*=(1-1e-5)/step',
-  cDiag: 'clamp diag(C)≥1e-7',
-  cEps:  'C+=1e-6·I',
+  nSym:     'sym N each step',
+  nDiag:    'clamp diag(N)≥0',
+  nDiagAbs: 'abs(diag(N)) — sign-flip N diagonal',
+  nLeak:    'N*=(1-1e-5)/step',
+  cDiag:    'clamp diag(C)≥1e-7',
+  cEps:     'C+=1e-6·I',
+  cDiagAbs: 'abs(diag(C)) — sign-flip C diagonal',
 };
 
 // ── Data loading ─────────────────────────────────────────────────────────────

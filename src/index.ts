@@ -106,10 +106,12 @@ const dlmSmo = async (
   // Flags are captured as JS constants — each unique combination produces a
   // different JIT-compiled kernel (acceptable for research/exploration).
   const stabNSym  = stabilization?.nSym  ?? false;
-  const stabNDiag = stabilization?.nDiag ?? false;
-  const stabNLeak = stabilization?.nLeak ?? false;
-  const stabCDiag = stabilization?.cDiag ?? false;
-  const stabCEps  = stabilization?.cEps  ?? false;
+  const stabNDiag    = stabilization?.nDiag    ?? false;
+  const stabNDiagAbs = stabilization?.nDiagAbs ?? false;
+  const stabNLeak    = stabilization?.nLeak    ?? false;
+  const stabCDiag    = stabilization?.cDiag    ?? false;
+  const stabCEps     = stabilization?.cEps     ?? false;
+  const stabCDiagAbs = stabilization?.cDiagAbs ?? false;
   // Pre-computed [m,m] constant tensors for stabilization ops.
   // Created unconditionally to avoid conditional `using` complexity.
   // Captured by backwardStep closure; disposed when dlmSmo scope exits after jit.
@@ -325,6 +327,18 @@ const dlmSmo = async (
         N_new.dispose();
         N_new = N_stab;
       }
+      if (stabNDiagAbs) {
+        // Abs diagonal of N: diag(N) = |diag(N)|.
+        // Stronger than nDiag: sign-flips barely-negative entries rather than
+        // zeroing them, preserving their magnitude as an information estimate.
+        using N_d = np.multiply(N_new, stab_I_eye);
+        using N_o = np.multiply(N_new, stab_off_I);
+        using N_d_a = np.abs(N_d);
+        // jax-js-lint: allow-non-using — accumulator-swap: N_new.dispose() + N_new = N_stab below
+        const N_stab = np.add(N_d_a, N_o);
+        N_new.dispose();
+        N_new = N_stab;
+      }
       if (stabNLeak) {
         // Slight forgetting: N *= (1 - 1e-5) per step.
         // Prevents N from accumulating unboundedly, which would cause
@@ -350,8 +364,9 @@ const dlmSmo = async (
     //
     // Float32 stabilization layers (applied in order, all on top of joseph+sym):
     //   (default) symmetrize: C = 0.5·(C + C')  — always applied for f32
-    //   cDiag: clamp diag(C) >= 1e-7             — off-diagonal left intact
-    //   cEps:  C += 1e-6·I                        — shifts all eigenvalues up
+    //   cDiag:    clamp diag(C) >= 1e-7             — off-diagonal left intact
+    //   cEps:     C += 1e-6·I                        — shifts all eigenvalues up
+    //   cDiagAbs: diag(C) = |diag(C)|               — magnitude-preserving sign-flip
     let C_smooth: np.Array;
     {
       using C_raw = np.subtract(
@@ -361,7 +376,7 @@ const dlmSmo = async (
       if (f32) {
         using Ct = np.transpose(C_raw);
         using sumC = np.add(C_raw, Ct);
-        // jax-js-lint: allow-non-using — cDiag/cEps branch may take ownership
+        // jax-js-lint: allow-non-using — cDiag/cEps/cDiagAbs branch may take ownership
         const C_sym = np.multiply(np.array(0.5, { dtype }), sumC);
         if (stabCDiag) {
           // Clamp diagonal to >= 1e-7, leave off-diagonal intact.
@@ -371,6 +386,15 @@ const dlmSmo = async (
           using C_o = np.multiply(C_sym, stab_off_I);
           using C_d_c = np.maximum(C_d, stab_cDiag_eps_I);
           C_smooth = np.add(C_d_c, C_o);
+          C_sym.dispose();
+        } else if (stabCDiagAbs) {
+          // Abs diagonal: diag(C) = |diag(C)|, off-diagonal left intact.
+          // Magnitude-preserving: if cancellation yields C_ii = -eps, the
+          // physical variance is ~+eps, so abs recovers it without bias.
+          using C_d = np.multiply(C_sym, stab_I_eye);
+          using C_o = np.multiply(C_sym, stab_off_I);
+          using C_d_a = np.abs(C_d);
+          C_smooth = np.add(C_d_a, C_o);
           C_sym.dispose();
         } else if (stabCEps) {
           // Add 1e-6·I: shifts all eigenvalues up by 1e-6 (biased but PSD).
