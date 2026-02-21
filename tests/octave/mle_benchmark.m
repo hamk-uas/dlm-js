@@ -1,7 +1,7 @@
 addpath('tests/octave', 'tests/octave/dlm');
 
 %% Benchmark MATLAB DLM parameter estimation (fminsearch) on Nile data
-% Compares with dlm-js dlmMLE timings in mle-comparison.md
+% Compares with dlm-js dlmMLE timings in README.md
 
 % Load same Nile data used by dlm-js
 inputs = load_json("tests/niledemo-in.json");

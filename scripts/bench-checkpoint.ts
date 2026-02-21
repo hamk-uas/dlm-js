@@ -2,7 +2,7 @@
  * Checkpoint benchmark — lax.scan `checkpoint: false` vs `checkpoint: true`.
  *
  * Produces the values used in the "Gradient checkpointing" table in
- * mle-comparison.md.  Writes a sidecar to
+ * README.md.  Writes a sidecar to
  * assets/timings/bench-checkpoint.json.
  *
  * Methodology: 1 warm-up + BENCH_RUNS timed runs per strategy; stores the

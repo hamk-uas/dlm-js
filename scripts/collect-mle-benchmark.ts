@@ -1,10 +1,10 @@
 /**
  * MLE benchmark — all comparison-table rows for the dlm-js column.
  *
- * Runs dlmMLE on every model in mle-comparison.md, writes timing data to
+ * Runs dlmMLE on every model in README.md, writes timing data to
  * assets/timings/collect-mle-benchmark.json, and prints a summary table.
  *
- * Models covered (matching mle-comparison.md benchmark table):
+ * Models covered (matching README.md benchmark table):
  *   • Nile,       order=1, fit s+w          (n=100, m=2)
  *   • Nile,       order=0, fit s+w          (n=100, m=1)
  *   • Kaisaniemi, order=1, trig=1, ns=12    (n=117, m=4)
