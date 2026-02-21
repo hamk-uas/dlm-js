@@ -37,19 +37,18 @@ Naming convention: exported JS/TS APIs use camelCase (for example `dlmFit`, `dlm
 
 ```js
 import { dlmFit, dlmGenSys } from "dlm-js";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
 
 // Nile river annual flow data (excerpt)
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
 
 // Fit a local linear trend model (order=1, state dim m=2)
-const result = await dlmFit(y, 120, [40, 10], { order: 1 }, { dtype: DType.Float64 });
+const result = await dlmFit(y, { obsStd: 120, processStd: [40, 10], order: 1, dtype: 'f64' });
 
-console.log(result.yhat);  // smoothed predictions [n]
-console.log(result.x);     // smoothed states [m][n]
-console.log(result.lik);   // -2·log-likelihood
-// Also available: result.xstd [m][n], result.ystd [n], result.v [n],
-//   result.resid2 [n], result.mse, result.mape, result.ssy, result.s2, result.nobs
+console.log(result.yhat);       // smoothed predictions [n]
+console.log(result.smoothed);   // smoothed states (StateMatrix: .series(i), .get(t,i))
+console.log(result.deviance);   // -2·log-likelihood
+// Also available: result.smoothedStd (StateMatrix), result.ystd [n], result.innovations [n],
+//   result.standardizedResiduals [n], result.mse, result.mape, result.rss, result.residualVariance, result.nobs
 ```
 
 For an order=1 model with `options.spline: true`, the W covariance is scaled to produce an integrated random walk (matches MATLAB `dlmfit` spline mode).
@@ -58,7 +57,6 @@ For an order=1 model with `options.spline: true`, the W covariance is scaled to 
 
 ```js
 const { dlmFit } = require("dlm-js");
-const { DType } = require("@hamk-uas/jax-js-nonconsuming");
 ```
 
 ### Generate system matrices only
@@ -66,7 +64,7 @@ const { DType } = require("@hamk-uas/jax-js-nonconsuming");
 ```js
 import { dlmGenSys } from "dlm-js";
 
-const sys = dlmGenSys({ order: 1, trig: 2, ns: 12 });
+const sys = dlmGenSys({ order: 1, harmonics: 2, seasonLength: 12 });
 console.log(sys.G);  // state transition matrix (m×m)
 console.log(sys.F);  // observation vector (1×m)
 console.log(sys.m);  // state dimension
@@ -78,40 +76,39 @@ Propagate the last smoothed state h steps forward with no new observations:
 
 ```js
 import { dlmFit, dlmForecast } from "dlm-js";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
 
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
 
 // Fit a local linear trend model
-const fit = await dlmFit(y, 120, [40, 10], { order: 1 }, { dtype: DType.Float64 });
+const fit = await dlmFit(y, { obsStd: 120, processStd: [40, 10], order: 1, dtype: 'f64' });
 
 // Forecast 12 steps ahead
-const fc = await dlmForecast(fit, 120, 12, { dtype: DType.Float64 });
+const fc = await dlmForecast(fit, 120, 12, { dtype: 'f64' });
 
-console.log(fc.yhat);  // predicted observation means [h] = F·x_pred
-console.log(fc.ystd);  // observation prediction std devs [h] — grows monotonically
-console.log(fc.x);     // state trajectories [m][h]
-console.log(fc.h);     // 12
-console.log(fc.m);     // 2 (state dimension)
+console.log(fc.yhat);       // predicted observation means [h] = F·x_pred
+console.log(fc.ystd);       // observation prediction std devs [h] — grows monotonically
+console.log(fc.predicted);  // state trajectories (StateMatrix)
+console.log(fc.h);          // 12
+console.log(fc.m);          // 2 (state dimension)
 ```
 
-`fc.yhat` is the full observation prediction `F·x_pred`. For pure trend models (no seasonality) this equals the level state and is appropriate to plot directly. For seasonal or AR models, `yhat` oscillates with the harmonics/AR dynamics in the forecast horizon — if you want a smooth trendline, use the level state `fc.x[0]` directly:
+`fc.yhat` is the full observation prediction `F·x_pred`. For pure trend models (no seasonality) this equals the level state and is appropriate to plot directly. For seasonal or AR models, `yhat` oscillates with the harmonics/AR dynamics in the forecast horizon — if you want a smooth trendline, use the level state `fc.predicted.series(0)` directly:
 
 ```js
 // For seasonal/AR models: plot level state, not yhat
-const trend = Array.from(fc.x[0]);        // smooth trend mean
-const trendStd = fc.xstd.map(r => r[0]);  // level state std dev
+const trend = fc.predicted.series(0);           // smooth trend mean
+const trendStd = fc.predictedStd.series(0);     // level state std dev
 ```
 
 With covariates, pass `X_forecast` rows for each forecast step:
 
 ```js
 // Forecast 3 steps ahead with known future covariate values
-const fc = await dlmForecast(fit, 120, 3, { dtype: DType.Float64 }, [
+const fc = await dlmForecast(fit, 120, 3, { dtype: 'f64', X: [
   [solarProxy[n], qbo1[n], qbo2[n]],    // step n+1
   [solarProxy[n+1], qbo1[n+1], qbo2[n+1]], // step n+2
   [solarProxy[n+2], qbo1[n+2], qbo2[n+2]], // step n+3
-]);
+] });
 ```
 
 Current behavior for unknown future covariates: if `X_forecast` is omitted (or does not provide a row/entry), dlm-js uses `0` for the missing covariate value in that step. Interpret this as a **baseline conditional forecast** (unknown driver effects set to zero), not a full unconditional forecast.
@@ -126,73 +123,62 @@ Place `NaN` in the observation vector `y` wherever a measurement is absent. `dlm
 
 ```js
 import { dlmFit } from "dlm-js";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
 
 // Nile data with a gap in years 30–39 and every 7th observation missing
 const y = [1120, 1160, 963, NaN, 1210, 1160, 1160, NaN, 813, /* ... */];
 
-const s2_w = 120;
-const s2_v = [40, 10];
-
-const result = await dlmFit(y, s2_w, s2_v, { order: 1 }, { dtype: DType.Float64 });
+const result = await dlmFit(y, { obsStd: 120, processStd: [40, 10], order: 1, dtype: 'f64' });
 
 // nobs: number of non-NaN observations actually used
 console.log(result.nobs);   // e.g. 77 when 23 of 100 values are NaN
 
-// yhat, x, xstd, ystd: fully interpolated — finite at every timestep
-console.log(result.yhat);   // smoothed observation mean [n] — no NaN
-console.log(result.x);      // smoothed state trajectories [m][n] — no NaN
-console.log(result.xstd);   // smoothed state std devs [m][n] — no NaN
-console.log(result.ystd);   // smoothed observation std devs [n] — no NaN
+// yhat, smoothed, smoothedStd, ystd: fully interpolated — finite at every timestep
+console.log(result.yhat);                    // smoothed observation mean [n] — no NaN
+console.log(result.smoothed);                // smoothed state trajectories (StateMatrix) — no NaN
+console.log(result.smoothedStd);             // smoothed state std devs (StateMatrix) — no NaN
+console.log(result.ystd);                    // smoothed observation std devs [n] — no NaN
 
-// v and resid2: NaN at missing positions (consistent with MATLAB dlmsmo)
-console.log(result.v);      // innovations [n] — NaN at missing timesteps
-console.log(result.resid2); // squared normalised residuals [n] — NaN at missing timesteps
+// innovations and standardizedResiduals: NaN at missing positions (consistent with MATLAB dlmsmo)
+console.log(result.innovations);             // innovations [n] — NaN at missing timesteps
+console.log(result.standardizedResiduals);   // squared normalised residuals [n] — NaN at missing timesteps
 
-// lik is the log-likelihood summed only over observed timesteps
-console.log(result.lik);
+// deviance is the log-likelihood summed only over observed timesteps
+console.log(result.deviance);
 ```
 
 Missing observations are handled identically to MATLAB's `dlmsmo` (`ig = not(isnan(y(i,:)))` logic): the filter propagates through the gap using only the prior, and the RTS smoother then distributes the information from surrounding observations backward and forward. `ystd` grows wider over the gap, reflecting higher uncertainty where no data was seen.
 
 ### MLE parameter estimation
 
-Estimate observation noise `s`, state noise `w`, and optionally AR coefficients by maximizing the Kalman filter log-likelihood via autodiff:
+Estimate observation noise `obsStd`, process noise `processStd`, and optionally AR coefficients by maximizing the Kalman filter log-likelihood via autodiff:
 
 ```js
 import { dlmMLE } from "dlm-js";
-import { DType, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 
 defaultDevice("wasm"); // recommended: ~30× faster than "cpu"
 
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140 /* ... */];
 
-// Basic: estimate s and w
+// Basic: estimate obsStd and processStd
 const mle = await dlmMLE(
   y,
-  { order: 1 },           // model: local linear trend (m=2)
-  undefined,              // auto initial guess from data variance
-  300,                    // max iterations
-  0.05,                   // Adam learning rate
-  1e-6,                   // convergence tolerance
-  { dtype: DType.Float64 },
+  { order: 1, maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64' },
 );
 
-console.log(mle.s);           // estimated observation noise std dev
-console.log(mle.w);           // estimated state noise std devs
-console.log(mle.lik);         // -2·log-likelihood at optimum
+console.log(mle.obsStd);      // estimated observation noise std dev
+console.log(mle.processStd);  // estimated process noise std devs
+console.log(mle.deviance);    // -2·log-likelihood at optimum
 console.log(mle.iterations);  // iterations to convergence
 console.log(mle.elapsed);     // wall-clock ms
 console.log(mle.fit);         // full DlmFitResult with optimized parameters
 
-// With AR fitting: estimate s, w, and AR coefficients jointly
+// With AR fitting: estimate obsStd, processStd, and AR coefficients jointly
 const mleAR = await dlmMLE(
   y,
-  { order: 0, arphi: [0.5], fitar: true },  // initial arphi + fitar flag
-  undefined,
-  300, 0.02, 1e-6, { dtype: DType.Float64 },
+  { order: 0, arCoefficients: [0.5], fitAr: true, maxIter: 300, lr: 0.02, tol: 1e-6, dtype: 'f64' },
 );
-console.log(mleAR.arphi);     // estimated AR coefficients (e.g. [0.81])
+console.log(mleAR.arCoefficients);  // estimated AR coefficients (e.g. [0.81])
 ```
 
 `dlmMLE` uses Adam with automatic differentiation (autodiff) to optimize the Kalman filter log-likelihood. The entire optimization step — forward filter + AD backward pass + Adam update — is compiled via `jit()` for speed. See [How MLE works](#how-mle-works) for technical details and [Parameter estimation: MATLAB DLM vs dlm-js](#parameter-estimation-maximum-likelihood-matlab-dlm-vs-dlm-js) for a detailed comparison.
@@ -200,8 +186,8 @@ console.log(mleAR.arphi);     // estimated AR coefficients (e.g. [0.81])
 `dlmMLE` also supports missing data — the Kalman loss scan zeros K, v, and the log-likelihood contribution at NaN timesteps, so autodiff and Adam optimization work correctly through the gaps:
 
 ```js
-const mle = await dlmMLE(y, { order: 1 }, undefined, 200, 0.05);
-// mle.lik is the log-likelihood summed only over observed timesteps
+const mle = await dlmMLE(y, { order: 1, maxIter: 200, lr: 0.05 });
+// mle.deviance is the log-likelihood summed only over observed timesteps
 // mle.fit.nobs reports the count of non-NaN observations used
 ```
 
@@ -219,7 +205,7 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Nile demo (associative scan)" src="assets/niledemo-assoc.svg" width="100%" />
 </p>
 
-*First smoothed state (level) `x[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `xstd[:,0]` (state uncertainty, not observation prediction intervals).*
+*First smoothed state (level) `smoothed[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `smoothedStd[:,0]` (state uncertainty, not observation prediction intervals).*
 
 #### Kaisaniemi Monthly Temperatures (Seasonal)
 
@@ -229,7 +215,7 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Kaisaniemi demo (associative scan)" src="assets/kaisaniemi-assoc.svg" width="100%" />
 </p>
 
-*Top panel: level state `x[0] ± 2σ`. Bottom panel: covariance-aware combined signal `x[0]+x[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. Model settings: `order=1`, `trig=1`, `s=2`, `w=[0,0.005,0.4,0.4]`.*
+*Top panel: level state `smoothed[0] ± 2σ`. Bottom panel: covariance-aware combined signal `smoothed[0]+smoothed[2] ± 2σ`, using `Var(x0+x2)=Var(x0)+Var(x2)+2Cov(x0,x2)`. Model settings: `order=1`, `harmonics=1`, `obsStd=2`, `processStd=[0,0.005,0.4,0.4]`.*
 
 #### Energy Demand (Seasonal + AR)
 
@@ -239,7 +225,7 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Energy demand demo (associative scan)" src="assets/trigar-assoc.svg" width="100%" />
 </p>
 
-*Synthetic 10-year monthly data. Panels top to bottom: smoothed level `x[0] ± 2σ`, trigonometric seasonal `x[2] ± 2σ`, AR(1) state `x[4] ± 2σ`, and covariance-aware combined signal `F·x = x[0]+x[2]+x[4] ± 2σ`. True hidden states (green dashed) are overlaid. Model settings: `order=1`, `trig=1`, `ns=12`, `arphi=[0.85]`, `s=1.5`, `w=[0.3,0.02,0.02,0.02,2.5]`, m=5.*
+*Synthetic 10-year monthly data. Panels top to bottom: smoothed level `smoothed[0] ± 2σ`, trigonometric seasonal `smoothed[2] ± 2σ`, AR(1) state `smoothed[4] ± 2σ`, and covariance-aware combined signal `F·x = smoothed[0]+smoothed[2]+smoothed[4] ± 2σ`. True hidden states (green dashed) are overlaid. Model settings: `order=1`, `harmonics=1`, `seasonLength=12`, `arCoefficients=[0.85]`, `obsStd=1.5`, `processStd=[0.3,0.02,0.02,0.02,2.5]`, m=5.*
 
 #### Stratospheric Ozone Trend Analysis
 
@@ -249,7 +235,7 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Stratospheric ozone demo (associative scan)" src="assets/ozone-demo-assoc.svg" width="100%" />
 </p>
 
-*Top panel: O₃ density (SAGE II / GOMOS observations, 1984–2011) with smoothed level state ± 2σ and a 15-year `dlmForecast` trend extrapolation. Bottom panel: proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `trig=2`, `ns=12`, 3 static-β covariates, state dimension m=9.*
+*Top panel: O₃ density (SAGE II / GOMOS observations, 1984–2011) with smoothed level state ± 2σ and a 15-year `dlmForecast` trend extrapolation. Bottom panel: proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `harmonics=2`, `seasonLength=12`, 3 static-β covariates, state dimension m=9.*
 
 #### Missing Data (NaN observations)
 
@@ -259,7 +245,7 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Missing-data demo (associative scan)" src="assets/missing-demo-assoc.svg" width="100%" />
 </p>
 
-*Nile flow (n=100) with 23 NaN observations. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd`; inner opaque band: state uncertainty `x[0] ± 2·xstd[0]`. The smoother interpolates continuously through all gaps with no extra configuration.*
+*Nile flow (n=100) with 23 NaN observations. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd`; inner opaque band: state uncertainty `smoothed[0] ± 2·smoothedStd[0]`. The smoother interpolates continuously through all gaps with no extra configuration.*
 
 ### Numerical precision
 
@@ -267,19 +253,19 @@ Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compe
 
 ### scan algorithm
 
-`algorithm: 'scan'` uses sequential `lax.scan` for both the Kalman forward filter and RTS backward smoother. It is the default when `algorithm` is not set in `DlmRunConfig` and the `assoc` path is not auto-selected.
+`algorithm: 'scan'` uses sequential `lax.scan` for both the Kalman forward filter and RTS backward smoother. It is the default when `algorithm` is not set and the `assoc` path is not auto-selected.
 
 The dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
 
-**Float32 stabilization (Joseph form):** When `dtype: DType.Float32`, the scan path defaults to `stabilization: 'joseph'`, replacing the standard covariance update `C_filt = C_pred - K·F·C_pred` with:
+**Float32 stabilization (Joseph form):** When `dtype: 'f32'`, the scan path automatically uses Joseph-form stabilization, replacing the standard covariance update `C_filt = C_pred - K·F·C_pred` with:
 
 $$C_{\text{filt}} = (I - K F) \, C_{\text{pred}} \, (I - K F)^\top + K \, V^2 \, K^\top$$
 
-This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. Without Joseph form (`stabilization: 'none'`), Float32 + scan is numerically unstable for m ≥ 4 (see ⚠️ entries in the benchmark table). Float32 is still skipped in tests for m > 2 even with Joseph form, due to accumulated rounding in the smoother.
+This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. Without Joseph form, Float32 + scan is numerically unstable for m ≥ 4 (see ⚠️ entries in the benchmark table). Float32 is still skipped in tests for m > 2 even with Joseph form, due to accumulated rounding in the smoother.
 
 ### assoc algorithm
 
-`algorithm: 'assoc'` uses `lax.associativeScan` to evaluate the **exact O(log N) parallel Kalman filter + smoother** from Särkkä & García-Fernández (2020) [1], Lemmas 1–4. Pass `{ algorithm: 'assoc' }` in `DlmRunConfig` to use it on any backend and any dtype. Combining `algorithm: 'assoc'` with `stabilization: 'joseph'` throws an error — the assoc path always applies its own numerically stable formulation.
+`algorithm: 'assoc'` uses `lax.associativeScan` to evaluate the **exact O(log N) parallel Kalman filter + smoother** from Särkkä & García-Fernández (2020) [1], Lemmas 1–4. Pass `{ algorithm: 'assoc' }` in the options to use it on any backend and any dtype. The assoc path always applies its own numerically stable formulation.
 
 Both passes dispatch ⌈log₂N⌉+1 kernel rounds (Kogge-Stone), giving O(log n) total depth. Results are numerically equivalent to `scan` to within floating-point reordering (validated by `assocscan.test.ts`).
 
@@ -300,7 +286,7 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 ### Backend performance
 
-`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 4 models and all outputs: yhat, ystd, x, xstd) for each `DlmRunConfig` combination — backend × dtype × algorithm × stabilization. `assoc + joseph` is an invalid combination and throws. Regenerate with `pnpm run bench:full`. **†** marks the combination used when `run: {}` is passed: f64 → scan + none; f32 → scan + joseph; webgpu/f32 → assoc (no explicit stabilization).
+`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 4 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. `assoc + joseph` is an invalid combination (the assoc path auto-selects its own stabilization). Regenerate with `pnpm run bench:full`. **†** marks the default combination: f64 → scan + none; f32 → scan + joseph; webgpu/f32 → assoc.
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
@@ -322,18 +308,18 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 | webgpu | f32 | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | 2.49e-2 | 1.32 |
 | webgpu | f32 | assoc | none | **325 ms †** | **353 ms †** | **356 ms †** | **372 ms †** | 4.93e-3 | 19.8 |
 
-⚠️ = numerically unstable: f32 + scan + none without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 4 benchmark models and all output variables (yhat, ystd, x, xstd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small xstd values (not from yhat/ystd).
+⚠️ = numerically unstable: f32 + scan + none without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 4 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
 - **`assoc` on CPU is faster for small m, slower for large m** — for m=1–2, the scan composition is cheap and reduces interpreter overhead; for m=4–5 the extra matrix operations dominate (~2× slower than `scan` on CPU).
 - **`assoc` on WASM has no warm-run advantage over `scan`** — warm times are nearly identical (~20–40 ms) for all models; the first-run cost is ~5× higher due to extra JIT compilation paths, so prefer `scan` on WASM unless you need the parallel path explicitly.
-- **`assoc + joseph` is an error** — `stabilization: 'joseph'` combined with an explicit `algorithm: 'assoc'` throws at runtime. The assoc path always applies its own numerically stable formulation; use `assoc` without setting `stabilization`.
+- **`assoc + joseph` is handled automatically** — the assoc path always applies its own numerically stable formulation. Stabilization is auto-selected internally and not a user-facing option.
 - **f32 + scan + none is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph, as shown by the reasonable 4.93e-3 max error vs the ⚠️ 7000 for scan+none.
-- **Joseph form overhead is negligible on WASM** — f32+joseph vs f64+none differ by <5 ms across all models, well within JIT variance. The stabilization choice is numerically important but not a performance concern.
+- **Joseph form overhead is negligible on WASM** — f32+joseph vs f64+none differ by <5 ms across all models, well within JIT variance. The stabilization (auto-selected internally) is numerically important but not a performance concern.
 - **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
 - **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
-- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->156 ms<!-- /timing --> at N=102400. WebGPU/f32 `assoc` scales **sub-linearly (O(log n))**: a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->305 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->648 ms<!-- /timing -->). A crossover is plausible at N≈800k–1M.
+- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->128 ms<!-- /timing --> at N=102400. WebGPU/f32 `assoc` scales **sub-linearly (O(log n))**: a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->302 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->615 ms<!-- /timing -->). A crossover is plausible at N≈800k–1M.
 - **WebGPU results may differ slightly** from sequential WASM/f64 due to Float32 precision and operation reordering in the parallel scan, not from any algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The missing-data demo uses the same Nile dataset with 23 observations removed.
@@ -344,10 +330,10 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 | Model | $n$ | $m$ | wasm / f64 (scan) | webgpu / f32 (assocScan) |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->300 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->339 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->356 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->301 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->307 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->300 ms<!-- /timing --> |
 
 **WebGPU scaling: O(log n) with high fixed overhead.**
 
@@ -355,23 +341,23 @@ A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at ex
 
 | N | wasm/f64 | webgpu/f32 | ratio |
 |---|--------------|-----------------|-------|
-| 100 | <!-- timing:scale:wasm-f64:n100 -->24 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->305 ms<!-- /timing --> | 27× |
-| 200 | <!-- timing:scale:wasm-f64:n200 -->23 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->328 ms<!-- /timing --> | 29× |
-| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->352 ms<!-- /timing --> | 30× |
-| 800 | <!-- timing:scale:wasm-f64:n800 -->20 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->376 ms<!-- /timing --> | 30× |
-| 1600 | <!-- timing:scale:wasm-f64:n1600 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->388 ms<!-- /timing --> | 31× |
-| 3200 | <!-- timing:scale:wasm-f64:n3200 -->23 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->409 ms<!-- /timing --> | 36× |
-| 6400 | <!-- timing:scale:wasm-f64:n6400 -->29 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->439 ms<!-- /timing --> | 33× |
-| 12800 | <!-- timing:scale:wasm-f64:n12800 -->34 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->460 ms<!-- /timing --> | 27× |
-| 25600 | <!-- timing:scale:wasm-f64:n25600 -->54 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->490 ms<!-- /timing --> | 19× |
-| 51200 | <!-- timing:scale:wasm-f64:n51200 -->84 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->511 ms<!-- /timing --> | 13× |
-| 102400 | <!-- timing:scale:wasm-f64:n102400 -->156 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->648 ms<!-- /timing --> | 7× |
+| 100 | <!-- timing:scale:wasm-f64:n100 -->23 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->302 ms<!-- /timing --> | 27× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->315 ms<!-- /timing --> | 29× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->345 ms<!-- /timing --> | 30× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->20 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->365 ms<!-- /timing --> | 30× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->385 ms<!-- /timing --> | 31× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->22 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->437 ms<!-- /timing --> | 36× |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->25 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->450 ms<!-- /timing --> | 33× |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->32 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->469 ms<!-- /timing --> | 27× |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->40 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->505 ms<!-- /timing --> | 19× |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->66 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->556 ms<!-- /timing --> | 13× |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->128 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->615 ms<!-- /timing --> | 7× |
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->156 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->128 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
 
-2. **WebGPU scales sub-linearly (O(log n))** — both forward and backward passes use `lax.associativeScan`, so each dispatches ⌈log₂N⌉+1 Kogge-Stone rounds. A 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->305 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->648 ms<!-- /timing -->). However, the fixed per-dispatch overhead of WebGPU command submission is high (~500 ms base), so the constant factor dominates at practical series lengths.
+2. **WebGPU scales sub-linearly (O(log n))** — both forward and backward passes use `lax.associativeScan`, so each dispatches ⌈log₂N⌉+1 Kogge-Stone rounds. A 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->302 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->615 ms<!-- /timing -->). However, the fixed per-dispatch overhead of WebGPU command submission is high (~500 ms base), so the constant factor dominates at practical series lengths.
 
 3. **The WASM-to-WebGPU ratio converges as N grows**: ~27× at N=100, ~7× at N=102400. WASM is faster at all measured N, but the gap shrinks with series length because WASM's O(n) growth outpaces WebGPU's O(log n) growth. A crossover is plausible at N≈800k–1M where WASM's linear growth would overtake WebGPU's logarithmic growth.
 
@@ -402,9 +388,9 @@ Three findings:
   <img alt="Energy MLE optimization (WebGPU)" src="assets/energy-mle-anim-webgpu.svg" width="100%" />
 </p>
 
-*Joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitar: true`). Shows the combined signal F·x ± 2σ converging. Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85).*
+*Joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitAr: true`). Shows the combined signal F·x ± 2σ converging. Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85).*
 
-The Nile MLE demo estimates `s` and `w` on the classic Nile dataset; the energy MLE demo jointly estimates `s`, `w`, and AR coefficient `φ` on the synthetic energy model (`fitar: true`). See [Parameter estimation (maximum likelihood): MATLAB DLM vs dlm-js](#parameter-estimation-maximum-likelihood-matlab-dlm-vs-dlm-js) for details.
+The Nile MLE demo estimates `obsStd` and `processStd` on the classic Nile dataset; the energy MLE demo jointly estimates `obsStd`, `processStd`, and AR coefficient `φ` on the synthetic energy model (`fitAr: true`). See [Parameter estimation (maximum likelihood): MATLAB DLM vs dlm-js](#parameter-estimation-maximum-likelihood-matlab-dlm-vs-dlm-js) for details.
 
 ### How MLE works
 
@@ -414,9 +400,9 @@ The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(
 
 **Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~122 iterations (~2.6 s) with the default Adam b2=0.9.
 
-**Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `run` config:
+**Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
-- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->300<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.5 s<!-- /timing --> on WASM).
+- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->300<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.4 s<!-- /timing --> on WASM).
 - **WebGPU + Float32:** `makeKalmanLossAssoc` — `lax.associativeScan` forward filter (O(log n) depth per iteration). Details below.
 
 Both paths are wrapped in `jit(valueAndGrad(lossFn))` with optax Adam. The final refit after convergence calls `dlmFit` (which itself uses the parallel path on WebGPU).
@@ -427,7 +413,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 **Step-by-step derivation:**
 
-1. **Parameter extraction (traced):** $\theta \xrightarrow{\exp} (s, w_0 \ldots w_{m-1}, \phi_1 \ldots \phi_p)$. Observation variance $V^2 = s^2$ (scalar); state noise $W = \text{diag}(w_i^2)$; $G$ updated with AR coefficients if `fitar: true`.
+1. **Parameter extraction (traced):** $\theta \xrightarrow{\exp} (s, w_0 \ldots w_{m-1}, \phi_1 \ldots \phi_p)$. Observation variance $V^2 = s^2$ (scalar); state noise $W = \text{diag}(w_i^2)$; $G$ updated with AR coefficients if `fitAr: true`.
 
 2. **Per-timestep 5-tuple elements (Lemma 1):** For each timestep $t = 1 \ldots n$:
 
@@ -505,7 +491,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Compilation** | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) |
 | **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
 | **Adam defaults** | N/A | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) |
-| **WASM performance** | N/A | ~<!-- timing:ckpt:nile:false-s -->1.7 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) |
+| **WASM performance** | N/A | ~<!-- timing:ckpt:nile:false-s -->1.8 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
@@ -527,18 +513,18 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 
 | Model | $n$ | $m$ | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | $-2\log L$ (Octave) | $-2\log L$ (dlm-js) |
 |-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | <!-- timing:nile-mle:elapsed -->2810 ms<!-- /timing --> | 1104.6 | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | <!-- timing:nile-mle:elapsed -->3050 ms<!-- /timing --> | 1104.6 | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> |
 | Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | <!-- timing:mle-bench:nile-order0:elapsed -->1804 ms<!-- /timing --> | 1095.8 | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:elapsed -->5785 ms<!-- /timing --> | — | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | <!-- timing:energy-mle:elapsed-ms -->6462 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | <!-- timing:mle-bench:nile-order0:elapsed -->1847 ms<!-- /timing --> | 1095.8 | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:elapsed -->5928 ms<!-- /timing --> | — | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | <!-- timing:energy-mle:elapsed-ms -->6399 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> |
 
 Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
 
 **Key observations:**
-- **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower" -->slower<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
+- **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower" -->faster<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
 - **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
-- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.8 s<!-- /timing -->), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing -->.
+- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.9 s<!-- /timing -->), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing -->.
 - **Joint $s+w$ fitting:** dlm-js always fits both $s$ and $w$; MATLAB DLM can fit $w$ only (`fitv=0`).
 
 ##### Gradient checkpointing
@@ -549,8 +535,8 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 | Dataset | n | m | `checkpoint: false` | `checkpoint: true` (√N) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1702 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->230 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->-86%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2136 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->943 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-56%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1781 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1775 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->0%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2205 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2191 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> |
 
 
 #### MCMC (MATLAB DLM only)
@@ -568,15 +554,15 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 | MLE point estimate | ✅ `fminsearch` | ✅ Adam + autodiff |
 | Gradient-based optimization | ❌ | ✅ |
 | JIT compilation of optimizer | ❌ | ✅ |
-| Fit observation noise `s` | ✅ (optional via `fitv`) | ✅ (always) |
-| Fit state noise `w` | ✅ | ✅ |
-| Fit AR coefficients `arphi` | ✅ | ✅ (`fitar: true`) |
+| Fit observation noise `obsStd` | ✅ (optional via `fitv`) | ✅ (always) |
+| Fit process noise `processStd` | ✅ | ✅ |
+| Fit AR coefficients `arCoefficients` | ✅ | ✅ (`fitAr: true`) |
 | Tie W parameters (`winds`) | ✅ | ❌ (each W entry independent) |
 | Custom cost function | ✅ (`options.fitfun`) | ❌ |
 | MCMC posterior sampling | ✅ (Adaptive Metropolis via `mcmcrun`) | ❌ |
 | State sampling for Gibbs | ✅ (disturbance smoother) | ❌ |
 | Posterior uncertainty | ✅ (full chain) | ❌ (point estimate only) |
-| Convergence diagnostics | ✅ (`chain`, `sschain` in MCMC mode) | ⚠️ Limited (`likHistory`, no posterior chain) |
+| Convergence diagnostics | ✅ (`chain`, `sschain` in MCMC mode) | ⚠️ Limited (`devianceHistory`, no posterior chain) |
 | Runs in browser | ❌ | ✅ |
 | MEX/WASM acceleration | ✅ (`dlmmex` optional) | ✅ (`wasm` backend; see [benchmark](#benchmark-same-machine-same-data)) |
 
@@ -586,7 +572,7 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 2. **JIT-wrapped optimization step** — forward filter + AD + parameter update are traced together in one optimization step function. JIT overhead currently dominates for small datasets (n=100); the advantage grows with larger n or more complex models.
 3. **WASM backend** — runs in Node.js and the browser without native dependencies.
 4. **Potentially more robust as dimension grows** — gradient-based optimization can remain practical in settings where derivative-free simplex methods become expensive or unstable.
-5. **Joint AR coefficient estimation** — `fitar: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
+5. **Joint AR coefficient estimation** — `fitAr: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
 
 #### What MATLAB DLM does that dlm-js doesn't (yet)
 
