@@ -84,15 +84,17 @@ const dlmSmo = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Branch selection: three execution paths based on device + dtype
   //
-  //   wasm/cpu + Float64  →  current sequential scan (no extra stabilization)
-  //   cpu      + Float32  →  sequential scan + Joseph form + symmetrize + clamp
-  //   webgpu   + Float32  →  associativeScan forward + Joseph form/symmetrize/clamp
+  //   wasm/cpu + Float64  →  sequential scan + triu+triu' symmetrization (default)
+  //   cpu      + Float32  →  sequential scan + Joseph form + triu/avg sym + cEps
+  //   webgpu   + Float32  →  associativeScan forward + Joseph form/sym/cEps
   //
-  // The Float32 stabilization (Joseph form covariance update, symmetrization,
-  // diagonal clamping) adds ~m² extra ops per step but prevents the covariance
-  // from going non-positive-definite for m > 2, which is the main float32
-  // failure mode. Float64 is unaffected — it takes the fast path without any
-  // extra work.
+  // Float64 default: triu(C)+triu(C,1)' symmetrization after each filter and
+  // smoother step (matches MATLAB dlmsmo.m line 77). Reduces max relative error
+  // vs Octave reference from ~2e-9 to ~4e-12 — ~500× improvement at negligible
+  // cost (two np.triu calls per step). Disable with stabilization:{cTriuSym:false}.
+  //
+  // Float32 default: Joseph form (L·C·L' + K·V²·K' + W), (C+C')/2 symmetrize,
+  // and C += 1e-6·I (cEps) — prevents covariance from going non-PD for m > 2.
   //
   // The associativeScan path (webgpu) reformulates the forward Kalman filter
   // as an associative prefix scan per Särkkä & García-Fernández (2020),
@@ -112,7 +114,10 @@ const dlmSmo = async (
   const stabCDiag    = stabilization?.cDiag     ?? false;
   const stabCEps     = stabilization?.cEps      ?? false;  // no-op (cEps now unconditional for f32)
   const stabCDiagAbs = stabilization?.cDiagAbs  ?? false;
-  const stabCTriuSym    = stabilization?.cTriuSym    ?? false;  // triu+triu' sym (f32+f64)
+  // cTriuSym: default true for f64 (matches MATLAB dlmsmo.m triu+triu' sym),
+  //           default false for f32 (uses (C+C')/2 instead; triu has no benefit for f32).
+  // Override with stabilization: { cTriuSym: false } to disable for f64.
+  const stabCTriuSym    = stabilization?.cTriuSym    ?? !f32;
   const stabCSmoAbsDiag = stabilization?.cSmoAbsDiag ?? false;  // abs(diag(C_smooth)) (f32+f64)
   // Pre-computed [m,m] constant tensors for stabilization ops.
   // Created unconditionally to avoid conditional `using` complexity.

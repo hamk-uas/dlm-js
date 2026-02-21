@@ -487,15 +487,16 @@ export interface DlmStabilization {
    *
    * Valid for **both f32 and f64** (unlike most other flags which are f32-only).
    * For f32 it replaces the default `(C+C')/2` symmetrize step.
-   * For f64 it adds symmetrize to the otherwise-unsymmetrized path.
+   * **Defaults to `true` for f64** (matches MATLAB `dlmsmo.m`; ~500× better Octave
+   * agreement vs unsymmetrized). Set `cTriuSym: false` to disable.
    */
   cTriuSym?: boolean;
   /**
    * Apply `abs(diag(C_smooth))` after the backward smoother symmetrize step.
    * Matches MATLAB's `dlmsmo.m` lines 114-115.
    *
-   * Valid for **both f32 and f64**. For f64, has no effect unless `cTriuSym`
-   * is also set (since f64 otherwise takes the raw unsymmetrized path).
+   * Valid for **both f32 and f64**. For f64, `cTriuSym` is on by default so
+   * `cSmoAbsDiag` can be used independently.
    * For f32 it acts on top of the existing symmetrize+cEps default.
    */
   cSmoAbsDiag?: boolean;
