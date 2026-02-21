@@ -247,21 +247,19 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
 
 *Nile flow (n=100) with 23 NaN observations. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd`; inner opaque band: state uncertainty `smoothed[0] ± 2·smoothedStd[0]`. The smoother interpolates continuously through all gaps with no extra configuration.*
 
-### Numerical precision
-
-Since jax-js-nonconsuming v0.2.1, Float64 dot product reductions use Kahan compensated summation, reducing per-dot rounding from O(m·ε) to O(ε²). This improved the seasonal model (m=13) from ~3e-5 to ~1.8e-5 worst-case relative error.
-
 ### scan algorithm
 
 `algorithm: 'scan'` uses sequential `lax.scan` for both the Kalman forward filter and RTS backward smoother. It is the default when `algorithm` is not set and the `assoc` path is not auto-selected.
 
-The dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
+The dominant error source is **not** summation accuracy — it is catastrophic cancellation in the RTS backward smoother step `C_smooth = C - C·N·C`. When the smoothing correction nearly equals the prior covariance, the subtraction amplifies any rounding in the operands. Kahan summation in jax-js-nonconsuming cannot fix this because it only improves the individual dot products, not the outer subtraction. See detailed comments in `src/index.ts`.
 
 **Float32 stabilization (Joseph form):** When `dtype: 'f32'`, the scan path automatically uses Joseph-form stabilization, replacing the standard covariance update `C_filt = C_pred - K·F·C_pred` with:
 
 $$C_{\text{filt}} = (I - K F) \, C_{\text{pred}} \, (I - K F)^\top + K \, V^2 \, K^\top$$
 
 This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. Without Joseph form, Float32 + scan is numerically unstable for m ≥ 4 (see ⚠️ entries in the benchmark table). Float32 is still skipped in tests for m > 2 even with Joseph form, due to accumulated rounding in the smoother.
+
+**MATLAB DLM comparison:** The `dlmsmo.m` reference uses the standard covariance update formula (not Joseph form), combined with explicit `triu + triu'` symmetrization after each filter step (line 77) and `abs(diag(C))` diagonal correction on smoother output (line 114). The improved match seen in the benchmark between dlm-js+joseph/f64 and the Octave reference (9.38e-11 vs 3.78e-8 max |Δ| for f64+none) is not a coincidence — both approaches enforce numerical stability in similar ways, pushing both implementations toward the same stable numerical attractor.
 
 ### assoc algorithm
 
@@ -286,27 +284,27 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 ### Backend performance
 
-`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 4 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. `assoc + joseph` is an invalid combination (the assoc path auto-selects its own stabilization). Regenerate with `pnpm run bench:full`. **†** marks the default combination: f64 → scan + none; f32 → scan + joseph; webgpu/f32 → assoc.
+`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 4 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. `assoc + joseph` is an invalid combination (the assoc path auto-selects its own stabilization). Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype.
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
 | backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | max \|Δ\| | max \|Δ\|% |
 |---------|-------|-----------|------|----------|----------|------------|--------|----------|------------|
-| cpu | f64 | scan | none | **166 ms †** | **358 ms †** | **435 ms †** | **478 ms †** | 3.78e-8 | 1.62e-4 |
+| **cpu** | **f64** | **scan** | **none** | **166 ms** | **358 ms** | **435 ms** | **478 ms** | **3.78e-8** | **1.62e-4** |
 | cpu | f64 | scan | joseph | 191 ms | 389 ms | 481 ms | 528 ms | 9.38e-11 | 3.56e-9 |
 | cpu | f64 | assoc | none | 74 ms | 201 ms | 853 ms | 1534 ms | 5.12e-9 | 2.17e-5 |
+| cpu | **f32** | **scan** | **joseph** | **184 ms** | **384 ms** | **484 ms** | **533 ms** | **1.32e-2** | **0.17** |
 | cpu | f32 | scan | none | 171 ms | 345 ms | 439 ms | 482 ms | ⚠️ 180 | ⚠️ 1.4e6 |
-| cpu | f32 | scan | joseph | **184 ms †** | **384 ms †** | **484 ms †** | **533 ms †** | 1.32e-2 | 0.17 |
 | cpu | f32 | assoc | none | 67 ms | 204 ms | 869 ms | 1552 ms | 4.93e-3 | 19.7 |
-| wasm | f64 | scan | none | **16 ms †** | **20 ms †** | **22 ms †** | **23 ms †** | 3.78e-8 | 1.62e-4 |
+| **wasm** | **f64** | **scan** | **none** | **16 ms** | **20 ms** | **22 ms** | **23 ms** | **3.78e-8** | **1.62e-4** |
 | wasm | f64 | scan | joseph | 18 ms | 22 ms | 22 ms | 22 ms | 9.38e-11 | 3.56e-9 |
 | wasm | f64 | assoc | none | 24 ms | 25 ms | 32 ms | 39 ms | 5.12e-9 | 2.17e-5 |
+| wasm | **f32** | **scan** | **joseph** | **17 ms** | **20 ms** | **24 ms** | **21 ms** | **3.99e-2** | **1.37** |
 | wasm | f32 | scan | none | 15 ms | 20 ms | 21 ms | 19 ms | ⚠️ 7000 | ⚠️ 2e6 |
-| wasm | f32 | scan | joseph | **17 ms †** | **20 ms †** | **24 ms †** | **21 ms †** | 3.99e-2 | 1.37 |
 | wasm | f32 | assoc | none | 23 ms | 24 ms | 33 ms | 36 ms | 4.93e-3 | 21.9 |
+| **webgpu** | **f32** | **assoc** | **none** | **325 ms** | **353 ms** | **356 ms** | **372 ms** | **4.93e-3** | **19.8** |
 | webgpu | f32 | scan | none | 549 ms | 913 ms | 1011 ms | 1141 ms | ⚠️ 110 | ⚠️ 6.7e4 |
 | webgpu | f32 | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | 2.49e-2 | 1.32 |
-| webgpu | f32 | assoc | none | **325 ms †** | **353 ms †** | **356 ms †** | **372 ms †** | 4.93e-3 | 19.8 |
 
 ⚠️ = numerically unstable: f32 + scan + none without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 4 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
@@ -314,52 +312,56 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
 - **`assoc` on CPU is faster for small m, slower for large m** — for m=1–2, the scan composition is cheap and reduces interpreter overhead; for m=4–5 the extra matrix operations dominate (~2× slower than `scan` on CPU).
 - **`assoc` on WASM has no warm-run advantage over `scan`** — warm times are nearly identical (~20–40 ms) for all models; the first-run cost is ~5× higher due to extra JIT compilation paths, so prefer `scan` on WASM unless you need the parallel path explicitly.
+- **Why does joseph/f64 match Octave ~3,000× better than none/f64?** MATLAB DLM (`dlmsmo.m`) does not use Joseph form — it uses the standard update plus `triu + triu'` symmetrization and `abs(diag)` correction (see MATLAB DLM comparison above). Both approaches stabilize the numerical trajectory similarly, pushing both implementations toward the same stable attractor. The ~3,000× improvement is real (9.38e-11 vs 3.78e-8 max |Δ|).
 - **`assoc + joseph` is handled automatically** — the assoc path always applies its own numerically stable formulation. Stabilization is auto-selected internally and not a user-facing option.
 - **f32 + scan + none is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph, as shown by the reasonable 4.93e-3 max error vs the ⚠️ 7000 for scan+none.
 - **Joseph form overhead is negligible on WASM** — f32+joseph vs f64+none differ by <5 ms across all models, well within JIT variance. The stabilization (auto-selected internally) is numerically important but not a performance concern.
 - **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
 - **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
-- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.6 µs/step, giving ~<!-- timing:scale:wasm-f64:n102400 -->128 ms<!-- /timing --> at N=102400. WebGPU/f32 `assoc` scales **sub-linearly (O(log n))**: a 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->302 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->615 ms<!-- /timing -->). A crossover is plausible at N≈800k–1M.
+- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.1 µs/step, giving ~<!-- timing:scale:wasm-f64:n819200 -->867 ms<!-- /timing --> at N=819200. WebGPU/f32 `assoc` scales **sub-linearly**: a 1024× increase from N=100 to N=102400 doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->306 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->637 ms<!-- /timing -->), but growth steepens at larger N (~1.7× per doubling at N>100k), so no crossover was observed up to N=819200 (ratio still 2.3×).
 - **WebGPU results may differ slightly** from sequential WASM/f64 due to Float32 precision and operation reordering in the parallel scan, not from any algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The missing-data demo uses the same Nile dataset with 23 observations removed.
 
-#### WebGPU vs WASM benchmark
+#### WebGPU/f32/assoc vs WASM/f64/scan warm-run benchmark
 
 `dlmFit` warm-run timings (jitted core, second of two runs):
 
-| Model | $n$ | $m$ | wasm / f64 (scan) | webgpu / f32 (assocScan) |
+| Model | $n$ | $m$ | wasm / f64 / scan | webgpu / f32 / assoc |
 |-------|-----|-----|-------------------|--------------------------|
 | Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->301 ms<!-- /timing --> |
 | Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
 | Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->307 ms<!-- /timing --> |
 | Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->300 ms<!-- /timing --> |
 
-**WebGPU scaling: O(log n) with high fixed overhead.**
+**WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
 
-A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at exponentially increasing N (WASM: 2 warmup + 4 timed runs median; WebGPU: same). Both forward filter and backward smoother use `lax.associativeScan` on the WebGPU path:
+A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at exponentially increasing N (WASM: 2 warmup + 4 timed runs, median; WebGPU: same). WASM uses sequential `scan`; WebGPU uses `assoc` (both forward filter and backward smoother via `lax.associativeScan`):
 
-| N | wasm/f64 | webgpu/f32 | ratio |
-|---|--------------|-----------------|-------|
-| 100 | <!-- timing:scale:wasm-f64:n100 -->23 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->302 ms<!-- /timing --> | 27× |
-| 200 | <!-- timing:scale:wasm-f64:n200 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->315 ms<!-- /timing --> | 29× |
-| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->345 ms<!-- /timing --> | 30× |
-| 800 | <!-- timing:scale:wasm-f64:n800 -->20 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->365 ms<!-- /timing --> | 30× |
-| 1600 | <!-- timing:scale:wasm-f64:n1600 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->385 ms<!-- /timing --> | 31× |
-| 3200 | <!-- timing:scale:wasm-f64:n3200 -->22 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->437 ms<!-- /timing --> | 36× |
-| 6400 | <!-- timing:scale:wasm-f64:n6400 -->25 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->450 ms<!-- /timing --> | 33× |
-| 12800 | <!-- timing:scale:wasm-f64:n12800 -->32 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->469 ms<!-- /timing --> | 27× |
-| 25600 | <!-- timing:scale:wasm-f64:n25600 -->40 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->505 ms<!-- /timing --> | 19× |
-| 51200 | <!-- timing:scale:wasm-f64:n51200 -->66 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->556 ms<!-- /timing --> | 13× |
-| 102400 | <!-- timing:scale:wasm-f64:n102400 -->128 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->615 ms<!-- /timing --> | 7× |
+| N | wasm/f64/scan | webgpu/f32/assoc | ratio |
+|---|---------------|-----------------|-------|
+| 100 | <!-- timing:scale:wasm-f64:n100 -->22 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->306 ms<!-- /timing --> | 27× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->310 ms<!-- /timing --> | 29× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->349 ms<!-- /timing --> | 30× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->20 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->385 ms<!-- /timing --> | 30× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->412 ms<!-- /timing --> | 31× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->21 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->425 ms<!-- /timing --> | 36× |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->24 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->445 ms<!-- /timing --> | 33× |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->31 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->464 ms<!-- /timing --> | 27× |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->43 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->522 ms<!-- /timing --> | 19× |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->60 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->561 ms<!-- /timing --> | 13× |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->126 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->637 ms<!-- /timing --> | 7× |
+| 204800 | <!-- timing:scale:wasm-f64:n204800 -->236 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->790 ms<!-- /timing --> | 3.4× |
+| 409600 | <!-- timing:scale:wasm-f64:n409600 -->437 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->1150 ms<!-- /timing --> | 2.6× |
+| 819200 | <!-- timing:scale:wasm-f64:n819200 -->867 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->2012 ms<!-- /timing --> | 2.3× |
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->128 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.4 µs/step at N=102400 (~<!-- timing:scale:wasm-f64:n102400 -->126 ms<!-- /timing --> total). The flat region reflects fixed JIT/dispatch overhead, not compute.
 
-2. **WebGPU scales sub-linearly (O(log n))** — both forward and backward passes use `lax.associativeScan`, so each dispatches ⌈log₂N⌉+1 Kogge-Stone rounds. A 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->302 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->615 ms<!-- /timing -->). However, the fixed per-dispatch overhead of WebGPU command submission is high (~500 ms base), so the constant factor dominates at practical series lengths.
+2. **WebGPU scales sub-linearly (O(log n))** — both forward and backward passes use `lax.associativeScan`, so each dispatches ⌈log₂N⌉+1 Kogge-Stone rounds. A 1024× increase from N=100 to N=102400 only doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->306 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->637 ms<!-- /timing -->). However, the fixed per-dispatch overhead of WebGPU command submission is high (~500 ms base), so the constant factor dominates at practical series lengths.
 
-3. **The WASM-to-WebGPU ratio converges as N grows**: ~27× at N=100, ~7× at N=102400. WASM is faster at all measured N, but the gap shrinks with series length because WASM's O(n) growth outpaces WebGPU's O(log n) growth. A crossover is plausible at N≈800k–1M where WASM's linear growth would overtake WebGPU's logarithmic growth.
+3. **The WASM-to-WebGPU ratio converges as N grows**: ~27× at N=100, ~7× at N=102400, ~2.3× at N=819200. WASM is faster at all measured N. However, WebGPU's per-doubling growth factor (~1.7×) is smaller than WASM's (~2.0×), so the gap continues to narrow. No crossover was observed up to N=819200; based on the measured trend (WebGPU scaling steeper than pure O(log n) at large N, likely due to memory allocation and GPU transfer overhead), a crossover would require N well above 1M on this hardware.
 
 
 ## MLE

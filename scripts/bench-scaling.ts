@@ -29,12 +29,12 @@ const sidecarDir = resolve(root, "assets/timings");
 // ── Config ─────────────────────────────────────────────────────────────────
 
 /** All N values measured for WASM/f64. */
-const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400];
+const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200];
 
 /** N values also measured for WebGPU/f32.
  *  Both forward and backward passes use associativeScan (O(log n) depth),
  *  so scaling should be sub-linear. Measured at all N values. */
-const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400];
+const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200];
 
 const WARMUP = 2;
 const RUNS   = 4;
