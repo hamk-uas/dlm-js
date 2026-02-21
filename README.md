@@ -3,8 +3,8 @@
 <strong>
   <a href="https://hamk-uas.github.io/dlm-js/">API Reference</a> |
   <a href="https://github.com/hamk-uas/dlm-js">GitHub</a> |
-  <a href="https://mjlaine.github.io/dlm/">Original DLM Docs</a> |
-  <a href="https://github.com/mjlaine/dlm">Original DLM GitHub</a>
+  <a href="https://mjlaine.github.io/dlm/">Original MATLAB DLM Docs</a> |
+  <a href="https://github.com/mjlaine/dlm">Original MATLAB DLM GitHub</a>
 </strong>
 
 A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](https://github.com/hamk-uas/jax-js-nonconsuming), inspired by [dynamic linear model](https://mjlaine.github.io/dlm/dlmtut.html) (MATLAB). Extends the original with autodiff-based MLE via `jit(valueAndGrad + Adam)` and an exact O(log N) parallel filter+smoother via `lax.associativeScan` (Särkkä & García-Fernández 2020).
@@ -148,6 +148,55 @@ console.log(result.deviance);
 
 Missing observations are handled identically to MATLAB's `dlmsmo` (`ig = not(isnan(y(i,:)))` logic): the filter propagates through the gap using only the prior, and the RTS smoother then distributes the information from surrounding observations backward and forward. `ystd` grows wider over the gap, reflecting higher uncertainty where no data was seen.
 
+### Irregular timestamps
+
+When observations are not uniformly spaced, pass a `timestamps` array to `dlmFit`. The transition matrix $G$ and process noise covariance $W$ are then computed per-step via closed-form continuous-time discretization — no matrix exponential or numerical ODE solver is needed.
+
+```js
+import { dlmFit } from "dlm-js";
+
+// Observations at irregular times (e.g. years with gaps)
+const y   = [1120, 1160, 963, 1210, 1160,   969, 831, 456, 824, 702];
+const ts  = [1871, 1872, 1873, 1874, 1875,  1910, 1911, 1913, 1914, 1915];
+//                                        ↑ 35-year gap
+
+const result = await dlmFit(y, {
+  obsStd: 120, processStd: [40, 10], order: 1,
+  timestamps: ts, dtype: 'f64',
+});
+
+console.log(result.yhat);      // smoothed predictions at each timestamp
+console.log(result.ystd);      // observation std devs — wider after gaps
+```
+
+**Supported components:** polynomial trend (order 0, 1, 2) and trigonometric harmonics. `fullSeasonal` and AR components throw because they are purely discrete-time constructs with no natural continuous-time extension.
+
+#### How it works
+
+The standard DLM propagates through each unit timestep as $x_{t+1} = G \cdot x_t + w_t$ with $w_t \sim \mathcal{N}(0, W)$.  For a gap of $\Delta t$ steps between consecutive observations, `dlmGenSysTV` computes:
+
+**Transition matrix** $G(\Delta t) = \text{expm}(F_c \cdot \Delta t)$ — for a polynomial trend this is just the Jordan block with entries $\Delta t^j / j!$ on the $j$-th superdiagonal:
+
+$$G(\Delta t) = \begin{bmatrix} 1 & \Delta t & \Delta t^2/2 \\ 0 & 1 & \Delta t \\ 0 & 0 & 1 \end{bmatrix} \quad \text{(order 2)}$$
+
+**Process noise** $W(\Delta t)$ is the accumulated discrete noise from $\Delta t$ unit steps:
+
+$$W(\Delta t) = \sum_{k=0}^{\Delta t - 1} G^k \; W_1 \; (G^k)^\top$$
+
+Because $G$ is a Jordan block, $G^k$ has polynomial entries in $k$ and the sum reduces to closed-form Faulhaber sums.  For order 1 with process noise std devs $w_0, w_1$:
+
+$$W(\Delta t) = \begin{bmatrix} \Delta t \, w_0^2 + w_1^2 \, S_2 & w_1^2 \, S_1 \\ w_1^2 \, S_1 & \Delta t \, w_1^2 \end{bmatrix}$$
+
+where $S_1 = \Delta t(\Delta t - 1)/2$ and $S_2 = \Delta t(\Delta t - 1)(2\Delta t - 1)/6$.  These formulas interpolate smoothly for non-integer $\Delta t$ and collapse to $W(1) = \text{diag}(w_0^2, w_1^2)$ at unit spacing.  The off-diagonal terms capture the physical coupling: slope noise accumulates into level variance over multi-step gaps.
+
+**Trigonometric harmonics** scale the rotation angle: $\theta_k = \Delta t \cdot 2\pi h / n_s$, and process noise scales linearly: $W_{hh} = \Delta t \cdot w_h^2$.
+
+**Indexing convention.** `G_scan[k]` encodes the *departing* transition from obs $k$ to obs $k+1$ ($\Delta t = T[k+1] - T[k]$).  The forward Kalman step applies $G_k$ *after* incorporating observation $k$ to predict the state at $k+1$.  In the associative scan path, element construction at position $k$ needs the *arriving* transition ($G_\text{scan}[k-1]$), which is built by shifting the array.
+
+**Tip — interpolation at query points:** To obtain smoothed estimates at times where no measurement exists, insert `NaN` observations at those timestamps. The smoother treats NaN as a pure prediction step, giving interpolated state estimates and uncertainty bands at arbitrary query points.
+
+**Related work.** [4] extends the parallel scan framework of [1] to continuous-time models, deriving exact associative elements for MAP trajectory estimation on irregularly-sampled data. dlm-js uses a simpler approach — closed-form discretization fed to the existing filter — but the parallel scan composition is directly applicable if continuous-time MAP estimation is needed in the future.
+
 ### MLE parameter estimation
 
 Estimate observation noise `obsStd`, process noise `processStd`, and optionally AR coefficients by maximizing the Kalman filter log-likelihood via autodiff:
@@ -259,7 +308,7 @@ $$C_{\text{filt}} = (I - K F) \, C_{\text{pred}} \, (I - K F)^\top + K \, V^2 \,
 
 This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. Without Joseph form, Float32 + scan is numerically unstable for m ≥ 4 (see ⚠️ entries in the benchmark table). Float32 is still skipped in tests for m > 2 even with Joseph form, due to accumulated rounding in the smoother.
 
-**MATLAB DLM comparison:** The `dlmsmo.m` reference uses the standard covariance update formula (not Joseph form), combined with explicit `triu + triu'` symmetrization after each filter step (line 77) and `abs(diag(C))` diagonal correction on smoother output (line 114). The improved match seen in the benchmark between dlm-js+joseph/f64 and the Octave reference (9.38e-11 vs 3.78e-8 max |Δ| for f64+none) is not a coincidence — both approaches enforce numerical stability in similar ways, pushing both implementations toward the same stable numerical attractor.
+**MATLAB DLM comparison:** The `dlmsmo.m` reference uses the standard covariance update formula (not Joseph form), combined with explicit `triu + triu'` symmetrization after each filter step (line 77) and `abs(diag(C))` diagonal correction on smoother output (line 114). The improved match seen in the benchmark between dlm-js+joseph/f64 and the Octave reference (9.38e-11 vs 3.78e-8 max |Δ| for f64 without joseph) is not a coincidence — both approaches enforce numerical stability in similar ways, pushing both implementations toward the same stable numerical attractor.
 
 ### assoc algorithm
 
@@ -284,38 +333,38 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 ### Backend performance
 
-`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 4 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. `assoc + joseph` is an invalid combination (the assoc path auto-selects its own stabilization). Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype.
+`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 5 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. `assoc + joseph` is an invalid combination (the assoc path auto-selects its own stabilization). Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype.
 
-Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
+Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Missing order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
-| backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | max \|Δ\| | max \|Δ\|% |
-|---------|-------|-----------|------|----------|----------|------------|--------|----------|------------|
-| **cpu** | **f64** | **scan** | **none** | **166 ms** | **358 ms** | **435 ms** | **478 ms** | **3.78e-8** | **1.62e-4** |
-| cpu | f64 | scan | joseph | 191 ms | 389 ms | 481 ms | 528 ms | 9.38e-11 | 3.56e-9 |
-| cpu | f64 | assoc | none | 74 ms | 201 ms | 853 ms | 1534 ms | 5.12e-9 | 2.17e-5 |
-| cpu | **f32** | **scan** | **joseph** | **184 ms** | **384 ms** | **484 ms** | **533 ms** | **1.32e-2** | **0.17** |
-| cpu | f32 | scan | none | 171 ms | 345 ms | 439 ms | 482 ms | ⚠️ 180 | ⚠️ 1.4e6 |
-| cpu | f32 | assoc | none | 67 ms | 204 ms | 869 ms | 1552 ms | 4.93e-3 | 19.7 |
-| **wasm** | **f64** | **scan** | **none** | **16 ms** | **20 ms** | **22 ms** | **23 ms** | **3.78e-8** | **1.62e-4** |
-| wasm | f64 | scan | joseph | 18 ms | 22 ms | 22 ms | 22 ms | 9.38e-11 | 3.56e-9 |
-| wasm | f64 | assoc | none | 24 ms | 25 ms | 32 ms | 39 ms | 5.12e-9 | 2.17e-5 |
-| wasm | **f32** | **scan** | **joseph** | **17 ms** | **20 ms** | **24 ms** | **21 ms** | **3.99e-2** | **1.37** |
-| wasm | f32 | scan | none | 15 ms | 20 ms | 21 ms | 19 ms | ⚠️ 7000 | ⚠️ 2e6 |
-| wasm | f32 | assoc | none | 23 ms | 24 ms | 33 ms | 36 ms | 4.93e-3 | 21.9 |
-| **webgpu** | **f32** | **assoc** | **none** | **325 ms** | **353 ms** | **356 ms** | **372 ms** | **4.93e-3** | **19.8** |
-| webgpu | f32 | scan | none | 549 ms | 913 ms | 1011 ms | 1141 ms | ⚠️ 110 | ⚠️ 6.7e4 |
-| webgpu | f32 | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | 2.49e-2 | 1.32 |
+| backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | Missing | max \|Δ\| | max \|Δ\|% |
+|---------|-------|-----------|------|----------|----------|------------|--------|---------|----------|------------|
+| **cpu** | **f64** | **scan** | **—** | **166 ms** | **358 ms** | **435 ms** | **478 ms** | **—** | **3.78e-8** | **1.62e-4** |
+| | | scan | joseph | 191 ms | 389 ms | 481 ms | 528 ms | — | 9.38e-11 | 3.56e-9 |
+| | | assoc | — | 74 ms | 201 ms | 853 ms | 1534 ms | — | 5.12e-9 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **184 ms** | **384 ms** | **484 ms** | **533 ms** | **—** | **1.32e-2** | **0.17** |
+| | | scan | — | 171 ms | 345 ms | 439 ms | 482 ms | — | ⚠️ 180 | ⚠️ 1.4e6 |
+| | | assoc | — | 67 ms | 204 ms | 869 ms | 1552 ms | — | 4.93e-3 | 19.7 |
+| **wasm** | **f64** | **scan** | **—** | **16 ms** | **20 ms** | **22 ms** | **23 ms** | **—** | **3.78e-8** | **1.62e-4** |
+| | | scan | joseph | 18 ms | 22 ms | 22 ms | 22 ms | — | 9.38e-11 | 3.56e-9 |
+| | | assoc | — | 24 ms | 25 ms | 32 ms | 39 ms | — | 5.12e-9 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **17 ms** | **20 ms** | **24 ms** | **21 ms** | **—** | **3.99e-2** | **1.37** |
+| | | scan | — | 15 ms | 20 ms | 21 ms | 19 ms | — | ⚠️ 7000 | ⚠️ 2e6 |
+| | | assoc | — | 23 ms | 24 ms | 33 ms | 36 ms | — | 4.93e-3 | 21.9 |
+| **webgpu** | **f32** | **assoc** | **—** | **325 ms** | **353 ms** | **356 ms** | **372 ms** | **—** | **4.93e-3** | **19.8** |
+| | | scan | — | 549 ms | 913 ms | 1011 ms | 1141 ms | — | ⚠️ 110 | ⚠️ 6.7e4 |
+| | | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | — | 2.49e-2 | 1.32 |
 
-⚠️ = numerically unstable: f32 + scan + none without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 4 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
+⚠️ = numerically unstable: f32 + scan without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
 - **`assoc` on CPU is faster for small m, slower for large m** — for m=1–2, the scan composition is cheap and reduces interpreter overhead; for m=4–5 the extra matrix operations dominate (~2× slower than `scan` on CPU).
 - **`assoc` on WASM has no warm-run advantage over `scan`** — warm times are nearly identical (~20–40 ms) for all models; the first-run cost is ~5× higher due to extra JIT compilation paths, so prefer `scan` on WASM unless you need the parallel path explicitly.
-- **Why does joseph/f64 match Octave ~3,000× better than none/f64?** MATLAB DLM (`dlmsmo.m`) does not use Joseph form — it uses the standard update plus `triu + triu'` symmetrization and `abs(diag)` correction (see MATLAB DLM comparison above). Both approaches stabilize the numerical trajectory similarly, pushing both implementations toward the same stable attractor. The ~3,000× improvement is real (9.38e-11 vs 3.78e-8 max |Δ|).
+- **Why does joseph/f64 match Octave ~3,000× better than f64 (no joseph)?** MATLAB DLM (`dlmsmo.m`) does not use Joseph form — it uses the standard update plus `triu + triu'` symmetrization and `abs(diag)` correction (see MATLAB DLM comparison above). Both approaches stabilize the numerical trajectory similarly, pushing both implementations toward the same stable attractor. The ~3,000× improvement is real (9.38e-11 vs 3.78e-8 max |Δ|).
 - **`assoc + joseph` is handled automatically** — the assoc path always applies its own numerically stable formulation. Stabilization is auto-selected internally and not a user-facing option.
-- **f32 + scan + none is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph, as shown by the reasonable 4.93e-3 max error vs the ⚠️ 7000 for scan+none.
-- **Joseph form overhead is negligible on WASM** — f32+joseph vs f64+none differ by <5 ms across all models, well within JIT variance. The stabilization (auto-selected internally) is numerically important but not a performance concern.
+- **f32 + scan without joseph is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph, as shown by the reasonable 4.93e-3 max error vs the ⚠️ 7000 for f32+scan.
+- **Joseph form overhead is negligible on WASM** — f32+joseph vs f64 (no joseph) differ by <5 ms across all models, well within JIT variance. The stabilization (auto-selected internally) is numerically important but not a performance concern.
 - **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
 - **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
 - **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.1 µs/step, giving ~<!-- timing:scale:wasm-f64:n819200 -->867 ms<!-- /timing --> at N=819200. WebGPU/f32 `assoc` scales **sub-linearly**: a 1024× increase from N=100 to N=102400 doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->306 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->637 ms<!-- /timing -->), but growth steepens at larger N (~1.7× per doubling at N>100k), so no crossover was observed up to N=819200 (ratio still 2.3×).
@@ -472,28 +521,28 @@ In practice, exact numeric equality is not expected because initialization and o
 
 #### Parameterization
 
-| Aspect | MATLAB DLM | dlm-js |
-|--------|-----------|--------|
-| Observation noise $s$ | Optionally fitted as a multiplicative factor $V \cdot e^{\theta_v}$ (controlled by `options.fitv`) | Always fitted: $s = e^{\theta_s}$ |
-| State noise $w$ | $W_{ii} = (e^{\theta_{w,i}})^2$ | $W_{ii} = (e^{\theta_{w,i}})^2$ via `buildDiagW` |
-| AR coefficients | Directly optimized (not log-transformed): $G(\text{arInds}) = \theta_\phi$ | Directly optimized (not log-transformed): $G(\text{arInds}) = \theta_\phi$ via `buildG` rank-1 update (AD-safe) |
-| Parameter grouping | `options.winds` maps $\text{diag}(W)$ entries to shared parameters (e.g., `winds=[1,1,2,2]` ties states 1&2 and 3&4) | Each $W_{ii}$ is an independent parameter |
+| Aspect | dlm-js | MATLAB DLM |
+|--------|--------|-----------|
+| Observation noise $s$ | Always fitted: $s = e^{\theta_s}$ | Optionally fitted as a multiplicative factor $V \cdot e^{\theta_v}$ (controlled by `options.fitv`) |
+| State noise $w$ | $W_{ii} = (e^{\theta_{w,i}})^2$ via `buildDiagW` | $W_{ii} = (e^{\theta_{w,i}})^2$ |
+| AR coefficients | Directly optimized (not log-transformed): $G(\text{arInds}) = \theta_\phi$ via `buildG` rank-1 update (AD-safe) | Directly optimized (not log-transformed): $G(\text{arInds}) = \theta_\phi$ |
+| Parameter grouping | Each $W_{ii}$ is an independent parameter | `options.winds` maps $\text{diag}(W)$ entries to shared parameters (e.g., `winds=[1,1,2,2]` ties states 1&2 and 3&4) |
 
 Both use the same positivity enforcement: log-space for variance parameters, then $e^{(\cdot)}$ to map back. The MATLAB version has an extra feature — `winds` — that lets you **tie** $\text{diag}(W)$ entries to shared parameters, reducing the optimization dimension when multiple states should share the same noise variance.
 
 #### Optimizer
 
-| Aspect | MATLAB DLM | dlm-js |
-|--------|-----------|--------|
-| **Algorithm** | `fminsearch` (Nelder-Mead simplex) | Adam (gradient-based, 1st-order momentum) |
-| **Gradient computation** | **None** — derivative-free | **Autodiff** via `valueAndGrad()` + reverse-mode AD through `lax.scan` |
-| **Convergence** | Simplex shrinkage heuristic (no guaranteed rate for non-convex objectives) | Adaptive first-order method with bias-corrected moments; practical convergence depends on learning rate and objective conditioning |
-| **Cost per optimizer step** | Multiple likelihood evaluations per simplex update (depends on dimension and simplex operations) | One `valueAndGrad` evaluation (forward + reverse AD through the loss) plus Adam state update |
-| **Typical run budget** | 400 function evaluations (`options.maxfuneval` default) | 200 optimizer iterations (`maxIter` default) |
-| **Compilation** | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) |
-| **Jittability** | N/A | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) |
-| **Adam defaults** | N/A | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) |
-| **WASM performance** | N/A | ~<!-- timing:ckpt:nile:false-s -->1.8 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) |
+| Aspect | dlm-js | MATLAB DLM |
+|--------|--------|-----------|
+| **Algorithm** | Adam (gradient-based, 1st-order momentum) | `fminsearch` (Nelder-Mead simplex) |
+| **Gradient computation** | **Autodiff** via `valueAndGrad()` + reverse-mode AD through `lax.scan` | **None** — derivative-free |
+| **Convergence** | Adaptive first-order method with bias-corrected moments; practical convergence depends on learning rate and objective conditioning | Simplex shrinkage heuristic (no guaranteed rate for non-convex objectives) |
+| **Cost per optimizer step** | One `valueAndGrad` evaluation (forward + reverse AD through the loss) plus Adam state update | Multiple likelihood evaluations per simplex update (depends on dimension and simplex operations) |
+| **Typical run budget** | 200 optimizer iterations (`maxIter` default) | 400 function evaluations (`options.maxfuneval` default) |
+| **Compilation** | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
+| **Jittability** | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) | N/A |
+| **Adam defaults** | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) | N/A |
+| **WASM performance** | ~<!-- timing:ckpt:nile:false-s -->1.8 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) | N/A |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
@@ -501,11 +550,11 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 
 Pure MLE minimises $-2 \log L$ without any prior on $W$. On real data such as satellite ozone measurements, this can produce degenerate solutions — e.g. most seasonal noise variances collapse to near-zero while one or two grow large — because the likelihood surface has a wide, nearly flat ridge. MATLAB MCMC uses a normal prior on $\log W$ entries that keeps them symmetric and away from zero, yielding a posterior mean at much higher $-2\log L$ but visually smoother, better-regularised results.
 
-| Point | MATLAB MCMC | dlm-js MLE |
+| Point | dlm-js MLE | MATLAB MCMC |
 |-------|------------|------------|
-| Ozone $-2\log L$ at MATLAB posterior W | 435.6 | — |
-| Ozone $-2\log L$ at MLE optimum | — | 203.8 |
-| Ozone trend shape | Smooth, symmetric seasonal noise | Same global trend, but seasonal W values degenerate |
+| Ozone $-2\log L$ at MATLAB posterior W | — | 435.6 |
+| Ozone $-2\log L$ at MLE optimum | 203.8 | — |
+| Ozone trend shape | Same global trend, but seasonal W values degenerate | Smooth, symmetric seasonal noise |
 
 If MCMC-like regularisation is needed, the recommended approach is MAP estimation: add a log-normal penalty on $W$ entries to the loss before differentiating. dlm-js `makeKalmanLoss` is a plain differentiable function and the penalty can be added outside of it before wrapping in `jit(valueAndGrad(...))`.
 
@@ -513,13 +562,13 @@ If MCMC-like regularisation is needed, the recommended approach is MAP estimatio
 
 All timings measured on the same machine. The MATLAB DLM toolbox was run under Octave with `fminsearch` (Nelder-Mead, `maxfuneval=400` for Nile models, `maxfuneval=800` for Kaisaniemi). dlm-js uses `dlmMLE` (Adam + autodiff, `maxIter=300`, `b2=0.9` default, `checkpoint: false`, `wasm` backend). Octave timings are median of 5 runs after 1 warmup; dlm-js timings are single fresh-run wall-clock times (including first-call JIT overhead).
 
-| Model | $n$ | $m$ | params | Octave `fminsearch` | dlm-js `dlmMLE` (wasm) | $-2\log L$ (Octave) | $-2\log L$ (dlm-js) |
-|-------|---|---|--------|---------------------|------------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | 2827 ms | <!-- timing:nile-mle:elapsed -->3050 ms<!-- /timing --> | 1104.6 | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> |
-| Nile, order=1, fit w only | 100 | 2 | 2 | 1623 ms | — | 1104.7 | — |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | 610 ms | <!-- timing:mle-bench:nile-order0:elapsed -->1847 ms<!-- /timing --> | 1095.8 | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:elapsed -->5928 ms<!-- /timing --> | — | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | — | <!-- timing:energy-mle:elapsed-ms -->6399 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> |
+| Model | $n$ | $m$ | params | dlm-js `dlmMLE` (wasm) | Octave `fminsearch` | $-2\log L$ (dlm-js) | $-2\log L$ (Octave) |
+|-------|---|---|--------|------------------------|---------------------|-----------------|-----------------|
+| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->3050 ms<!-- /timing --> | 2827 ms | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | 1104.6 |
+| Nile, order=1, fit w only | 100 | 2 | 2 | — | 1623 ms | — | 1104.7 |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->1847 ms<!-- /timing --> | 610 ms | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | 1095.8 |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->5928 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->6399 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — |
 
 Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
 
@@ -531,11 +580,11 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 ##### Gradient checkpointing
 
-`lax.scan` supports gradient checkpointing via a `checkpoint` option: `true` (default, √N segments), `false` (store all carries), or an explicit segment size.
+`lax.scan` supports gradient checkpointing via a `checkpoint` option: `true` (default, √n segments), `false` (store all carries), or an explicit segment size.
 
 **Benchmark (WASM, Float64, 60 iterations):**
 
-| Dataset | n | m | `checkpoint: false` | `checkpoint: true` (√N) | speedup |
+| Dataset | n | m | `checkpoint: false` ($n$) | `checkpoint: true` ($\sqrt{n}$) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
 | Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1781 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1775 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->0%<!-- /timing --> |
 | Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2205 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2191 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> |
@@ -551,22 +600,23 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 
 #### Feature comparison summary
 
-| Capability | MATLAB DLM | dlm-js `dlmMLE` |
-|-----------|-----------|-----------------|
-| MLE point estimate | ✅ `fminsearch` | ✅ Adam + autodiff |
-| Gradient-based optimization | ❌ | ✅ |
-| JIT compilation of optimizer | ❌ | ✅ |
-| Fit observation noise `obsStd` | ✅ (optional via `fitv`) | ✅ (always) |
+| Capability | dlm-js `dlmMLE` | MATLAB DLM |
+|-----------|-----------------|-----------|
+| MLE point estimate | ✅ Adam + autodiff | ✅ `fminsearch` |
+| Gradient-based optimization | ✅ | ❌ |
+| JIT compilation of optimizer | ✅ | ❌ |
+| Fit observation noise `obsStd` | ✅ (always) | ✅ (optional via `fitv`) |
 | Fit process noise `processStd` | ✅ | ✅ |
-| Fit AR coefficients `arCoefficients` | ✅ | ✅ (`fitAr: true`) |
-| Tie W parameters (`winds`) | ✅ | ❌ (each W entry independent) |
-| Custom cost function | ✅ (`options.fitfun`) | ❌ |
-| MCMC posterior sampling | ✅ (Adaptive Metropolis via `mcmcrun`) | ❌ |
-| State sampling for Gibbs | ✅ (disturbance smoother) | ❌ |
-| Posterior uncertainty | ✅ (full chain) | ❌ (point estimate only) |
-| Convergence diagnostics | ✅ (`chain`, `sschain` in MCMC mode) | ⚠️ Limited (`devianceHistory`, no posterior chain) |
-| Runs in browser | ❌ | ✅ |
-| MEX/WASM acceleration | ✅ (`dlmmex` optional) | ✅ (`wasm` backend; see [benchmark](#benchmark-same-machine-same-data)) |
+| Fit AR coefficients `arCoefficients` | ✅ (`fitAr: true`) | ✅ |
+| Tie W parameters (`winds`) | ❌ (each W entry independent) | ✅ |
+| Custom cost function | ❌ | ✅ (`options.fitfun`) |
+| MCMC posterior sampling | ❌ | ✅ (Adaptive Metropolis via `mcmcrun`) |
+| State sampling for Gibbs | ❌ | ✅ (disturbance smoother) |
+| Posterior uncertainty | ❌ (point estimate only) | ✅ (full chain) |
+| Convergence diagnostics | ⚠️ Limited (`devianceHistory`, no posterior chain) | ✅ (`chain`, `sschain` in MCMC mode) |
+| Runs in browser | ✅ | ❌ |
+| MEX/WASM acceleration | ✅ (`wasm` backend; see [benchmark](#benchmark-same-machine-same-data)) | ✅ (`dlmmex` optional) |
+| Irregular timestamps | ✅ (`timestamps` in `dlmFit`; see [irregular timestamps](#irregular-timestamps)) | ❌ (unit spacing only) |
 
 #### What dlm-js does differently
 
@@ -683,8 +733,9 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 
 ## TODO
 
-* Test the built library (in `dist/`)
+* Float32 backward-smoother stabilization — experimental `DlmStabilization` flags already implemented (`cEps` gives −29% max error); next steps: evaluate log-Cholesky / modified-Cholesky parameterizations, consider making `cEps` the f32 default, or collapse the 7-flag interface to a simpler enum before documenting
 * Multivariate observations (p > 1) — biggest remaining gap; affects all matrix dimensions throughout the filter/smoother (dlm-js currently assumes scalar observations, p = 1)
+* Test the built library (in `dist/`)
 * MCMC parameter estimation — depends on Marko Laine's `mcmcrun` toolbox; would require porting or replacing the MCMC engine
 * State sampling (disturbance smoother) — blocked on MCMC
 * Human review the AI-generated DLM port
@@ -694,7 +745,7 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 1. Särkkä, S. & García-Fernández, Á. F. (2020). [Temporal Parallelization of Bayesian Smoothers](https://arxiv.org/abs/1905.13002). *IEEE Transactions on Automatic Control*, 66(1), 299–306. doi:[10.1109/TAC.2020.2976316](https://doi.org/10.1109/TAC.2020.2976316). — Lemmas 1–2: exact parallel forward Kalman filter (5-tuple elements + associative composition); Lemmas 3–4 + Theorem 2: parallel backward smoother (linear/Gaussian specialization). dlm-js uses Lemmas 1–2 (forward filter) and Lemmas 3–4 (backward smoother).
 2. Pyro contributors. [Forecasting II: state space models](https://pyro.ai/examples/forecasting_ii.html). — Parallel-scan Kalman filtering on 78,888-step BART ridership data.
 3. NumPyro contributors. [Example: Enumerate Hidden Markov Model](https://num.pyro.ai/en/latest/examples/hmm_enum.html). — Parallel-scan HMM inference using [1].
-4. Razavi, H., García-Fernández, Á. F. & Särkkä, S. (2025). Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation. *Preprint*. — Extends the framework to continuous-time MAP estimation.
+4. Razavi, H., García-Fernández, Á. F. & Särkkä, S. (2025). Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation. *Preprint*. — Extends [1] to continuous-time MAP estimation with exact associative elements for irregular timesteps; see [irregular timestamps](#irregular-timestamps).
 
 ### Authors
 * Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
