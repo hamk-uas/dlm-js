@@ -1,11 +1,11 @@
 {
-  "nile_order1_elapsed": 2669.8396919999996,
+  "nile_order1_elapsed": 2488.151905999999,
   "nile_order1_iterations": 122,
   "nile_order1_lik": 1104.9170699735791,
-  "nile_order0_elapsed": 1846.7479829999993,
+  "nile_order0_elapsed": 1738.279668000001,
   "nile_order0_iterations": 100,
   "nile_order0_lik": 1095.783530328254,
-  "kaisaniemi_elapsed": 5927.698546,
+  "kaisaniemi_elapsed": 5463.030516999999,
   "kaisaniemi_iterations": 300,
   "kaisaniemi_lik": 341.30632032553507
 }

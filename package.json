@@ -44,6 +44,7 @@
     "bench:checkpoint": "npx tsx scripts/bench-checkpoint.ts && pnpm run update:timings",
     "bench:gpu": "deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run scripts/bench-gpu.ts",
     "bench:backends": "npx tsx scripts/bench-backends.ts && pnpm run update:timings",
+    "bench:full": "deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run scripts/bench-full.ts",
     "bench:scaling": "deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run scripts/bench-scaling.ts",
     "stab:search": "npx tsx scripts/stab-search.ts",
     "stab:search:full": "npx tsx scripts/stab-search.ts -- --full",

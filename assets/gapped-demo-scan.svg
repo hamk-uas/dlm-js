@@ -133,7 +133,7 @@
 <text x="707.8" y="348" text-anchor="middle" fill="#333">1960</text>
 <text x="422.5" y="375" text-anchor="middle" fill="#333" font-size="13">Year</text>
 <text x="14" y="179.0" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,179.0)">Annual flow</text>
-<text x="422.5" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (gapped data, 77/100 observed) — fit (order=1, trend), cold 107 ms, warm 43 ms, scan/WASM/f64</text>
+<text x="422.5" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (gapped data, 77/100 observed) — fit (order=1, trend), cold 109 ms, warm 58 ms, scan/WASM/f64</text>
 <rect x="423" y="32" width="290" height="105" rx="4" fill="rgba(255,255,255,0.92)" stroke="#e5e7eb" stroke-width="1"/>
 <circle cx="437" cy="46" r="3" fill="#555" opacity="0.6"/>
 <text x="448" y="46" dominant-baseline="middle" fill="#333" font-size="11">Observed</text>

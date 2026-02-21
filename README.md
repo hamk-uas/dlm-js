@@ -341,44 +341,42 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 ### Backend performance
 
-`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 5 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. `assoc + joseph` is an invalid combination (the assoc path auto-selects its own stabilization). Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype.
+`dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 5 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype. Stab `cTriuSym` = `triu(C)+triu(C,1)'` (f64 default, matches MATLAB); `joseph` = Joseph-form covariance update (f32 default, always applied for scan; assoc uses its own formulation); `—` = explicit override disabling the default stabilization.
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Gapped order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
 | backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | Gapped | max \|Δ\| | max \|Δ\|% |
 |---------|-------|-----------|------|----------|----------|------------|--------|---------|----------|------------|
-| **cpu** | **f64** | **scan** | **—** | **166 ms** | **358 ms** | **435 ms** | **478 ms** | **356 ms** | **3.78e-8** | **1.62e-4** |
-| | | scan | joseph | 191 ms | 389 ms | 481 ms | 528 ms | — | 9.38e-11 | 3.56e-9 |
-| | | assoc | — | 74 ms | 201 ms | 853 ms | 1534 ms | 213 ms | 1.33e-8 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **184 ms** | **384 ms** | **484 ms** | **533 ms** | **392 ms** | **1.32e-2** | **0.17** |
-| | | scan | — | 171 ms | 345 ms | 439 ms | 482 ms | — | ⚠️ 180 | ⚠️ 1.4e6 |
-| | | assoc | — | 67 ms | 204 ms | 869 ms | 1552 ms | 214 ms | 1.28e-2 | 19.7 |
-| **wasm** | **f64** | **scan** | **—** | **16 ms** | **20 ms** | **22 ms** | **23 ms** | **20 ms** | **3.78e-8** | **1.62e-4** |
-| | | scan | joseph | 18 ms | 22 ms | 22 ms | 22 ms | — | 9.38e-11 | 3.56e-9 |
-| | | assoc | — | 24 ms | 25 ms | 32 ms | 39 ms | 24 ms | 1.33e-8 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **17 ms** | **20 ms** | **24 ms** | **21 ms** | **22 ms** | **3.99e-2** | **1.37** |
-| | | scan | — | 15 ms | 20 ms | 21 ms | 19 ms | — | ⚠️ 7000 | ⚠️ 2e6 |
-| | | assoc | — | 23 ms | 24 ms | 33 ms | 36 ms | 23 ms | 1.21e-2 | 21.9 |
-| **webgpu** | **f32** | **assoc** | **—** | **325 ms** | **353 ms** | **356 ms** | **372 ms** | **⚠️ NaN** | **⚠️ 92.2** | **⚠️ 62.8** |
-| | | scan | — | 549 ms | 913 ms | 1011 ms | 1141 ms | ⚠️ NaN | ⚠️ 110 | ⚠️ 6.7e4 |
-| | | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | — | 2.49e-2 | 1.32 |
+| **cpu** | **f64** | **scan** | **cTriuSym** | **213 ms** | **425 ms** | **525 ms** | **584 ms** | **450 ms** | **1.14e-10** | **1.11e-9** |
+| | | scan | — | 182 ms | 354 ms | 443 ms | 487 ms | 350 ms | 3.78e-8 | 1.62e-4 |
+| | | assoc | — | 74 ms | 211 ms | 872 ms | 1580 ms | 210 ms | 1.33e-8 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **188 ms** | **397 ms** | **490 ms** | **554 ms** | **393 ms** | **1.32e-2** | **2.67e-1** |
+| | | assoc | — | 68 ms | 209 ms | 891 ms | 1612 ms | 211 ms | 1.28e-2 | 2.01e+1 |
+| **wasm** | **f64** | **scan** | **cTriuSym** | **27 ms** | **24 ms** | **26 ms** | **25 ms** | **25 ms** | **1.14e-10** | **1.11e-9** |
+| | | scan | — | 18 ms | 20 ms | 23 ms | 21 ms | 20 ms | 3.78e-8 | 1.62e-4 |
+| | | assoc | — | 26 ms | 24 ms | 32 ms | 40 ms | 23 ms | 1.33e-8 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **17 ms** | **23 ms** | **24 ms** | **23 ms** | **22 ms** | **3.99e-2** | **9.66e-1** |
+| | | assoc | — | 23 ms | 24 ms | 31 ms | 39 ms | 26 ms | 1.21e-2 | 21.9 |
+| **webgpu** | **f32** | **assoc** | **—** | **307 ms** | **337 ms** | **333 ms** | **339 ms** | **⚠️ NaN** | **⚠️ 92.2** | **⚠️ 62.8** |
+| | | scan | — | 293 ms | 335 ms | 339 ms | 344 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
 
-⚠️ = numerically unstable. f32 + scan without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). WebGPU additionally produces NaN outputs when the data contains missing (NaN) observations. Both columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
+⚠️ = numerically unstable. WebGPU produces NaN outputs when the data contains missing (NaN) observations — all algorithms affected. Both columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
 - **`assoc` on CPU is faster for small m, slower for large m** — for m=1–2, the scan composition is cheap and reduces interpreter overhead; for m=4–5 the extra matrix operations dominate (~2× slower than `scan` on CPU).
 - **`assoc` on WASM has no warm-run advantage over `scan`** — warm times are nearly identical (~20–40 ms) for all models; the first-run cost is ~5× higher due to extra JIT compilation paths, so prefer `scan` on WASM unless you need the parallel path explicitly.
-- **Why does joseph/f64 match Octave ~3,000× better than f64 (no joseph)?** MATLAB DLM (`dlmsmo.m`) does not use Joseph form — it uses the standard update plus `triu + triu'` symmetrization and `abs(diag)` correction (see MATLAB DLM comparison above). Both approaches stabilize the numerical trajectory similarly, pushing both implementations toward the same stable attractor. The ~3,000× improvement is real (9.38e-11 vs 3.78e-8 max |Δ|).
-- **`assoc + joseph` is handled automatically** — the assoc path always applies its own numerically stable formulation. Stabilization is auto-selected internally and not a user-facing option.
-- **f32 + scan without joseph is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph on non-gapped data, as shown by the reasonable 1.28e-2 max error vs the ⚠️ 7000 for f32+scan.
-- **Joseph form overhead is negligible on WASM** — f32+joseph vs f64 (no joseph) differ by <5 ms across all models, well within JIT variance. The stabilization (auto-selected internally) is numerically important but not a performance concern.
-- **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
-- **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
+- **Why does the f64 default (cTriuSym) match Octave ~330× better than unsymmetrized f64?** MATLAB DLM (`dlmsmo.m`) uses `triu(C)+triu(C,1)'` symmetrization after each prediction step — the `cTriuSym` mode replicates this exactly. Before this was default, the raw f64 path accumulated numerical drift that diverged from the MATLAB reference. The improvement is most pronounced for larger state dimensions (3.78e-8 → 1.14e-10 max |Δ| for Energy m=5; smaller models show even deeper reductions). Disable with `stabilization: { cTriuSym: false }`.
+- **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matches MATLAB), f32 uses Joseph-form update (always applied for scan). No user configuration needed for standard use. The `assoc` path uses its own exact per-timestep formulation regardless of dtype.
+- **f32 precision is limited to ~1–4% max error for large models** — Joseph-form stabilization prevents covariance collapse but float32 arithmetic limits precision for m ≥ 4. Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
+- **Stabilization overhead is negligible on WASM** — `cTriuSym` adds two `np.triu` calls per step; wasm/f64 default vs no-sym differ by ≤5 ms across all models.
+- **WebGPU `scan` and `assoc` have similar warm-run times at small n** (~290–350 ms for n=100–120). At this scale both paths are dominated by per-dispatch GPU overhead, not per-step arithmetic. `assoc` remains the WebGPU default since it dispatches O(log n) rounds (architecturally optimal for large n; see scaling table below).
+- **WebGPU is ~10–15× slower than WASM** for the benchmarked models (n=100–120) — GPU dispatch latency dominates at small data sizes. The crossover point where WebGPU becomes competitive lies well above n=100k (see scaling table).
 - **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.1 µs/step, giving ~<!-- timing:scale:wasm-f64:n819200 -->867 ms<!-- /timing --> at N=819200. WebGPU/f32 `assoc` scales **sub-linearly**: a 1024× increase from N=100 to N=102400 doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->306 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->637 ms<!-- /timing -->), but growth steepens at larger N (~1.7× per doubling at N>100k), so no crossover was observed up to N=819200 (ratio still 2.3×).
 - **WebGPU results may differ slightly** from sequential WASM/f64 due to Float32 precision and operation reordering in the parallel scan, not from any algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The gapped-data demo uses the same Nile dataset with 23 observations removed.
+
 
 #### WebGPU/f32/assoc vs WASM/f64/scan warm-run benchmark
 
@@ -386,10 +384,10 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 | Model | $n$ | $m$ | wasm / f64 / scan | webgpu / f32 / assoc |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->301 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->21 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->307 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->19 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->300 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->301 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->307 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->300 ms<!-- /timing --> |
 
 **WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
 
@@ -550,7 +548,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Compilation** | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
 | **Jittability** | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) | N/A |
 | **Adam defaults** | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) | N/A |
-| **WASM performance** | ~<!-- timing:ckpt:nile:false-s -->1.8 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) | N/A |
+| **WASM performance** | ~<!-- timing:ckpt:nile:false-s -->1.7 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) | N/A |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
 
@@ -572,18 +570,18 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 
 | Model | $n$ | $m$ | params | dlm-js `dlmMLE` (wasm) | Octave `fminsearch` | $-2\log L$ (dlm-js) | $-2\log L$ (Octave) |
 |-------|---|---|--------|------------------------|---------------------|-----------------|-----------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->3050 ms<!-- /timing --> | 2827 ms | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | 1104.6 |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->2953 ms<!-- /timing --> | 2827 ms | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | 1104.6 |
 | Nile, order=1, fit w only | 100 | 2 | 2 | — | 1623 ms | — | 1104.7 |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->1847 ms<!-- /timing --> | 610 ms | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | 1095.8 |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->5928 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->6399 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->1738 ms<!-- /timing --> | 610 ms | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | 1095.8 |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->5463 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->6412 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — |
 
 Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
 
 **Key observations:**
 - **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower" -->faster<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
 - **Likelihood values:** Both converge to very similar $-2\log L$ values on Nile (difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
-- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.9 s<!-- /timing -->), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing -->.
+- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; dlm-js converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.5 s<!-- /timing -->), reaching $-2\log L =$ <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing -->.
 - **Joint $s+w$ fitting:** dlm-js always fits both $s$ and $w$; MATLAB DLM can fit $w$ only (`fitv=0`).
 
 ##### Gradient checkpointing
@@ -594,8 +592,8 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 | Dataset | n | m | `checkpoint: false` ($n$) | `checkpoint: true` ($\sqrt{n}$) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1781 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1775 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->0%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2205 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2191 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-1%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1742 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1751 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+1%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2164 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2121 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-2%<!-- /timing --> |
 
 
 #### MCMC (MATLAB DLM only)

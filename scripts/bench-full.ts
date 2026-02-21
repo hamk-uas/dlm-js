@@ -22,7 +22,7 @@
 
 import { DType, defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
 import { dlmFit } from "../src/index.ts";
-import type { DlmDtype, DlmAlgorithm, DlmFitResult } from "../src/types.ts";
+import type { DlmDtype, DlmAlgorithm, DlmFitResult, DlmStabilization } from "../src/types.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
@@ -108,6 +108,10 @@ interface Combo {
   backend: 'cpu' | 'wasm' | 'webgpu';
   dlmDtype: DlmDtype;
   algorithm: DlmAlgorithm;
+  /** Explicit stabilization override. Undefined = use library defaults. */
+  stabilization?: DlmStabilization;
+  /** Human-readable stab label for the table (auto-derived if omitted). */
+  stabLabel?: string;
 }
 
 const combos: Combo[] = [];
@@ -115,7 +119,17 @@ const combos: Combo[] = [];
 for (const backend of ['cpu', 'wasm'] as const) {
   for (const dlmDtype of ['f64', 'f32'] as const) {
     for (const algorithm of ['scan', 'assoc'] as const) {
+      // Default row (uses library defaults for this dtype)
       combos.push({ backend, dlmDtype, algorithm });
+      // f64/scan: include old no-sym baseline as explicit comparison row
+      if (dlmDtype === 'f64' && algorithm === 'scan') {
+        combos.push({
+          backend, dlmDtype, algorithm,
+          stabilization: { cTriuSym: false },
+          stabLabel: '— (no sym)',
+        });
+      }
+
     }
   }
 }
@@ -222,12 +236,18 @@ async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
   const refVals = flattenRef(ref, m, n);
 
   let stable = true;
+  const fitOpts = {
+    obsStd: s, processStd: w,
+    dtype: combo.dlmDtype, algorithm: combo.algorithm,
+    ...(combo.stabilization !== undefined ? { stabilization: combo.stabilization } : {}),
+    ...options,
+  };
 
   // First run (JIT compilation)
   const t0 = performance.now();
   let r1: DlmFitResult;
   try {
-    r1 = await dlmFit(y, { obsStd: s, processStd: w, dtype: combo.dlmDtype, algorithm: combo.algorithm, ...options });
+    r1 = await dlmFit(y, fitOpts);
     if (!isAllFinite(r1.yhat as number[])) stable = false;
     r1[Symbol.dispose]?.();
   } catch {
@@ -239,7 +259,7 @@ async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
   const t2 = performance.now();
   let r2: DlmFitResult;
   try {
-    r2 = await dlmFit(y, { obsStd: s, processStd: w, dtype: combo.dlmDtype, algorithm: combo.algorithm, ...options });
+    r2 = await dlmFit(y, fitOpts);
   } catch {
     return { firstMs: t1 - t0, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
   }
@@ -291,18 +311,19 @@ for (const model of models) {
 
   for (const combo of combos) {
     const result = await timedFit(model, combo);
-    const isDefaultAlgo =
-      (combo.backend === 'webgpu' && combo.dlmDtype === 'f32' && combo.algorithm === 'assoc') ||
-      (combo.backend !== 'webgpu' && combo.algorithm === 'scan');
-    const defaultMark = isDefaultAlgo ? ' ←def' : '';
+    const isDefaultCombo = combo.stabilization === undefined &&
+      ((combo.backend === 'webgpu' && combo.dlmDtype === 'f32' && combo.algorithm === 'assoc') ||
+       (combo.backend !== 'webgpu' && combo.algorithm === 'scan'));
+    const defaultMark = isDefaultCombo ? ' ←def' : '';
     const status = result.stable
       ? (defaultMark ? `✓${defaultMark}` : '✓')
       : (isNaN(result.firstMs) ? '✗ crash' : '⚠️ NaN');
+    const stabStr = combo.stabLabel ?? (combo.stabilization !== undefined ? 'override' : 'default');
 
     console.log([
       combo.backend.padEnd(colW.be),
       dtypeLabel(combo.dlmDtype).padEnd(colW.dt),
-      combo.algorithm.padEnd(colW.al),
+      `${combo.algorithm}+${stabStr}`.padEnd(colW.al),
       fmtMs(result.firstMs),
       fmtMs(result.warmMs),
       fmtErr(result.maxAbsErr, 2),
@@ -315,6 +336,7 @@ for (const model of models) {
       backend: combo.backend,
       dtype: dtypeLabel(combo.dlmDtype),
       algorithm: combo.algorithm,
+      stabLabel: combo.stabLabel ?? 'default',
       firstMs: result.firstMs,
       warmMs: result.warmMs,
       stable: result.stable,
