@@ -39,6 +39,8 @@ const nileIn       = JSON.parse(readFileSync(resolve(root, "tests/niledemo-in.js
 const kaisaniemiIn = JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-in.json"), "utf-8"));
 const trigarIn     = JSON.parse(readFileSync(resolve(root, "tests/trigar-in.json"), "utf-8"));
 const order0In     = JSON.parse(readFileSync(resolve(root, "tests/order0-in.json"), "utf-8"));
+const missingIn    = JSON.parse(readFileSync(resolve(root, "tests/missing-in.json"), "utf-8"));
+const missingY: number[] = (missingIn.y as (number | null)[]).map((v: number | null) => v === null ? NaN : v);
 
 // ── Load Octave/MATLAB reference outputs ───────────────────────────────────
 // Used for error comparison (max absolute and max percentage error).
@@ -49,6 +51,7 @@ const refMap: Record<string, { ref: RefJson; m: number; n: number }> = {
   "Nile, order=1":   { ref: JSON.parse(readFileSync(resolve(root, "tests/niledemo-out-m.json"),  "utf-8")), m: 2, n: 100 },
   "Kaisaniemi, trig":{ ref: JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-out-m.json"),"utf-8")), m: 4, n: 117 },
   "Energy, trig+AR": { ref: JSON.parse(readFileSync(resolve(root, "tests/trigar-out-m.json"),    "utf-8")), m: 5, n: 120 },
+  "Missing, order=1": { ref: JSON.parse(readFileSync(resolve(root, "tests/missing-out-m.json"),  "utf-8")), m: 2, n: 100 },
 };
 
 // ── Models ─────────────────────────────────────────────────────────────────
@@ -90,6 +93,12 @@ const models: Model[] = [
     y: trigarIn.y, s: trigarIn.s, w: toW(trigarIn.w),
     options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] },
     n: 120, m: 5,
+  },
+  {
+    label: "Missing, order=1",
+    y: missingY, s: missingIn.s, w: toW(missingIn.w),
+    options: missingIn.options,      // { order: 1 }
+    n: 100, m: 2,
   },
 ];
 

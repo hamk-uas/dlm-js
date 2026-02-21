@@ -61,6 +61,23 @@ const jsLevelStd = Array.from({ length: n }, (_, t) => jsResult.smoothedStd.get(
 const jsYhat     = Array.from(jsResult.yhat) as number[];
 const jsYstd     = Array.from(jsResult.ystd) as number[];
 
+// ── Timestamps-based fit (observed-only, no NaN padding) ───────────────────
+
+const tsObs: number[] = [];
+const yObs: number[] = [];
+for (let i = 0; i < n; i++) {
+  if (nanMask[i] === 0) { tsObs.push(t[i]); yObs.push(yFull[i]); }
+}
+
+const tsResult = await withLeakCheck(() =>
+  dlmFit(yObs, { obsStd: s, processStd: w, dtype: 'f64', ...opts, timestamps: tsObs, algorithm: isAssoc ? 'assoc' : undefined }),
+);
+
+const nObs = yObs.length;
+const tsLevel    = Array.from(tsResult.smoothed.series(0)) as number[];
+const tsLevelStd = Array.from({ length: nObs }, (_, i) => tsResult.smoothedStd.get(i, 0));
+const tsYstd     = Array.from(tsResult.ystd) as number[];
+
 // ── Octave reference ───────────────────────────────────────────────────────
 
 const octLevel:    number[] = octave.x[0];
@@ -108,6 +125,10 @@ const jsStateLower = jsLevel.map((v, i) => v - 2 * jsLevelStd[i]);
 const octStateUpper = octLevel.map((v, i) => v + 2 * octLevelStd[i]);
 const octStateLower = octLevel.map((v, i) => v - 2 * octLevelStd[i]);
 
+// Timestamps-based state band (observed timestamps only)
+const tsStateUpper = tsLevel.map((v, i) => v + 2 * tsLevelStd[i]);
+const tsStateLower = tsLevel.map((v, i) => v - 2 * tsLevelStd[i]);
+
 // ── Ticks ──────────────────────────────────────────────────────────────────
 
 const yTicks: number[] = [];
@@ -139,9 +160,11 @@ for (let i = 0; i < n; i++) {
 const obsColor         = "#555";
 const jsColor          = "#2563eb";
 const octColor         = "#ef4444";
+const tsColor          = "#16a34a";
 const jsObsBandColor   = "rgba(37,99,235,0.07)";   // outer, same as nile-mle-anim obsBandColor
 const jsStateBandColor = "rgba(37,99,235,0.22)";   // inner, same as nile-mle-anim stateBandColor
 const octStateBandColor = "rgba(239,68,68,0.12)";
+const tsStateBandColor = "rgba(22,163,74,0.15)";
 const gapColor         = "rgba(180,180,180,0.18)";
 
 // ── Build SVG ─────────────────────────────────────────────────────────────
@@ -175,11 +198,17 @@ push(`<path d="${bandPathD(t, jsObsUpper, jsObsLower, sx, sy)}" fill="${jsObsBan
 // Octave state band (red, behind dlm-js)
 push(`<path d="${bandPathD(t, octStateUpper, octStateLower, sx, sy)}" fill="${octStateBandColor}" stroke="none"/>`);
 
+// Timestamps state band (green, straight lines across gaps)
+push(`<path d="${bandPathD(tsObs, tsStateUpper, tsStateLower, sx, sy)}" fill="${tsStateBandColor}" stroke="none"/>`);
+
 // Inner state uncertainty band (more opaque)
 push(`<path d="${bandPathD(t, jsStateUpper, jsStateLower, sx, sy)}" fill="${jsStateBandColor}" stroke="none"/>`);
 
 // dlm-js smoothed level (solid blue)
 push(`<polyline points="${polylinePoints(t, jsLevel, sx, sy)}" fill="none" stroke="${jsColor}" stroke-width="2"/>`);
+
+// Timestamps smoothed level (solid green — straight lines across gaps)
+push(`<polyline points="${polylinePoints(tsObs, tsLevel, sx, sy)}" fill="none" stroke="${tsColor}" stroke-width="2"/>`);
 
 // Octave smoothed level (dashed red — drawn on top)
 push(`<polyline points="${polylinePoints(t, octLevel, sx, sy)}" fill="none" stroke="${octColor}" stroke-width="2" stroke-dasharray="6,3"/>`);
@@ -206,8 +235,8 @@ push(`<text x="14" y="${r(margin.top + plotH / 2)}" text-anchor="middle" fill="#
 push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (missing data, ${jsResult.nobs}/${y.length} observed) — fit (order=1, trend), cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // Legend — top centre
-const legW = 255;
-const legH = 82;
+const legW = 290;
+const legH = 105;
 const legX = Math.round(margin.left + (plotW - legW) / 2 + legW * 0.5);
 const legY = margin.top + 4;
 push(`<rect x="${legX}" y="${legY}" width="${legW}" height="${legH}" rx="4" fill="rgba(255,255,255,0.92)" stroke="#e5e7eb" stroke-width="1"/>`);
@@ -217,15 +246,19 @@ push(`<text x="${legX + 25}" y="${legY + 14}" dominant-baseline="middle" fill="#
 // Missing
 push(`<rect x="${legX + 83}" y="${legY + 7}" width="14" height="14" fill="${gapColor}" stroke="#ccc" stroke-width="0.5"/>`);
 push(`<text x="${legX + 103}" y="${legY + 14}" dominant-baseline="middle" fill="#333" font-size="11">Missing (NaN)</text>`);
-// dlm-js dual-band
+// dlm-js dual-band (NaN-based)
 push(`<rect x="${legX + 8}" y="${legY + 30}" width="14" height="14" fill="${jsObsBandColor}" stroke="none"/>`);
 push(`<rect x="${legX + 8}" y="${legY + 34}" width="14" height="6" fill="${jsStateBandColor}" stroke="none"/>`);
 push(`<line x1="${legX + 8}" y1="${legY + 37}" x2="${legX + 22}" y2="${legY + 37}" stroke="${jsColor}" stroke-width="2"/>`);
-push(`<text x="${legX + 26}" y="${legY + 37}" dominant-baseline="middle" fill="#333" font-size="11">dlm-js F·x_smooth ±2σ state / ±2ystd obs</text>`);
+push(`<text x="${legX + 26}" y="${legY + 37}" dominant-baseline="middle" fill="#333" font-size="11">NaN-padded fit ±2σ state / ±2σ obs</text>`);
+// Timestamps fit
+push(`<rect x="${legX + 8}" y="${legY + 52}" width="14" height="14" fill="${tsStateBandColor}" stroke="none"/>`);
+push(`<line x1="${legX + 8}" y1="${legY + 59}" x2="${legX + 22}" y2="${legY + 59}" stroke="${tsColor}" stroke-width="2"/>`);
+push(`<text x="${legX + 26}" y="${legY + 59}" dominant-baseline="middle" fill="#333" font-size="11">Timestamps fit ±2σ state (no NaN)</text>`);
 // Octave
-push(`<rect x="${legX + 8}" y="${legY + 54}" width="14" height="14" fill="${octStateBandColor}" stroke="none"/>`);
-push(`<line x1="${legX + 8}" y1="${legY + 61}" x2="${legX + 22}" y2="${legY + 61}" stroke="${octColor}" stroke-width="2" stroke-dasharray="5,2"/>`);
-push(`<text x="${legX + 26}" y="${legY + 61}" dominant-baseline="middle" fill="#333" font-size="11">MATLAB/Octave x[0] ±2σ (reference)</text>`);
+push(`<rect x="${legX + 8}" y="${legY + 76}" width="14" height="14" fill="${octStateBandColor}" stroke="none"/>`);
+push(`<line x1="${legX + 8}" y1="${legY + 83}" x2="${legX + 22}" y2="${legY + 83}" stroke="${octColor}" stroke-width="2" stroke-dasharray="5,2"/>`);
+push(`<text x="${legX + 26}" y="${legY + 83}" dominant-baseline="middle" fill="#333" font-size="11">MATLAB/Octave x[0] ±2σ (reference)</text>`);
 
 push("</svg>");
 

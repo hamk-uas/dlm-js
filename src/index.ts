@@ -9,7 +9,7 @@ import type {
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
   DlmStabilization,
 } from "./types";
-import { dlmGenSys } from "./dlmgensys";
+import { dlmGenSys, dlmGenSysTV } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 
 // Public type exports
@@ -20,8 +20,8 @@ export type {
   FloatArray,
 } from "./types";
 export { StateMatrix, CovMatrix } from "./types";
-export type { DlmOptions, DlmSystem } from "./dlmgensys";
-export { dlmGenSys, findArInds } from "./dlmgensys";
+export type { DlmOptions, DlmSystem, DlmSystemTV } from "./dlmgensys";
+export { dlmGenSys, dlmGenSysTV, findArInds } from "./dlmgensys";
 export { dlmMLE, toMatlabMle } from "./mle";
 export type { DlmMleResult, DlmMleResultMatlab, DlmMleOptions } from "./mle";
 
@@ -70,8 +70,8 @@ const dlmSmo = async (
   F: np.Array,
   V_std: FloatArray,
   x0_data: number[][],
-  G: np.Array,
-  W: np.Array,
+  G_scan: np.Array,   // [n, m, m] per-step transition matrix
+  W_scan: np.Array,   // [n, m, m] per-step noise covariance
   C0_data: number[][],
   stateSize: number,
   dtype: DType = DType.Float64,
@@ -149,18 +149,19 @@ const dlmSmo = async (
     : np.tile(np.reshape(F, [1, 1, stateSize]), [n, 1, 1]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Step functions receive FF_t ([1, m]) from the scan pytree.
-  // G and W are still captured as constants (not time-varying).
+  // Step functions receive FF_t ([1, m]), G_t ([m, m]), and W_t ([m, m])
+  // from the scan pytree. All three can be time-varying.
   // ─────────────────────────────────────────────────────────────────────────
 
   // Constant [1,1] ones tensor captured by forwardStep closure for NaN masking.
   using const_one_11 = np.array([[1.0]], { dtype });
 
   type ForwardCarry = { x: np.Array; C: np.Array };
-  type ForwardX = { y: np.Array; V2: np.Array; FF: np.Array };
+  type ForwardX = { y: np.Array; V2: np.Array; FF: np.Array; Gt: np.Array; Wt: np.Array };
   type ForwardY = {
     x_pred: np.Array; C_pred: np.Array;
     K: np.Array; v: np.Array; Cp: np.Array; FF: np.Array;
+    Gt: np.Array;  // [m,m] per-step transition — passed through for backward step
     mask: np.Array;  // [1,1]: 1.0 if observed, 0.0 if NaN
   };
   
@@ -169,7 +170,7 @@ const dlmSmo = async (
     inp: ForwardX
   ): [ForwardCarry, ForwardY] => {
     const { x: xi, C: Ci } = carry;
-    const { y: yi, V2: V2i, FF: FFi } = inp;
+    const { y: yi, V2: V2i, FF: FFi, Gt: G_t, Wt: W_t } = inp;
 
     // NaN masking: mask = 1.0 if y is observed, 0.0 if y is NaN.
     // When y is NaN, the measurement update is skipped entirely:
@@ -194,17 +195,17 @@ const dlmSmo = async (
     );
 
     // Kalman gain: K = mask * (G·C·FF' / Cp)  [m,1]  (0 when NaN)
-    using GCFFt = np.einsum('ij,jk,lk->il', G, Ci, FFi);
+    using GCFFt = np.einsum('ij,jk,lk->il', G_t, Ci, FFi);
     using K_raw = np.divide(GCFFt, Cp);
     const K = np.multiply(mask_t, K_raw);  // [1,1]×[m,1] → [m,1] by broadcast
 
     // L = G - K·FF  [m,m]  (= G when NaN, since K=0)
-    using L = np.subtract(G, np.matmul(K, FFi));
+    using L = np.subtract(G_t, np.matmul(K, FFi));
 
     // Next state prediction: x_next = G·x + K·v  [m,1]
     // When NaN: x_next = G·x (no measurement update)
     const x_next = np.add(
-      np.matmul(G, xi),
+      np.matmul(G_t, xi),
       np.matmul(K, v)
     );
 
@@ -229,7 +230,7 @@ const dlmSmo = async (
       using LCLt = np.einsum('ij,jk,lk->il', L, Ci, L);
       using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));  // [1,1]·([m,1]·[1,m]) = [m,m]
       using sum1 = np.add(LCLt, KV2Kt);
-      using sum2 = np.add(sum1, W);
+      using sum2 = np.add(sum1, W_t);
       // Symmetrize: C = 0.5·(C + C')
       using sum2t = np.transpose(sum2);
       using sumBoth = np.add(sum2, sum2t);
@@ -237,15 +238,15 @@ const dlmSmo = async (
     } else {
       // Standard form (matches MATLAB dlmsmo.m): G·C·L' + W
       C_next = np.add(
-        np.einsum('ij,jk,lk->il', G, Ci, L),
-        W
+        np.einsum('ij,jk,lk->il', G_t, Ci, L),
+        W_t
       );
     }
     
     return [
       { x: x_next, C: C_next },
-      // Pass FFi and mask through so backward pass can reuse them
-      { x_pred: xi, C_pred: Ci, K, v, Cp, FF: FFi, mask: mask_t } as ForwardY,
+      // Pass FFi, Gt, and mask through so backward pass can reuse them
+      { x_pred: xi, C_pred: Ci, K, v, Cp, FF: FFi, Gt: G_t, mask: mask_t } as ForwardY,
     ];
   };
   
@@ -253,6 +254,7 @@ const dlmSmo = async (
   type BackwardX = {
     x_pred: np.Array; C_pred: np.Array;
     K: np.Array; v: np.Array; Cp: np.Array; FF: np.Array;
+    Gt: np.Array;   // [m,m] per-step transition matrix (from forward pass)
     mask: np.Array;  // [1,1]: 1.0 if observed, 0.0 if NaN (mirrors forwardStep)
   };
   type BackwardY = { x_smooth: np.Array; C_smooth: np.Array };
@@ -262,10 +264,10 @@ const dlmSmo = async (
     inp: BackwardX
   ): [BackwardCarry, BackwardY] => {
     const { r, N } = carry;
-    const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi, FF: FFi, mask: maski } = inp;
+    const { x_pred: xi, C_pred: Ci, K: Ki, v: vi, Cp: Cpi, FF: FFi, Gt: G_t, mask: maski } = inp;
 
     // L = G - K·FF  [m,m]  (K=0 when NaN → L=G, propagating prior)
-    using L = np.subtract(G, np.matmul(Ki, FFi));
+    using L = np.subtract(G_t, np.matmul(Ki, FFi));
 
     // FF'·Cp⁻¹  [m,1] (scalar division valid for p=1)
     using FFt = np.transpose(FFi);
@@ -416,7 +418,7 @@ const dlmSmo = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Jittable core: forward Kalman filter + backward RTS smoother +
   // diagnostics computed with vectorized numpy ops.
-  // G and W are captured as constants by the JIT compiler.
+  // G_scan [n,m,m] and W_scan [n,m,m] are time-varying (or tiled uniform).
   // FF_scan [n,1,m] is threaded through scan for time-varying F support.
   // Returns stacked tensors for arbitrary state dimension m.
   // ─────────────────────────────────────────────────────────────────────────
@@ -425,6 +427,7 @@ const dlmSmo = async (
     x0: np.Array, C0: np.Array,
     y_arr: np.Array, V2_arr: np.Array,
     FF_scan: np.Array,
+    G_scan: np.Array, W_scan: np.Array,
     r0: np.Array, N0: np.Array
   ) => {
     // Derive flat [n] inputs for diagnostics
@@ -462,32 +465,64 @@ const dlmSmo = async (
 
       using I_eye = np.eye(stateSize, undefined, { dtype });
       using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
-      using G_expanded = np.tile(np.reshape(G, [1, stateSize, stateSize]), [n, 1, 1]);
-      using W_expanded = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n, 1, 1]);
 
-      // Per-step observed-element construction (Lemma 1, time-varying F via FF_scan)
-      using S_obs = np.add(np.einsum('nij,jk,nlk->nil', FF_scan, W, FF_scan), V2_arr); // [n,1,1]
-      using WFt = np.einsum('ij,nkj->nik', W, FF_scan);                                 // [n,m,1]
-      using K_obs = np.divide(WFt, S_obs);                                              // [n,m,1]
+      // ─── Arriving vs departing G/W convention ───
+      //
+      // G_scan[k] / W_scan[k] encode the departing transition from obs k to
+      // obs k+1:  Δt = T[k+1] − T[k].  (Used by backward smoother.)
+      //
+      // The forward element at position k needs the arriving transition
+      // (from obs k−1 to obs k):  Δt = T[k] − T[k−1].
+      //
+      //   G_arriving[k] = G_departing[k−1] = G_scan[k−1]   for k ≥ 1
+      //   G_arriving[0] = G(1) (prior → first obs, unit step; value discarded
+      //     because element 0 is overwritten with the exact first element)
+      //
+      // Build G_arriving / W_arriving by prepending G(1)/W(1) and taking
+      // G_scan[0:n−1].
+      const gArrParts = np.split(G_scan, [n - 1], 0);
+      const wArrParts = np.split(W_scan, [n - 1], 0);
+      using G_head_arr = gArrParts[0];  // G_scan[0..n-2] = arriving for steps 1..n-1
+      gArrParts[1].dispose();
+      using W_head_arr = wArrParts[0];  // W_scan[0..n-2] = arriving for steps 1..n-1
+      wArrParts[1].dispose();
+      // G/W for arriving step 0: unit Δt (matches uniform prior convention)
+      using G_unit_1 = np.reshape(np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [1, 1, 1]), [1, stateSize, stateSize]);
+      // For G_arriving[0], use the identity-like uniform G. Since element 0 is
+      // overwritten by exact initialization, we just need a valid [1,m,m] tensor.
+      // Use G_scan[n-1] which encodes Δt=1 (the last departing step with unit Δt).
+      const gLastParts = np.split(G_scan, [n - 1], 0);
+      using G_last = gLastParts[1];     // G_scan[n-1], shape [1,m,m]
+      gLastParts[0].dispose();
+      const wLastParts = np.split(W_scan, [n - 1], 0);
+      using W_last = wLastParts[1];     // W_scan[n-1], shape [1,m,m]
+      wLastParts[0].dispose();
+      using G_arriving = np.concatenate([G_last, G_head_arr], 0);  // [n, m, m]
+      using W_arriving = np.concatenate([W_last, W_head_arr], 0);  // [n, m, m]
 
-      using KF_obs = np.einsum('nij,njk->nik', K_obs, FF_scan);                         // [n,m,m]
-      using ImKF_obs = np.subtract(I_exp, KF_obs);                                       // [n,m,m]
-      using A_obs = np.einsum('nij,jk->nik', ImKF_obs, G);                              // [n,m,m]
-      using C_obs = np.einsum('nij,jk->nik', ImKF_obs, W);                              // [n,m,m]
-      using b_obs = np.multiply(K_obs, y_safe_arr);                                     // [n,m,1]
+      // Per-step observed-element construction (Lemma 1, using arriving G/W)
+      using S_obs = np.add(np.einsum('nij,njk,nlk->nil', FF_scan, W_arriving, FF_scan), V2_arr); // [n,1,1]
+      using WFt = np.einsum('nij,nkj->nik', W_arriving, FF_scan);                               // [n,m,1]
+      using K_obs = np.divide(WFt, S_obs);                                                  // [n,m,1]
 
-      using Ft = np.einsum('nij->nji', FF_scan);                                         // [n,m,1]
-      using Ft_over_S = np.divide(Ft, S_obs);                                            // [n,m,1]
-      using Gt = np.transpose(G);                                                        // [m,m]
-      using eta_obs_base = np.einsum('ij,njk->nik', Gt, Ft_over_S);                      // [n,m,1]
-      using eta_obs = np.multiply(eta_obs_base, y_safe_arr);                             // [n,m,1]
-      using FtF_over_S = np.einsum('nij,njk->nik', Ft_over_S, FF_scan);                  // [n,m,m]
-      using J_obs = np.einsum('ij,njk,kl->nil', Gt, FtF_over_S, G);                      // [n,m,m]
+      using KF_obs = np.einsum('nij,njk->nik', K_obs, FF_scan);                             // [n,m,m]
+      using ImKF_obs = np.subtract(I_exp, KF_obs);                                           // [n,m,m]
+      using A_obs = np.einsum('nij,njk->nik', ImKF_obs, G_arriving);                         // [n,m,m]
+      using C_obs = np.einsum('nij,njk->nik', ImKF_obs, W_arriving);                         // [n,m,m]
+      using b_obs = np.multiply(K_obs, y_safe_arr);                                         // [n,m,1]
+
+      using Ft = np.einsum('nij->nji', FF_scan);                                             // [n,m,1]
+      using Ft_over_S = np.divide(Ft, S_obs);                                                // [n,m,1]
+      using Gt_batch = np.einsum('nij->nji', G_arriving);                                    // [n,m,m]
+      using eta_obs_base = np.einsum('nij,njk->nik', Gt_batch, Ft_over_S);                   // [n,m,1]
+      using eta_obs = np.multiply(eta_obs_base, y_safe_arr);                                 // [n,m,1]
+      using FtF_over_S = np.einsum('nij,njk->nik', Ft_over_S, FF_scan);                      // [n,m,m]
+      using J_obs = np.einsum('nij,njk,nkl->nil', Gt_batch, FtF_over_S, G_arriving);         // [n,m,m]
 
       // NaN handling for k>=2 elements: pure prediction for missing y
-      using A_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), G_expanded, A_obs);
+      using A_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), G_arriving, A_obs);
       using b_all = np.multiply(mask_arr, b_obs);
-      using C_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_expanded, C_obs);
+      using C_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_arriving, C_obs);
       using zero_nmm = np.zerosLike(J_obs);
       using eta_all = np.multiply(mask_arr, eta_obs);
       using J_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), zero_nmm, J_obs);
@@ -647,11 +682,24 @@ const dlmSmo = async (
       //   x_pred[t] = G · x_filt[t-1]         for t >= 1
       //   C_pred[0] = C0
       //   C_pred[t] = G · C_filt[t-1] · G' + W  for t >= 1
+      // Prediction recovery uses the arriving transition:
+      //   x_pred[t] = G_arriving[t] · x_filt[t-1]   for t >= 1
+      //   C_pred[t] = G_arriving[t] · C[t-1] · G_arriving[t]' + W_arriving[t]
+      //
+      // G_arriving[t] = G_scan[t-1] (departing from t-1), so we need
+      // G_scan[0:n-1] and W_scan[0:n-1].
+      const gParts = np.split(G_scan, [n - 1], 0);
+      using G_arr_head = gParts[0];   // [n-1, m, m]  G_scan[0..n-2] = arriving for steps 1..n-1
+      gParts[1].dispose();
+      const wParts = np.split(W_scan, [n - 1], 0);
+      using W_arr_head = wParts[0];   // [n-1, m, m]  W_scan[0..n-2] = arriving for steps 1..n-1
+      wParts[1].dispose();
+
       const xFiltParts = np.split(x_filt, [n - 1], 0);
       xFiltParts[1].dispose();
       using x_filt_head = xFiltParts[0];  // [n-1, m, 1]
-      // Apply G to get predicted state: G · x_filt[t-1]  [n-1, m, 1]
-      using x_filt_pred = np.einsum('ij,njk->nik', G, x_filt_head);
+      // Apply G_arriving[t] to get predicted state  [n-1, m, 1]
+      using x_filt_pred = np.einsum('nij,njk->nik', G_arr_head, x_filt_head);
       using x0_1 = np.reshape(x0, [1, stateSize, 1]);
       // jax-js-lint: allow-non-using — stored in fwd.x_pred, disposed by caller
       const x_pred_arr = np.concatenate([x0_1, x_filt_pred], 0);  // [n, m, 1]
@@ -659,10 +707,9 @@ const dlmSmo = async (
       const cFiltParts = np.split(C_filt, [n - 1], 0);
       cFiltParts[1].dispose();
       using C_filt_head = cFiltParts[0];  // [n-1, m, m]
-      // Apply G·C·G' + W to get predicted covariance  [n-1, m, m]
-      using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt_head, G);
-      using W_bcast_pred = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n - 1, 1, 1]);
-      using C_filt_pred = np.add(GCGt, W_bcast_pred);
+      // Apply G_arriving[t]·C·G_arriving[t]' + W_arriving[t]  [n-1, m, m]
+      using GCGt = np.einsum('nij,njk,nlk->nil', G_arr_head, C_filt_head, G_arr_head);
+      using C_filt_pred = np.add(GCGt, W_arr_head);
       using C0_1 = np.reshape(C0, [1, stateSize, stateSize]);
       // jax-js-lint: allow-non-using — stored in fwd.C_pred, disposed by caller
       const C_pred_arr = np.concatenate([C0_1, C_filt_pred], 0);  // [n, m, m]
@@ -678,8 +725,8 @@ const dlmSmo = async (
       // jax-js-lint: allow-non-using — stored in fwd.Cp, disposed by caller
       const Cp_arr = np.add(FCFt, V2_arr);                // [n,1,1]
 
-      // K[t] = mask · G·C_pred·F' / Cp  [n,m,1]  (MATLAB convention for backward pass)
-      using GCFt = np.einsum('ij,njk,nlk->nil', G, C_pred_arr, FF_scan); // [n,m,1]
+      // K[t] = mask · G[t]·C_pred[t]·F[t]' / Cp[t]  [n,m,1]  (MATLAB convention for backward pass)
+      using GCFt = np.einsum('nij,njk,nlk->nil', G_scan, C_pred_arr, FF_scan); // [n,m,1]
       using K_raw = np.divide(GCFt, Cp_arr);
       // jax-js-lint: allow-non-using — stored in fwd.K, disposed by caller
       const K_arr = np.multiply(mask_arr, K_raw);         // [n,m,1]
@@ -706,16 +753,16 @@ const dlmSmo = async (
       // Smoothed density: x_smooth = g_comp, C_smooth = L_comp.
       // ────────────────────────────────────────────────────────────────────────
       {
-        // S_k = G · C_filt,k · G' + W  [n, m, m]
-        using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt, G);
-        using W_bcast = np.tile(np.reshape(W, [1, stateSize, stateSize]), [n, 1, 1]);
-        using S_mat = np.add(GCGt, W_bcast);
+        // S_k = G[k] · C_filt,k · G[k]' + W[k]  [n, m, m]
+        using GCGt = np.einsum('nij,njk,nlk->nil', G_scan, C_filt, G_scan);
+        using S_mat = np.add(GCGt, W_scan);
 
         // Batched matrix inverse S^{-1}  [n, m, m]
         using S_inv = np.linalg.inv(S_mat);
 
-        // E_k = C_filt,k · G' · S_k^{-1}  [n, m, m]
-        using CGt = np.einsum('nij,kj->nik', C_filt, G);
+        // E_k = C_filt,k · G[k]' · S_k^{-1}  [n, m, m]
+        using Gt_bwd = np.einsum('nij->nji', G_scan);  // batched transpose
+        using CGt = np.einsum('nij,njk->nik', C_filt, Gt_bwd);
         using E_raw = np.einsum('nij,njk->nik', CGt, S_inv);
 
         // Terminal masking: E[n-1] = 0
@@ -726,20 +773,20 @@ const dlmSmo = async (
         // jax-js-lint: allow-non-using — E_all disposed after scan
         const E_all = np.multiply(E_raw, term_mask);  // [n, m, m]
 
-        // ImEG = I - E_k · G  [n, m, m]
-        using EG = np.einsum('nij,jk->nik', E_all, G);
+        // ImEG = I - E_k · G[k]  [n, m, m]
+        using EG = np.einsum('nij,njk->nik', E_all, G_scan);
         using I_eye = np.eye(stateSize, undefined, { dtype });
         using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
         using ImEG = np.subtract(I_exp, EG);
 
-        // g_k = (I - E_k·G) · x̄_k  [n, m, 1]
+        // g_k = (I - E_k·G[k]) · x̄_k  [n, m, 1]
         // jax-js-lint: allow-non-using — g_all disposed after scan
         const g_all = np.einsum('nij,njk->nik', ImEG, x_filt);
 
         // L_k (Joseph form — guaranteed PSD):
-        //   L_k = (I - E_k·G) · C_filt,k · (I - E_k·G)' + E_k · W · E_k'
+        //   L_k = (I - E_k·G[k]) · C_filt,k · (I - E_k·G[k])' + E_k · W[k] · E_k'
         using ImEG_C_ImEGt = np.einsum('nij,njk,nlk->nil', ImEG, C_filt, ImEG);
-        using EWEt = np.einsum('nij,jk,nlk->nil', E_all, W, E_all);
+        using EWEt = np.einsum('nij,njk,nlk->nil', E_all, W_scan, E_all);
         using L_raw = np.add(ImEG_C_ImEGt, EWEt);
         // Symmetrize (f32 stabilization)
         using L_raw_t = np.einsum('nij->nji', L_raw);
@@ -782,7 +829,7 @@ const dlmSmo = async (
       const [fwdCarry, fwdSeq] = lax.scan(
         forwardStep,
         { x: x0, C: C0 },
-        { y: y_arr, V2: V2_arr, FF: FF_scan }
+        { y: y_arr, V2: V2_arr, FF: FF_scan, Gt: G_scan, Wt: W_scan }
       );
       tree.dispose(fwdCarry);
       fwd = fwdSeq as unknown as ForwardY;
@@ -794,6 +841,7 @@ const dlmSmo = async (
       using v_rev = np.flip(fwd.v, 0);
       using Cp_rev = np.flip(fwd.Cp, 0);
       using FF_rev = np.flip(fwd.FF, 0);
+      using Gt_rev = np.flip(fwd.Gt, 0);
       using mask_rev = np.flip(fwd.mask, 0);
 
       const [bwdCarry, bwd] = lax.scan(
@@ -806,6 +854,7 @@ const dlmSmo = async (
           v: v_rev,
           Cp: Cp_rev,
           FF: FF_rev,
+          Gt: Gt_rev,
           mask: mask_rev,
         }
       );
@@ -837,9 +886,10 @@ const dlmSmo = async (
     const v_flat = np.squeeze(fwd.v);
     const Cp_flat = np.squeeze(fwd.Cp);
 
-    // Dispose fwd.K, fwd.FF, fwd.mask (no longer needed after squeeze)
+    // Dispose fwd.K, fwd.FF, fwd.Gt (seq only), fwd.mask (no longer needed after squeeze)
     fwd.K.dispose();
     fwd.FF.dispose();
+    if (fwd.Gt) fwd.Gt.dispose();
     fwd.mask.dispose();
 
     // y_safe: replace NaN with 0 for numerically safe reductions
@@ -886,7 +936,7 @@ const dlmSmo = async (
   };
   
   // Run core — one jit wrapping both scans + all diagnostics
-  const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, r0, N0);
+  const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, G_scan, W_scan, r0, N0);
 
   if (FF_arr === undefined) FF_scan.dispose(); // we own it (created by np.tile)
 
@@ -1007,6 +1057,46 @@ export const dlmFit = async (
   using W = np.array(W_data, { dtype });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Build G_scan [n, m, m] and W_scan [n, m, m] for dlmSmo.
+  //
+  // Without timestamps: tile uniform G/W to [n,m,m] (standard DLM convention).
+  // With timestamps: dlmGenSysTV computes per-step G(Δt_k), W(Δt_k) via
+  //   closed-form continuous-time discretization. When covariates are present,
+  //   each per-step matrix is extended with identity/zero blocks for β states.
+  // ─────────────────────────────────────────────────────────────────────────
+  const timestamps = opts.timestamps;
+  let G_scan: np.Array;
+  let W_scan: np.Array;
+  if (timestamps) {
+    const tv = dlmGenSysTV(genSysOpts, timestamps, w, spline);
+    // tv.G and tv.W are [n, m_base, m_base] as JS arrays.
+    // Extend for covariates if q > 0.
+    let G_tv_data: number[][][];
+    let W_tv_data: number[][][];
+    if (q > 0) {
+      G_tv_data = tv.G.map(Gk => [
+        ...Gk.map(row => [...row, ...new Array(q).fill(0)]),
+        ...Array.from({ length: q }, (_, k) =>
+          [...new Array(m_base).fill(0), ...Array.from({ length: q }, (_, j) => j === k ? 1 : 0)]
+        ),
+      ]);
+      W_tv_data = tv.W.map(Wk => [
+        ...Wk.map(row => [...row, ...new Array(q).fill(0)]),
+        ...Array.from({ length: q }, () => new Array(m).fill(0)),
+      ]);
+    } else {
+      G_tv_data = tv.G;
+      W_tv_data = tv.W;
+    }
+    G_scan = np.array(G_tv_data, { dtype });
+    W_scan = np.array(W_tv_data, { dtype });
+  } else {
+    // Uniform timesteps: tile constant G/W to [n, m, m]
+    G_scan = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
+    W_scan = np.tile(np.reshape(W, [1, m, m]), [n, 1, 1]);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Build time-varying FF_arr [n, 1, m] when covariates present.
   // FF_arr[t] = [[F_base[0], F_base[1], ..., X[t,0], ..., X[t,q-1]]]
   // When q=0, pass undefined so dlmSmo builds FF_scan from static F.
@@ -1049,7 +1139,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr, forceAssocScan, stabilization);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G_scan, W_scan, C0_data, m, dtype, FF_arr, forceAssocScan, stabilization);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -1063,9 +1153,11 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr, forceAssocScan, stabilization);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G_scan, W_scan, C0_scaled, m, dtype, FF_arr, forceAssocScan, stabilization);
 
   FF_arr?.dispose();
+  G_scan.dispose();
+  W_scan.dispose();
 
   // ─────────────────────────────────────────────────────────────────────────
   // Convert np.Array results to TypedArrays via consumeData (read + dispose).

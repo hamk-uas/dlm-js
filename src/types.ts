@@ -502,6 +502,30 @@ export interface DlmFitOptions {
   /** Covariate matrix: n rows × q columns. X[t] is the covariate row at time t. */
   X?: ArrayLike<number>[];
 
+  // ── Timestamps ──
+
+  /**
+   * Observation timestamps (length n). When provided, G and W become
+   * time-varying: G(Δt_k) and W(Δt_k) are computed via closed-form
+   * continuous-time discretization for each step Δt_k = t[k] - t[k-1].
+   *
+   * Supported model components: polynomial trend (order 0, 1, 2) and
+   * trigonometric harmonics. Throws if fullSeasonal or AR components
+   * are used (these are purely discrete-time constructs).
+   *
+   * When omitted, all timesteps use Δt = 1 (uniform spacing, equivalent
+   * to the standard DLM convention).
+   *
+   * **Tip — interpolation at query points:** To obtain smoothed estimates
+   * at times where no observation exists (e.g., regular grid over an
+   * irregular series), insert `NaN` observations at those timestamps.
+   * The smoother treats NaN as missing data (pure prediction step with
+   * widening covariance), giving you interpolated state estimates and
+   * uncertainty bands at arbitrary query points — no separate forecast
+   * call needed.
+   */
+  timestamps?: number[];
+
   // ── Runtime ──
 
   /** Computation precision. Default: `'f64'`. */
