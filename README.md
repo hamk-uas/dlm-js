@@ -150,7 +150,7 @@ Missing observations are handled identically to MATLAB's `dlmsmo` (`ig = not(isn
 
 ### Irregular timestamps
 
-When observations are not uniformly spaced, pass a `timestamps` array to `dlmFit`. The transition matrix $G$ and process noise covariance $W$ are then computed per-step via closed-form continuous-time discretization — no matrix exponential or numerical ODE solver is needed.
+When observations are not uniformly spaced, pass a `timestamps` array to `dlmFit`. The transition matrix $G(\Delta t)$ and process noise covariance $W(\Delta t)$ are then computed per-step in closed form: $G$ via matrix-exponential discretization of the continuous-time state matrix; $W$ via analytic continuation of the discrete-time noise accumulation sum evaluated at non-integer $\Delta t$ (Faulhaber sums). No numerical ODE solver or matrix exponential of $W$ needed.
 
 ```js
 import { dlmFit } from "dlm-js";
@@ -183,7 +183,7 @@ $$G(\Delta t) = \begin{bmatrix} 1 & \Delta t & \Delta t^2/2 \\ 0 & 1 & \Delta t 
 
 $$W(\Delta t) = \sum_{k=0}^{\Delta t - 1} G^k \; W_1 \; (G^k)^\top$$
 
-Because $G$ is a Jordan block, $G^k$ has polynomial entries in $k$ and the sum reduces to closed-form Faulhaber sums.  For order 1 with process noise std devs $w_0, w_1$:
+This is a discrete-time sum, not a continuous-time noise integral. Because $G$ is a Jordan block, $G^k$ has polynomial entries in $k$ and the sum reduces to closed-form Faulhaber sums. Evaluating those polynomials at non-integer $\Delta t$ is an **analytic continuation** of the discrete-time formula.  For order 1 with process noise std devs $w_0, w_1$:
 
 $$W(\Delta t) = \begin{bmatrix} \Delta t \, w_0^2 + w_1^2 \, S_2 & w_1^2 \, S_1 \\ w_1^2 \, S_1 & \Delta t \, w_1^2 \end{bmatrix}$$
 
@@ -195,7 +195,7 @@ where $S_1 = \Delta t(\Delta t - 1)/2$ and $S_2 = \Delta t(\Delta t - 1)(2\Delta
 
 **Tip — interpolation at query points:** To obtain smoothed estimates at times where no measurement exists, insert `NaN` observations at those timestamps. The smoother treats NaN as a pure prediction step, giving interpolated state estimates and uncertainty bands at arbitrary query points.
 
-**Related work.** [4] extends the parallel scan framework of [1] to continuous-time models, deriving exact associative elements for MAP trajectory estimation on irregularly-sampled data. dlm-js uses a simpler approach — closed-form discretization fed to the existing filter — but the parallel scan composition is directly applicable if continuous-time MAP estimation is needed in the future.
+**Related work.** [4] extends the parallel scan framework of [1] to continuous-time models, deriving exact associative elements for MAP trajectory estimation on irregularly-sampled data. dlm-js uses a simpler approach — closed-form $G$ discretization and analytic continuation of $W$ fed to the existing filter — but the parallel scan composition is directly applicable if continuous-time MAP estimation is needed in the future.
 
 ### MLE parameter estimation
 

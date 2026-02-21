@@ -227,19 +227,24 @@ function writeBlock(target: number[][], block: number[][], r: number, c: number)
 
 /**
  * Generate time-varying DLM system matrices G(Δt) and W(Δt) for non-uniform
- * timesteps, using closed-form continuous-time discretization.
+ * timesteps in closed form.
  *
- * The underlying continuous-time model is:
- *   dx = F_c · x · dt + L · dw   (state SDE)
- *   y_k = F · x(t_k) + v_k       (discrete observations)
+ * **G(Δt)** is the genuine continuous-time discretization:
+ *   G_k = expm(F_c · Δt_k)
+ * where F_c is the continuous-time state matrix. For polynomial trend this
+ * evaluates to the Jordan block with entries Δt^j/j! on the j-th superdiagonal;
+ * no numerical matrix exponential is needed.
  *
- * where F_c is the continuous-time system matrix. The discrete-time matrices
- * at step k are:
- *   G_k = expm(F_c · Δt_k)                          (state transition)
- *   W_k = ∫₀^{Δt} expm(F_c·s) · Q_c · expm(F_c·s)' ds  (process noise cov)
- *
- * For polynomial trend and trigonometric harmonics, G_k and W_k have closed-form
- * expressions (no matrix exponential needed).
+ * **W(Δt)** is the discrete-time noise accumulation sum, analytically continued
+ * to non-integer Δt via Faulhaber sums:
+ *   W_k = Σ_{j=0}^{Δt-1} G^j · W_1 · (G^j)ᵀ
+ * Because G is a Jordan block, G^j has polynomial entries in j and the sum
+ * reduces to closed-form Faulhaber sums. Evaluating those polynomials at
+ * non-integer Δt is an analytic continuation of the discrete-time formula.
+ * This is NOT the continuous-time SDE integral ∫ expm(F_c·s) Q_c expm(F_c·s)' ds.
+ * The Faulhaber formula is the correct choice when Δt represents "skipping Δt
+ * discrete time steps" rather than "evolving a continuous SDE for Δt time units".
+ * It collapses exactly to W_1 = diag(w²) at unit spacing.
  *
  * **Supported components:** polynomial trend (order 0, 1, 2) and trigonometric
  * harmonics. Throws if fullSeasonal or AR components are requested (these are
