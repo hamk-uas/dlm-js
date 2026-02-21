@@ -126,10 +126,17 @@ for (const backend of ['cpu', 'wasm'] as const) {
         combos.push({
           backend, dlmDtype, algorithm,
           stabilization: { cTriuSym: false },
-          stabLabel: '— (no sym)',
+          stabLabel: 'off',
         });
       }
-
+      // f32/scan: include joseph+triu variant (triu replaces (C+C')/2 sym step)
+      if (dlmDtype === 'f32' && algorithm === 'scan') {
+        combos.push({
+          backend, dlmDtype, algorithm,
+          stabilization: { cTriuSym: true },
+          stabLabel: 'joseph+triu',
+        });
+      }
     }
   }
 }
@@ -137,6 +144,12 @@ for (const backend of ['cpu', 'wasm'] as const) {
 for (const algorithm of ['scan', 'assoc'] as const) {
   combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm });
 }
+// webgpu/f32/scan: joseph+triu variant
+combos.push({
+  backend: 'webgpu', dlmDtype: 'f32', algorithm: 'scan',
+  stabilization: { cTriuSym: true },
+  stabLabel: 'joseph+triu',
+});
 
 // ── Error computation helpers ──────────────────────────────────────────────
 

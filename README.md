@@ -343,24 +343,27 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 `dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 5 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype.
 
-Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATLAB); `joseph` = Joseph-form covariance update (f32/scan default, always on); `built-in` = assoc path uses its own exact per-timestep formulation (no external flag); `off` = explicit override disabling the default (`stabilization:{cTriuSym:false}`).
+Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATLAB); `joseph` = Joseph-form covariance update + `(C+C')/2` symmetrize (f32/scan default, always on); `joseph+triu` = Joseph form + triu symmetrize instead of `(C+C')/2` (explicit `stabilization:{cTriuSym:true}`); `built-in` = assoc path uses its own exact per-timestep formulation (no external flag); `off` = explicit override disabling the default (`stabilization:{cTriuSym:false}`).
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Gapped order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
 | backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | Gapped | max \|Δ\| | max \|Δ\|% |
 |---------|-------|-----------|------|----------|----------|------------|--------|---------|----------|------------|
-| **cpu** | **f64** | **scan** | **triu** | **213 ms** | **425 ms** | **525 ms** | **584 ms** | **450 ms** | **1.14e-10** | **1.11e-9** |
-| | | scan | off | 182 ms | 354 ms | 443 ms | 487 ms | 350 ms | 3.78e-8 | 1.62e-4 |
-| | | assoc | built-in | 74 ms | 211 ms | 872 ms | 1580 ms | 210 ms | 1.33e-8 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **188 ms** | **397 ms** | **490 ms** | **554 ms** | **393 ms** | **1.32e-2** | **2.67e-1** |
-| | | assoc | built-in | 68 ms | 209 ms | 891 ms | 1612 ms | 211 ms | 1.28e-2 | 2.01e+1 |
-| **wasm** | **f64** | **scan** | **triu** | **27 ms** | **24 ms** | **26 ms** | **25 ms** | **25 ms** | **1.14e-10** | **1.11e-9** |
-| | | scan | off | 18 ms | 20 ms | 23 ms | 21 ms | 20 ms | 3.78e-8 | 1.62e-4 |
-| | | assoc | built-in | 26 ms | 24 ms | 32 ms | 40 ms | 23 ms | 1.33e-8 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **17 ms** | **23 ms** | **24 ms** | **23 ms** | **22 ms** | **3.99e-2** | **9.66e-1** |
-| | | assoc | built-in | 23 ms | 24 ms | 31 ms | 39 ms | 26 ms | 1.21e-2 | 21.9 |
-| **webgpu** | **f32** | **assoc** | **built-in** | **307 ms** | **337 ms** | **333 ms** | **339 ms** | **⚠️ NaN** | **⚠️ 92.2** | **⚠️ 62.8** |
-| | | scan | joseph | 293 ms | 335 ms | 339 ms | 344 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
+| **cpu** | **f64** | **scan** | **triu** | **210 ms** | **428 ms** | **528 ms** | **585 ms** | **428 ms** | **1.14e-10** | **1.11e-9** |
+| | | scan | off | 185 ms | 350 ms | 439 ms | 482 ms | 356 ms | 3.78e-8 | 1.62e-4 |
+| | | assoc | built-in | 68 ms | 212 ms | 879 ms | 1577 ms | 216 ms | 1.33e-8 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **191 ms** | **403 ms** | **487 ms** | **552 ms** | **397 ms** | **1.32e-2** | **2.67e-1** |
+| | | scan | joseph+triu | 223 ms | 449 ms | 565 ms | 629 ms | 457 ms | 9.17e-3 | 9.34e-1 |
+| | | assoc | built-in | 71 ms | 208 ms | 878 ms | 1602 ms | 219 ms | 1.28e-2 | 2.01e+1 |
+| **wasm** | **f64** | **scan** | **triu** | **21 ms** | **25 ms** | **25 ms** | **25 ms** | **25 ms** | **1.14e-10** | **1.11e-9** |
+| | | scan | off | 16 ms | 21 ms | 21 ms | 21 ms | 21 ms | 3.78e-8 | 1.62e-4 |
+| | | assoc | built-in | 24 ms | 26 ms | 33 ms | 39 ms | 25 ms | 1.33e-8 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **17 ms** | **22 ms** | **23 ms** | **23 ms** | **22 ms** | **3.99e-2** | **9.66e-1** |
+| | | scan | joseph+triu | 19 ms | 24 ms | 25 ms | 26 ms | 25 ms | 1.30e-2 | 2.32 |
+| | | assoc | built-in | 27 ms | 24 ms | 32 ms | 41 ms | 24 ms | 1.21e-2 | 21.9 |
+| **webgpu** | **f32** | **assoc** | **built-in** | **297 ms** | **331 ms** | **347 ms** | **343 ms** | **⚠️ NaN** | **⚠️ 92.2** | **⚠️ 62.8** |
+| | | scan | joseph | 293 ms | 341 ms | 341 ms | 342 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
+| | | scan | joseph+triu | 305 ms | 336 ms | 340 ms | 334 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
 
 ⚠️ = WebGPU produces NaN outputs when the data contains missing (NaN) observations — both algorithms affected. Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
