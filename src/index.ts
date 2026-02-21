@@ -105,13 +105,15 @@ const dlmSmo = async (
   // ── Stabilization flags (f32 sequential backward step only) ──────────────────
   // Flags are captured as JS constants — each unique combination produces a
   // different JIT-compiled kernel (acceptable for research/exploration).
-  const stabNSym  = stabilization?.nSym  ?? false;
-  const stabNDiag    = stabilization?.nDiag    ?? false;
-  const stabNDiagAbs = stabilization?.nDiagAbs ?? false;
-  const stabNLeak    = stabilization?.nLeak    ?? false;
-  const stabCDiag    = stabilization?.cDiag    ?? false;
-  const stabCEps     = stabilization?.cEps     ?? false;
-  const stabCDiagAbs = stabilization?.cDiagAbs ?? false;
+  const stabNSym     = stabilization?.nSym      ?? false;
+  const stabNDiag    = stabilization?.nDiag     ?? false;
+  const stabNDiagAbs = stabilization?.nDiagAbs  ?? false;
+  const stabNLeak    = stabilization?.nLeak     ?? false;
+  const stabCDiag    = stabilization?.cDiag     ?? false;
+  const stabCEps     = stabilization?.cEps      ?? false;  // no-op (cEps now unconditional for f32)
+  const stabCDiagAbs = stabilization?.cDiagAbs  ?? false;
+  const stabCTriuSym    = stabilization?.cTriuSym    ?? false;  // triu+triu' sym (f32+f64)
+  const stabCSmoAbsDiag = stabilization?.cSmoAbsDiag ?? false;  // abs(diag(C_smooth)) (f32+f64)
   // Pre-computed [m,m] constant tensors for stabilization ops.
   // Created unconditionally to avoid conditional `using` complexity.
   // Captured by backwardStep closure; disposed when dlmSmo scope exits after jit.
@@ -209,38 +211,58 @@ const dlmSmo = async (
       np.matmul(K, v)
     );
 
-    // Next covariance: C_next depends on dtype branch.
+    // Next covariance: C_next depends on dtype + stabilization flags.
     //
-    // Float64 path (fast, matches MATLAB DLM reference):
-    //   C_next = G·C·L' + W
+    // Float64 default (matches MATLAB DLM reference formula):
+    //   C_next = G·C·L' + W            (+ triu+triu' sym if cTriuSym is set)
     //
-    // Float32 path (Joseph form — numerically stable):
-    //   C_next = L·C·L' + K·V²·K' + W
-    //   followed by symmetrization: C_next = 0.5·(C_next + C_next')
+    // Float32 (Joseph form — numerically stable):
+    //   C_next = L·C·L' + K·V²·K' + W  (+ sym)
     //
     // The Joseph form guarantees positive semi-definiteness by construction
     // and avoids the implicit subtraction in G·C·L' that causes catastrophic
-    // cancellation for m > 2 in Float32. The extra cost (~2 matmuls + transpose)
-    // is negligible compared to the stability gain. Float64 skips this because
-    // Kahan-compensated dot products (v0.2.1) keep errors manageable and we
-    // want exact MATLAB DLM reference matching.
+    // cancellation for m > 2 in Float32.
+    //
+    // Symmetrization options (applied after the covariance formula):
+    //   default f32:  (C + C') / 2
+    //   cTriuSym f32: triu(C) + triu(C,1)'  — upper triangle authoritative
+    //   cTriuSym f64: triu(C) + triu(C,1)'  — mirrors MATLAB dlmsmo.m line 77
     let C_next: np.Array;
-    if (f32) {
-      // Joseph form: L·C·L' + K·V²·K' + W
-      using LCLt = np.einsum('ij,jk,lk->il', L, Ci, L);
-      using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));  // [1,1]·([m,1]·[1,m]) = [m,m]
-      using sum1 = np.add(LCLt, KV2Kt);
-      using sum2 = np.add(sum1, W_t);
-      // Symmetrize: C = 0.5·(C + C')
-      using sum2t = np.transpose(sum2);
-      using sumBoth = np.add(sum2, sum2t);
-      C_next = np.multiply(np.array(0.5, { dtype }), sumBoth);
-    } else {
-      // Standard form (matches MATLAB dlmsmo.m): G·C·L' + W
-      C_next = np.add(
-        np.einsum('ij,jk,lk->il', G_t, Ci, L),
-        W_t
-      );
+    {
+      // Compute raw forward covariance.
+      // jax-js-lint: allow-non-using — sym branch takes ownership below
+      let C_fwd_raw: np.Array;
+      if (f32) {
+        // Joseph form: L·C·L' + K·V²·K' + W
+        using LCLt = np.einsum('ij,jk,lk->il', L, Ci, L);
+        using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));
+        using sum1 = np.add(LCLt, KV2Kt);
+        C_fwd_raw = np.add(sum1, W_t);
+      } else {
+        // Standard form (matches MATLAB dlmsmo.m): G·C·L' + W
+        C_fwd_raw = np.add(np.einsum('ij,jk,lk->il', G_t, Ci, L), W_t);
+      }
+
+      // Apply symmetrization for f32 (always) or f64+cTriuSym.
+      if (f32 || stabCTriuSym) {
+        if (stabCTriuSym) {
+          // triu(C) + triu(C,1)': upper triangle authoritative, mirrored to lower.
+          // Matches MATLAB dlmsmo.m line 77. Works for both f32 and f64.
+          using C_upper = np.triu(C_fwd_raw);
+          using C_sup   = np.triu(C_fwd_raw, 1);
+          using C_sup_t = np.transpose(C_sup);
+          C_next = np.add(C_upper, C_sup_t);
+        } else {
+          // f32 default: average both triangles (C + C') / 2
+          using Ct      = np.transpose(C_fwd_raw);
+          using sumBoth = np.add(C_fwd_raw, Ct);
+          C_next = np.multiply(np.array(0.5, { dtype }), sumBoth);
+        }
+        C_fwd_raw.dispose();
+      } else {
+        // f64 default: raw (no symmetrization)
+        C_next = C_fwd_raw;
+      }
     }
     
     return [
@@ -360,18 +382,16 @@ const dlmSmo = async (
     // NUMERICAL PRECISION NOTE — MOST SENSITIVE OPERATION:
     // This subtraction is the single largest source of numerical error in the DLM.
     // When the smoothing correction C·N·C ≈ C_pred, catastrophic cancellation
-    // produces a small result with large relative error. Float64 keeps errors
-    // manageable via Kahan compensated summation; Float32 produces negative
-    // variances for m > 2 even with the joseph form on the forward step.
+    // produces a small result with large relative error.
     //
-    // Float32 stabilization layers (applied in order, all on top of joseph+sym+cEps):
-    //   (default) symmetrize + C += 1e-6·I  — always applied for f32
-    //              Exhaustive search over all 128 flag combos showed cEps reduces
-    //              max rel error on kaisaniemi (m=4) from 1.37e-2 → 9.66e-3 with
-    //              no downside on any other model; now unconditionally on.
-    //   cDiag:    clamp diag(C) >= 1e-7 (on top of default)  — off-diagonal left intact
-    //   cDiagAbs: diag(C) = |diag(C)| (on top of default)    — magnitude-preserving sign-flip
-    //   cEps:     no-op (now always applied; flag kept for API compatibility)
+    // f32 stabilization (always applied, in order):
+    //   1. symmetrize: (C+C')/2 default, or triu(C)+triu(C,1)' if cTriuSym
+    //   2. cEps: C += 1e-6·I  (unconditional; reduces kaisaniemi m=4 err 1.37e-2→9.66e-3)
+    //   3. optional: cDiag | cDiagAbs | cSmoAbsDiag  (all magnitude-preserving variants)
+    //
+    // f64 + cTriuSym + cSmoAbsDiag = MATLAB dlmsmo.m exact stabilization:
+    //   triu(C)+triu(C,1)' (line 77 analog) + abs(diag(C)) (lines 114-115)
+    //   reduces max |Δ| vs Octave reference from ~3.78e-8 to ~9e-11.
     let C_smooth: np.Array;
     {
       using C_raw = np.subtract(
@@ -379,34 +399,64 @@ const dlmSmo = async (
         np.einsum('ij,jk,kl->il', Ci, N_new, Ci)
       );
       if (f32) {
-        using Ct = np.transpose(C_raw);
-        using sumC = np.add(C_raw, Ct);
-        // jax-js-lint: allow-non-using — cDiag/cEps/cDiagAbs branch may take ownership
-        const C_sym = np.multiply(np.array(0.5, { dtype }), sumC);
-        // Default: always apply cEps (C += 1e-6·I) on top of symmetrize.
-        // jax-js-lint: allow-non-using — cDiag/cDiagAbs branch may take ownership below
+        // ── f32 backward smoother ────────────────────────────────────────────
+        // Step 1: symmetrize
+        // jax-js-lint: allow-non-using — cEps step takes ownership below
+        let C_sym: np.Array;
+        if (stabCTriuSym) {
+          // triu+triu': upper triangle authoritative, mirrors MATLAB dlmsmo.m
+          using C_upper = np.triu(C_raw);
+          using C_sup   = np.triu(C_raw, 1);
+          using C_sup_t = np.transpose(C_sup);
+          C_sym = np.add(C_upper, C_sup_t);
+        } else {
+          // Default: average both triangles
+          using Ct   = np.transpose(C_raw);
+          using sumC = np.add(C_raw, Ct);
+          C_sym = np.multiply(np.array(0.5, { dtype }), sumC);
+        }
+        // Step 2: always add cEps (unconditional for f32)
+        // jax-js-lint: allow-non-using — post-cEps branch takes ownership below
         const C_eps = np.add(C_sym, stab_cEps_I);
         C_sym.dispose();
+        // Step 3: optional post-correction
+        const useAbsDiag = stabCDiagAbs || stabCSmoAbsDiag;
         if (stabCDiag) {
-          // Clamp diagonal to >= 1e-7 on top of cEps, leave off-diagonal intact.
           using C_d = np.multiply(C_eps, stab_I_eye);
           using C_o = np.multiply(C_eps, stab_off_I);
           using C_d_c = np.maximum(C_d, stab_cDiag_eps_I);
           C_smooth = np.add(C_d_c, C_o);
           C_eps.dispose();
-        } else if (stabCDiagAbs) {
-          // Abs diagonal on top of cEps: diag(C) = |diag(C)|, off-diagonal left intact.
+        } else if (useAbsDiag) {
+          // abs(diag): magnitude-preserving sign-flip on diagonal, off-diag intact.
+          // Covers both cDiagAbs and cSmoAbsDiag (same operation).
           using C_d = np.multiply(C_eps, stab_I_eye);
           using C_o = np.multiply(C_eps, stab_off_I);
           using C_d_a = np.abs(C_d);
           C_smooth = np.add(C_d_a, C_o);
           C_eps.dispose();
         } else {
-          // Default: symmetrize + cEps only (stabCEps flag is now a no-op)
-          C_smooth = C_eps;
+          C_smooth = C_eps;  // default: sym + cEps only
+        }
+      } else if (stabCTriuSym) {
+        // ── f64 + cTriuSym: mirrors MATLAB dlmsmo.m triu+triu' symmetrize ───
+        using C_upper = np.triu(C_raw);
+        using C_sup   = np.triu(C_raw, 1);
+        using C_sup_t = np.transpose(C_sup);
+        // jax-js-lint: allow-non-using — cSmoAbsDiag branch may take ownership
+        const C_sym = np.add(C_upper, C_sup_t);
+        if (stabCSmoAbsDiag) {
+          // abs(diag(C_smooth)): matches MATLAB dlmsmo.m lines 114-115.
+          using C_d = np.multiply(C_sym, stab_I_eye);
+          using C_o = np.multiply(C_sym, stab_off_I);
+          using C_d_a = np.abs(C_d);
+          C_smooth = np.add(C_d_a, C_o);
+          C_sym.dispose();
+        } else {
+          C_smooth = C_sym;
         }
       } else {
-        // Float64: use raw result (matches MATLAB dlmsmo.m reference)
+        // f64 default: raw result (matches MATLAB dlmsmo.m formula, no corrective steps)
         C_smooth = np.add(C_raw, np.zeros([stateSize, stateSize], { dtype }));
       }
     }

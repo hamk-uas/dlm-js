@@ -1,10 +1,13 @@
 /**
- * Greedy stabilization search for the Float32 sequential backward smoother.
+ * Stabilization search for the Float32 sequential backward smoother.
  *
- * Tests 7 incremental stabilization flags (nSym, nDiag, nDiagAbs, nLeak, cDiag, cEps, cDiagAbs)
- * on top of the default joseph+symmetrize baseline across 5 models with m > 2.
- * Uses a greedy algorithm: each round adds the flag that most reduces the error
- * metric, until no further improvement is found.
+ * Tests stabilization flags on top of the default joseph+symmetrize baseline
+ * across 5 models with m > 2.
+ *
+ * Three modes:
+ *   --greedy  (default)  Greedy algorithm: each round adds the flag that most reduces error.
+ *   --full               Exhaustive search over all 2^9 = 512 combinations (f32 flags), ranked by score.
+ *   --f64                Exhaustive search over all 2^2 = 4 f64-relevant flag combinations.
  *
  * Error metric:  primary   = number of diverged models (NaN/Inf in yhat)
  *                secondary = max relative error on yhat + level-state series
@@ -12,6 +15,8 @@
  * Score:  score = #diverged * 1e6 + maxRelErr   (lower is better)
  *
  * Usage:  pnpm run stab:search
+ *         pnpm run stab:search -- --full
+ *         pnpm run stab:search -- --f64
  */
 
 import { defaultDevice, init } from "@hamk-uas/jax-js-nonconsuming";
@@ -72,16 +77,19 @@ const MODELS: ModelDef[] = [
 
 // ── Candidate flags ──────────────────────────────────────────────────────────
 
-const CANDIDATES: (keyof DlmStabilization)[] = ['nSym', 'nDiag', 'nDiagAbs', 'nLeak', 'cDiag', 'cEps', 'cDiagAbs'];
+const CANDIDATES_F32: (keyof DlmStabilization)[] = ['nSym', 'nDiag', 'nDiagAbs', 'nLeak', 'cDiag', 'cEps', 'cDiagAbs', 'cTriuSym', 'cSmoAbsDiag'];
+const CANDIDATES_F64: (keyof DlmStabilization)[] = ['cTriuSym', 'cSmoAbsDiag'];
 
 const FLAG_DESC: Record<keyof DlmStabilization, string> = {
-  nSym:     'sym N each step',
-  nDiag:    'clamp diag(N)≥0',
-  nDiagAbs: 'abs(diag(N)) — sign-flip N diagonal',
-  nLeak:    'N*=(1-1e-5)/step',
-  cDiag:    'clamp diag(C)≥1e-7',
-  cEps:     'C+=1e-6·I',
-  cDiagAbs: 'abs(diag(C)) — sign-flip C diagonal',
+  nSym:        'sym N each step',
+  nDiag:       'clamp diag(N)≥0',
+  nDiagAbs:    'abs(diag(N)) — sign-flip N diagonal',
+  nLeak:       'N*=(1-1e-5)/step',
+  cDiag:       'clamp diag(C)≧1e-7',
+  cEps:        'C+=1e-6·I (no-op, now unconditional)',
+  cDiagAbs:    'abs(diag(C)) — sign-flip C diagonal',
+  cTriuSym:    'triu(C)+triu(C,1)\' — upper-tri-authoritative sym (f32+f64)',
+  cSmoAbsDiag: 'abs(diag(C_smooth)) after sym — mirrors MATLAB dlmsmo.m (f32+f64)',
 };
 
 // ── Data loading ─────────────────────────────────────────────────────────────
@@ -143,6 +151,7 @@ function relErr(a: ArrayLike<number>, b: number[]): number {
 async function evaluate(
   models: LoadedModel[],
   flags: DlmStabilization,
+  dtype: 'f32' | 'f64' = 'f32',
 ): Promise<EvalResult> {
   const results: ModelResult[] = [];
   let divergedCount = 0;
@@ -157,7 +166,7 @@ async function evaluate(
       const fit = await dlmFit(m.y, {
         obsStd: m.s,
         processStd: m.w,
-        dtype: 'f32',
+        dtype,
         stabilization: flags,
         ...m.def.dlmOpts,
       } as Parameters<typeof dlmFit>[1]);
@@ -217,10 +226,78 @@ function printEvalRow(label: string, result: EvalResult): void {
   console.log(`  ${label.padEnd(36)} score=${fmtScore(result.score).padEnd(14)} | ${perModel}`);
 }
 
+// ── Full exhaustive search ────────────────────────────────────────────────────
+
+async function fullSearch(dtype: 'f32' | 'f64' = 'f32'): Promise<void> {
+  const models = loadModels();
+  const candidates = dtype === 'f64' ? CANDIDATES_F64 : CANDIDATES_F32;
+  const nFlags = candidates.length;
+  const total = 1 << nFlags;
+
+  console.log(`=== ${dtype.toUpperCase()}/wasm stabilization EXHAUSTIVE search (all 2^${nFlags}=${total} combos) ===\n`);
+  if (dtype === 'f32') {
+    console.log('Baseline: joseph form (L·C·L\' + K·V²·K\' + W) + symmetrize + cEps (always on)');
+  } else {
+    console.log('Baseline: standard form (G·C·L\' + W, no symmetrize)');
+    console.log('Flags tested: cTriuSym (triu+triu\' sym) and cSmoAbsDiag (abs diag on C_smooth)');
+  }
+  console.log('Models (m > 2, all run with wasm/' + dtype + ', compared to Octave f64 reference):');
+  console.log('  ' + models.map(m => `${m.def.name}(m=${m.def.m})`).join('  '));
+  console.log(`\nRunning all ${total} combinations...\n`);
+
+  type Combo = { flags: DlmStabilization; result: EvalResult };
+  const combos: Combo[] = [];
+
+  for (let mask = 0; mask < total; mask++) {
+    const flags: DlmStabilization = {};
+    for (let i = 0; i < nFlags; i++) {
+      if (mask & (1 << i)) flags[candidates[i]] = true;
+    }
+    const result = await evaluate(models, flags, dtype);
+    combos.push({ flags, result });
+    if (total > 16 && (mask + 1) % 16 === 0) {
+      process.stdout.write(`  evaluated ${mask + 1}/${total}...\n`);
+    }
+  }
+
+  // Sort by score ascending
+  combos.sort((a, b) => a.result.score - b.result.score);
+
+  const showTop = Math.min(20, total);
+  console.log(`\n── Top ${showTop} combinations (ranked by score) ──\n`);
+  const hdr = '  ' + 'Combination'.padEnd(40) + ' score              | per-model max rel err';
+  console.log(hdr);
+  console.log('  ' + '─'.repeat(hdr.length - 2));
+
+  for (const { flags, result } of combos.slice(0, showTop)) {
+    printEvalRow((dtype === 'f64' ? 'std' : 'joseph') + '+' + (flagsLabel(flags) || 'none'), result);
+  }
+
+  const best = combos[0];
+  console.log('\n' + '─'.repeat(70));
+  console.log(`Best combination:  [${flagsLabel(best.flags) || 'none'}]`);
+  console.log(`Best score:        ${fmtScore(best.result.score)}`);
+  if (best.result.score < 1e6) {
+    console.log('\nBest per-model detail:');
+    for (const r of best.result.models) {
+      if (r.diverged) {
+        console.log(`  ${r.name.padEnd(12)} m=${r.m}  DIVERGED`);
+      } else {
+        console.log(`  ${r.name.padEnd(12)} m=${r.m}  yhat=${fmtErr(r.maxRelErrYhat).padEnd(10)} level=${fmtErr(r.maxRelErrLevel)}`);
+      }
+    }
+  }
+
+  const noCrash = combos.filter(c => c.result.divergedCount === 0).length;
+  console.log(`\nCombinations with 0 diverged models: ${noCrash}/${total}`);
+  console.log();
+}
+
 // ── Greedy search ─────────────────────────────────────────────────────────────
 
 async function greedySearch(): Promise<void> {
   const models = loadModels();
+  const CANDIDATES = CANDIDATES_F32;
 
   console.log('=== Float32/wasm stabilization greedy search ===\n');
   console.log('Baseline: joseph form (L·C·L\' + K·V²·K\' + W) + symmetrize (always on)');
@@ -310,4 +387,12 @@ if (!availableDevices.includes('wasm')) {
 }
 defaultDevice('wasm');
 
-await greedySearch();
+const fullMode = process.argv.includes('--full');
+const f64Mode  = process.argv.includes('--f64');
+if (f64Mode) {
+  await fullSearch('f64');
+} else if (fullMode) {
+  await fullSearch('f32');
+} else {
+  await greedySearch();
+}

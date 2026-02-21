@@ -413,14 +413,18 @@ export interface DlmForecastResult {
 // ─── Options types ──────────────────────────────────────────────────────────
 
 /**
- * Incremental stabilization flags for the Float32 backward smoother.
+ * Incremental stabilization flags for the sequential scan smoother.
  *
- * Each flag adds one operation on top of the default joseph+symmetrize baseline.
- * All flags are f32-only (silently ignored for f64) and apply to the sequential
- * scan path only (the assoc/WebGPU path has its own internal stabilization).
+ * Most flags are f32-only (silently ignored for f64) and sit on top of the
+ * default joseph+symmetrize+cEps baseline. Two flags — `cTriuSym` and
+ * `cSmoAbsDiag` — also work for f64: they mirror the stabilization steps in
+ * MATLAB's `dlmsmo.m` (triu+triu' symmetrize + abs(diag) on smoother output)
+ * and reduce the f64 max error vs the Octave reference by ~3000×.
  *
- * Use {@link scripts/stab-search.ts} to run a greedy search finding the best
- * combination for your model dimension and series length.
+ * Applicable to the sequential scan path only; the assoc/WebGPU path has its
+ * own internal stabilization.
+ *
+ * Use `pnpm run stab:search:full` to exhaustively search all combinations.
  */
 export interface DlmStabilization {
   /**
@@ -471,6 +475,30 @@ export interface DlmStabilization {
    * can legitimately be negative, representing correlation) are left intact.
    */
   cDiagAbs?: boolean;
+  /**
+   * Use `triu(C) + triu(C,1)'` for covariance symmetrization instead of
+   * `(C + C') / 2`.  The upper triangle is taken as authoritative and mirrored
+   * to the lower — matching MATLAB's `dlmsmo.m` line 77 (`triu(C) + triu(C,1)'`).
+   *
+   * Unlike `(C+C')/2` which averages both triangles, `triu+triu'` discards the
+   * lower triangle entirely. For f64 on the forward filter and backward smoother
+   * this is what MATLAB does; combined with `cSmoAbsDiag` it reduces max |Δ|
+   * from ~3.78e-8 to ~9e-11 without the Joseph-form overhead.
+   *
+   * Valid for **both f32 and f64** (unlike most other flags which are f32-only).
+   * For f32 it replaces the default `(C+C')/2` symmetrize step.
+   * For f64 it adds symmetrize to the otherwise-unsymmetrized path.
+   */
+  cTriuSym?: boolean;
+  /**
+   * Apply `abs(diag(C_smooth))` after the backward smoother symmetrize step.
+   * Matches MATLAB's `dlmsmo.m` lines 114-115.
+   *
+   * Valid for **both f32 and f64**. For f64, has no effect unless `cTriuSym`
+   * is also set (since f64 otherwise takes the raw unsymmetrized path).
+   * For f32 it acts on top of the existing symmetrize+cEps default.
+   */
+  cSmoAbsDiag?: boolean;
 }
 
 /**
