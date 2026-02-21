@@ -15,7 +15,7 @@
 import { DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys } from '../src/index';
-import { getTestConfigs, applyConfig, assertAllFinite } from './test-matrix';
+import { getTestConfigs, applyConfig, getDlmDtype, assertAllFinite } from './test-matrix';
 import { withLeakCheck } from './utils';
 import type { DlmOptions } from '../src/dlmgensys';
 
@@ -206,7 +206,7 @@ const syntheticCases: SyntheticCase[] = [
   },
   {
     name: 'trig seasonal (m=6)',
-    options: { order: 1, trig: 2, ns: 12 },
+    options: { order: 1, harmonics: 2, seasonLength: 12 },
     n: 240,
     s: 5,
     w: [3, 0.5],
@@ -215,7 +215,7 @@ const syntheticCases: SyntheticCase[] = [
   },
   {
     name: 'full seasonal (m=13)',
-    options: { order: 1, fullseas: true, ns: 12 },
+    options: { order: 1, fullSeasonal: true, seasonLength: 12 },
     n: 240,
     s: 5,
     w: [3, 0.5],
@@ -249,7 +249,7 @@ describe('synthetic ground-truth tests', async () => {
           );
 
           const result = await withLeakCheck(() =>
-            dlmFit(data.y, sc.s, sc.w, config.dtype, sc.options)
+            dlmFit(data.y, { obsStd: sc.s, processStd: sc.w, dtype: getDlmDtype(config), ...sc.options })
           );
 
           // 1. All outputs finite
@@ -258,7 +258,7 @@ describe('synthetic ground-truth tests', async () => {
           // 2. Smoothed covariance diagonals positive
           for (let k = 0; k < sys.m; k++) {
             for (let t = 0; t < sc.n; t++) {
-              expect(result.C[k][k][t]).toBeGreaterThan(0);
+              expect(result.smoothedCov.get(t, k, k)).toBeGreaterThan(0);
             }
           }
 
@@ -266,7 +266,7 @@ describe('synthetic ground-truth tests', async () => {
           //    RMSE(x_smooth - x_true) should be strictly less than RMSE(y - x_true).
           //    This verifies the smoother is actually reducing noise, not just
           //    passing observations through.
-          const smoothRMSE = rmse(result.x[0], data.x_true[0], WARMUP);
+          const smoothRMSE = rmse(result.smoothed.series(0), data.x_true[0], WARMUP);
           const obsRMSE = rmse(result.y, data.x_true[0], WARMUP);
           expect(
             smoothRMSE,
@@ -281,10 +281,10 @@ describe('synthetic ground-truth tests', async () => {
           for (let k = 0; k < sys.m; k++) {
             const std_k = new Float64Array(sc.n);
             for (let t = 0; t < sc.n; t++) {
-              std_k[t] = result.xstd[t][k];
+              std_k[t] = result.smoothedStd.get(t, k);
             }
 
-            const cov = coverage(data.x_true[k], result.x[k], std_k, 1.96, WARMUP);
+            const cov = coverage(data.x_true[k], result.smoothed.series(k), std_k, 1.96, WARMUP);
             expect(
               cov,
               `state[${k}] 95%-CI coverage = ${(cov * 100).toFixed(1)}%, ` +

@@ -10,9 +10,9 @@
  * quadratic, seasonal, trigonometric, AR, and missing data.
  */
 import { describe, it } from 'vitest';
-import { dlmFit, dlmGenSys } from '../src/index';
+import { dlmFit, dlmGenSys, toMatlab } from '../src/index';
 import { deepAlmostEqual, filterKeys, normalizeMatlabOutput, normalizeNulls, withLeakCheck } from './utils';
-import { getTestConfigs, applyConfig, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
+import { getTestConfigs, applyConfig, getDlmDtype, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -46,40 +46,40 @@ const modelCases: ModelCase[] = [
     options: { order: 2 },
   },
   {
-    name: 'fullseas=1, ns=12 (full seasonal)',
+    name: 'fullSeasonal=true, seasonLength=12 (full seasonal)',
     inputFile: 'seasonal-in.json',
     referenceFile: 'seasonal-out-m.json',
-    options: { order: 1, fullseas: true, ns: 12 },
+    options: { order: 1, fullSeasonal: true, seasonLength: 12 },
   },
   {
-    name: 'trig=2, ns=12 (trigonometric seasonal, synthetic)',
+    name: 'harmonics=2, seasonLength=12 (trigonometric seasonal, synthetic)',
     inputFile: 'trig-in.json',
     referenceFile: 'trig-out-m.json',
-    options: { order: 1, trig: 2, ns: 12 },
+    options: { order: 1, harmonics: 2, seasonLength: 12 },
   },
   {
-    name: 'Kaisaniemi seasonal demo (order=1, trig=1)',
+    name: 'Kaisaniemi seasonal demo (order=1, harmonics=1)',
     inputFile: 'kaisaniemi-in.json',
     referenceFile: 'kaisaniemi-out-m.json',
-    options: { order: 1, trig: 1 },
+    options: { order: 1, harmonics: 1 },
   },
   {
-    name: 'trig=1, ns=12, arphi=0.7 (seasonal + AR)',
+    name: 'harmonics=1, seasonLength=12, AR(1) (seasonal + AR)',
     inputFile: 'trigar-in.json',
     referenceFile: 'trigar-out-m.json',
-    options: { order: 1, trig: 1, ns: 12, arphi: [0.7] },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] },
   },
   {
     name: 'synthetic energy demand (trend + seasonal + strong AR)',
     inputFile: 'energy-in.json',
     referenceFile: 'energy-out-m.json',
-    options: { order: 1, trig: 1, ns: 12, arphi: [0.85] },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.85] },
   },
   {
     name: 'synthetic AR(2) (damped oscillation)',
     inputFile: 'ar2-in.json',
     referenceFile: 'ar2-out-m.json',
-    options: { order: 1, arphi: [0.6, -0.3] },
+    options: { order: 1, arCoefficients: [0.6, -0.3] },
   },
 ];
 
@@ -122,15 +122,17 @@ describe('associativeScan dlmFit vs Octave', async () => {
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
           const result = await withLeakCheck(() =>
-            dlmFit(input.y, input.s, w, config.dtype, mc.options, undefined, true)
+            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'assoc' })
           );
+
+          const matlab = toMatlab(result);
 
           // Write debug output
           const outputDir = path.join(__dirname, 'out');
           if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
           fs.writeFileSync(
             path.join(outputDir, mc.referenceFile.replace('-m.json', `-assoc-${config.label.replace('/', '-')}.json`)),
-            JSON.stringify(result, (_key, value) =>
+            JSON.stringify(matlab, (_key, value) =>
               ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
             , 2)
           );
@@ -140,7 +142,7 @@ describe('associativeScan dlmFit vs Octave', async () => {
           const filteredResult: Record<string, unknown> = {};
           const filteredRef: Record<string, unknown> = {};
           for (const k of COMPARE_KEYS) {
-            if (k in result) filteredResult[k] = (result as Record<string, unknown>)[k];
+            if (k in matlab) filteredResult[k] = (matlab as Record<string, unknown>)[k];
             if (k in normalizedRef) filteredRef[k] = normalizedRef[k];
           }
 
@@ -190,22 +192,24 @@ describe('associativeScan niledemo vs Octave', async () => {
       applyConfig(config);
 
       const result = await withLeakCheck(() =>
-        dlmFit(nileInput.y, nileInput.s, nileInput.w, config.dtype, {}, undefined, true)
+        dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'assoc' })
       );
+
+      const matlab = toMatlab(result);
 
       const outputDir = path.join(__dirname, 'out');
       if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
       fs.writeFileSync(
         path.join(outputDir, `niledemo-out-assoc-${config.label.replace('/', '-')}.json`),
-        JSON.stringify(result, (_key, value) =>
+        JSON.stringify(matlab, (_key, value) =>
           ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
         , 2)
       );
 
-      let filteredResult: Record<string, unknown> = result as unknown as Record<string, unknown>;
+      let filteredResult: Record<string, unknown> = matlab as unknown as Record<string, unknown>;
       let filteredReference: Record<string, unknown> = reference;
       if (compareKeys) {
-        filteredResult = filterKeys(result, compareKeys) as Record<string, unknown>;
+        filteredResult = filterKeys(matlab, compareKeys) as Record<string, unknown>;
         filteredReference = filterKeys(reference, compareKeys) as Record<string, unknown>;
       }
 
@@ -262,12 +266,13 @@ describe('associativeScan missing data vs Octave', async () => {
       const result = await withLeakCheck(() =>
         dlmFit(
           Float64Array.from(y_missing.map(v => (v === null ? NaN : v))),
-          s, w, config.dtype, { order: 1 }, undefined, true
+          { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'assoc' },
         )
       );
 
+      const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refA, 2);
-      const filteredResult = filterKeys(result, MISSING_KEYS) as Record<string, unknown>;
+      const filteredResult = filterKeys(matlab, MISSING_KEYS) as Record<string, unknown>;
       const filteredRef = filterKeys(normalizedRef, MISSING_KEYS) as Record<string, unknown>;
 
       const cmp = deepAlmostEqual(
@@ -292,12 +297,13 @@ describe('associativeScan missing data vs Octave', async () => {
       const result = await withLeakCheck(() =>
         dlmFit(
           Float64Array.from(y_missing.map(v => (v === null ? NaN : v))),
-          s, [w_level], config.dtype, { order: 0 }, undefined, true
+          { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'assoc' },
         )
       );
 
+      const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refB, 1);
-      const filteredResult = filterKeys(result, MISSING_KEYS) as Record<string, unknown>;
+      const filteredResult = filterKeys(matlab, MISSING_KEYS) as Record<string, unknown>;
       const filteredRef = filterKeys(normalizedRef, MISSING_KEYS) as Record<string, unknown>;
 
       const cmp = deepAlmostEqual(

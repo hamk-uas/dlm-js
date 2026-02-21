@@ -16,7 +16,7 @@
  * Test 2 (yhat accuracy): residuals after accounting for X should be small.
  * Test 3 (XX stored): result.XX carries back the covariate rows verbatim.
  */
-import { DType, defaultDevice } from '@hamk-uas/jax-js-nonconsuming';
+import { defaultDevice } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { dlmFit } from '../src/index';
 import { withLeakCheck } from './utils';
@@ -83,13 +83,13 @@ describe('covariate regression (X parameter)', () => {
 
   it('β states converge to true values (Float64)', async () => {
     const fit = await withLeakCheck(() =>
-      dlmFit(y, S_OBS, [W_LEVEL], DType.Float64, { order: 0 }, X)
+      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X })
     );
 
-    // order=0 → local-level only, m_base=1; β₁=x[1], β₂=x[2]
+    // order=0 → local-level only, m_base=1; β₁=smoothed[1], β₂=smoothed[2]
     const m_base = 1;
-    const beta1_est = fit.x[m_base][N - 1];   // last timestep
-    const beta2_est = fit.x[m_base + 1][N - 1];
+    const beta1_est = fit.smoothed.get(N - 1, m_base);   // last timestep
+    const beta2_est = fit.smoothed.get(N - 1, m_base + 1);
 
     expect(Math.abs(beta1_est - TRUE_BETA[0])).toBeLessThan(0.3);
     expect(Math.abs(beta2_est - TRUE_BETA[1])).toBeLessThan(0.3);
@@ -106,34 +106,34 @@ describe('covariate regression (X parameter)', () => {
 
   it('XX field stores covariate rows verbatim', async () => {
     const fit = await withLeakCheck(() =>
-      dlmFit(y, S_OBS, [W_LEVEL], DType.Float64, { order: 0 }, X)
+      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X })
     );
-    expect(Array.isArray(fit.XX)).toBe(true);
-    expect((fit.XX as number[][]).length).toBe(N);
+    expect(Array.isArray(fit.covariates)).toBe(true);
+    expect((fit.covariates as number[][]).length).toBe(N);
     // Check a few rows
     for (const t of [0, 50, 100, N - 1]) {
-      const row = (fit.XX as number[][])[t];
+      const row = (fit.covariates as number[][])[t];
       expect(row[0]).toBeCloseTo(X[t][0], 12);
       expect(row[1]).toBeCloseTo(X[t][1], 12);
     }
   }, 30000);
 
-  it('no covariates: XX is empty, state size unchanged', async () => {
+  it('no covariates: covariates is empty, state size unchanged', async () => {
     const fit = await withLeakCheck(() =>
-      dlmFit(y, S_OBS, [W_LEVEL], DType.Float64, { order: 0 })
+      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0 })
     );
-    expect(fit.XX).toEqual([]);
+    expect(fit.covariates).toEqual([]);
     // m_base = 1 for order=0 (local level)
-    expect(fit.x.length).toBe(1);
+    expect(fit.m).toBe(1);
   }, 30000);
 
   it('β recovery works with Float32 (within looser tolerance)', async () => {
     const fit = await withLeakCheck(() =>
-      dlmFit(y, S_OBS, [W_LEVEL], DType.Float32, { order: 0 }, X)
+      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f32', order: 0, X })
     );
     const m_base = 1;
-    const beta1_est = fit.x[m_base][N - 1];
-    const beta2_est = fit.x[m_base + 1][N - 1];
+    const beta1_est = fit.smoothed.get(N - 1, m_base);
+    const beta2_est = fit.smoothed.get(N - 1, m_base + 1);
     // Float32: just verify the states are finite and in the right ballpark
     expect(isFinite(beta1_est)).toBe(true);
     expect(isFinite(beta2_est)).toBe(true);
@@ -144,10 +144,10 @@ describe('covariate regression (X parameter)', () => {
   it('single covariate (q=1) works', async () => {
     const X1 = X.map(row => [row[0]]);  // only first column
     const fit = await withLeakCheck(() =>
-      dlmFit(y, S_OBS, [W_LEVEL], DType.Float64, { order: 0 }, X1)
+      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X: X1 })
     );
-    expect(fit.x.length).toBe(2);  // m_base=1 (order=0) + q=1
-    const beta1_est = fit.x[1][N - 1];
+    expect(fit.m).toBe(2);  // m_base=1 (order=0) + q=1
+    const beta1_est = fit.smoothed.get(N - 1, 1);
     // β₁ should be close to TRUE_BETA[0], though now X₂ is omitted (signal contamination)
     expect(isFinite(beta1_est)).toBe(true);
   }, 30000);

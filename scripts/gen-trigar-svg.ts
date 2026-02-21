@@ -16,7 +16,6 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -35,7 +34,7 @@ const y: number[] = input.y;
 const s: number = input.s;
 const w: number[] = input.w;
 const n = y.length;
-const options = { order: 1, trig: 1, ns: 12, arphi: [0.85] };
+const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.85] };
 
 const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
 const isAssoc = variant === 'assoc';
@@ -52,11 +51,11 @@ const trueCombined = trueLevel.map((v, i) => v + trueSeasonal[i] + trueAR[i]);
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
+  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', ...options, algorithm: isAssoc ? 'assoc' : undefined }));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
+  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', ...options, algorithm: isAssoc ? 'assoc' : undefined }));
   const warmEnd = performance.now();
 
   return { result, firstRunMs: t1 - t0, warmRunMs: warmEnd - warmStart };
@@ -66,21 +65,21 @@ const timed = await timedFit();
 const js = timed.result;
 
 // Extract JS results
-const jsLevel = Array.from(js.x[0]);
-const jsLevelStd = js.xstd.map((row: any) => row[0] as number);
-const jsSeasonal = Array.from(js.x[2]);
-const jsSeasonalStd = js.xstd.map((row: any) => row[2] as number);
-const jsAR = Array.from(js.x[4]);
-const jsARStd = js.xstd.map((row: any) => row[4] as number);
+const jsLevel = Array.from(js.smoothed.series(0));
+const jsLevelStd = Array.from({ length: n }, (_, t) => js.smoothedStd.get(t, 0));
+const jsSeasonal = Array.from(js.smoothed.series(2));
+const jsSeasonalStd = Array.from({ length: n }, (_, t) => js.smoothedStd.get(t, 2));
+const jsAR = Array.from(js.smoothed.series(4));
+const jsARStd = Array.from({ length: n }, (_, t) => js.smoothedStd.get(t, 4));
 
 // Combined F·x = x[0] + x[2] + x[4] with full covariance
 function varianceCombinedJs(i: number): number {
-  const c00 = js.C[0][0][i];
-  const c22 = js.C[2][2][i];
-  const c44 = js.C[4][4][i];
-  const c02 = js.C[0][2][i];
-  const c04 = js.C[0][4][i];
-  const c24 = js.C[2][4][i];
+  const c00 = js.smoothedCov.get(i, 0, 0);
+  const c22 = js.smoothedCov.get(i, 2, 2);
+  const c44 = js.smoothedCov.get(i, 4, 4);
+  const c02 = js.smoothedCov.get(i, 0, 2);
+  const c04 = js.smoothedCov.get(i, 0, 4);
+  const c24 = js.smoothedCov.get(i, 2, 4);
   return Math.max(0, c00 + c22 + c44 + 2 * c02 + 2 * c04 + 2 * c24);
 }
 const jsCombined = jsLevel.map((v, i) => v + jsSeasonal[i] + (jsAR[i] as number));

@@ -11,7 +11,7 @@
  * Output: tmp/mle-frames-nile-webgpu.json
  */
 
-import { DType, defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
+import { defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
 import { dlmFit } from "../src/index.ts";
 import { dlmMLE } from "../src/mle.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -27,7 +27,6 @@ const input = JSON.parse(readFileSync(resolve(root, "tests/niledemo-in.json"), "
 const y: number[] = input.y;
 const t: number[] = input.t;
 const n = y.length;
-const dtype = DType.Float32;
 const options = { order: 1 };
 const m = 2; // order=1 → m=2
 const maxIter = 300;
@@ -53,14 +52,17 @@ console.log("Phase 1: Full optimization...");
 
 const thetaHistory: number[][] = [];
 
-const mle = await dlmMLE(y, options, undefined, maxIter, lr, tol, dtype, {
-  onInit: (theta) => { thetaHistory.push(Array.from(theta)); },
-  onIteration: (_iter, theta, _lik) => { thetaHistory.push(Array.from(theta)); },
+const mle = await dlmMLE(y, {
+  ...options, maxIter, lr, tol, dtype: 'f32',
+  callbacks: {
+    onInit: (theta) => { thetaHistory.push(Array.from(theta)); },
+    onIteration: (_iter, theta, _lik) => { thetaHistory.push(Array.from(theta)); },
+  },
 });
 
 const elapsed = mle.elapsed;
 const totalIters = mle.iterations;
-const likHistory = mle.likHistory;
+const likHistory = mle.devianceHistory;
 
 console.log(`  Done: ${totalIters} iterations in ${elapsed.toFixed(0)} ms`);
 
@@ -92,10 +94,10 @@ for (const idx of sampleIndices) {
   const w = Array.from({ length: m }, (_, i) => Math.exp(td[1 + i]));
   const lik = idx === 0 ? null : (likHistory[idx - 1] as number);
 
-  const fit = await dlmFit(yArr, s, w, dtype, options);
-  const level = Array.from(fit.x[0] as ArrayLike<number>);
-  const std = (fit.xstd as any[]).map((row: any) => row[0] as number);
-  const ystd = Array.from(fit.ystd as ArrayLike<number>);
+  const fit = await dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f32', ...options });
+  const level = Array.from(fit.smoothed.series(0));
+  const std = Array.from({ length: n }, (_, t) => fit.smoothedStd.get(t, 0));
+  const ystd = Array.from(fit.ystd);
   frames.push({ iter: idx, s, w, lik, level, std, ystd });
 
   const likStr = lik !== null ? lik.toFixed(2) : "—";
@@ -113,7 +115,7 @@ const output = {
   s_init: Math.exp(thetaHistory[0][0]),
   w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),
   elapsed: Math.round(elapsed),
-  jitMs: mle.jitMs,
+  jitMs: mle.compilationMs,
   iterations: totalIters,
   targetFps: TARGET_FPS,
   holdSeconds: HOLD_SECONDS,
@@ -133,7 +135,7 @@ console.log(`  Animation: ${animDuration.toFixed(2)}s play + ${HOLD_SECONDS}s ho
 mkdirSync(sidecarDir, { recursive: true });
 writeFileSync(
   resolve(sidecarDir, "collect-nile-mle-frames-webgpu.json"),
-  JSON.stringify({ elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.lik }, null, 2) + "\n",
+  JSON.stringify({ elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.deviance }, null, 2) + "\n",
 );
 console.log(`Timing sidecar written.`);
-console.log(`\nSummary: ${totalIters} iters, ${elapsed.toFixed(0)} ms, lik=${mle.lik.toFixed(2)}`);
+console.log(`\nSummary: ${totalIters} iters, ${elapsed.toFixed(0)} ms, lik=${mle.deviance.toFixed(2)}`);

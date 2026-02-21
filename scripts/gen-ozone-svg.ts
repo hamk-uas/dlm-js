@@ -25,7 +25,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { dlmFit, dlmForecast } from "../src/index.ts";
-import { defaultDevice, DType } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 
 defaultDevice("wasm");
 
@@ -75,7 +75,7 @@ const X: number[][] = time.map((_, i) => [solar[i], qbo1[i], qbo2[i]]);
 // ── Fit DLM ───────────────────────────────────────────────────────────────
 // Match MATLAB: options = struct('trig',2,'order',1)
 // order=1 → local linear trend (2 states: level + slope)
-// trig=2  → 2 harmonics for ns=12 monthly seasons (4 states: 2×[cos,sin])
+// harmonics=2 → 2 pairs for seasonLength=12 monthly seasons (4 states: 2×[cos,sin])
 // 3 proxy covariates → 3 static β states
 // Total state dimension: 2 + 4 + 3 = 9
 
@@ -86,15 +86,15 @@ console.log(`Fitting DLM: N=${N} months (${time[0].toFixed(2)}–${time[N-1].toF
 console.log(`  ys=${ys.toExponential(3)}, ym=${ym.toFixed(4)}, w=[${w.map(v=>v.toExponential(2)).join(',')}]`);
 
 const t0fit = performance.now();
-await withLeakCheck(() => dlmFit(y_filled, s_filled, w, DType.Float64, { order: 1, trig: 2 }, X, isAssoc));
+await withLeakCheck(() => dlmFit(y_filled, { obsStd: s_filled, processStd: w, dtype: 'f64', order: 1, harmonics: 2, X, algorithm: isAssoc ? 'assoc' : undefined }));
 const firstRunMs = performance.now() - t0fit;
 const warmStart = performance.now();
 const fit = await withLeakCheck(() =>
   dlmFit(
-    y_filled, s_filled, w, DType.Float64,
-    { order: 1, trig: 2 },
+    y_filled, { obsStd: s_filled, processStd: w, dtype: 'f64',
+    order: 1, harmonics: 2,
     X,
-    isAssoc,
+    algorithm: isAssoc ? 'assoc' : undefined },
   )
 );
 const warmRunMs = performance.now() - warmStart;
@@ -109,11 +109,11 @@ console.log(`  Timing: cold ${firstRunMs.toFixed(1)} ms, warm ${warmRunMs.toFixe
 //  x[7] = β_qbo1
 //  x[8] = β_qbo2
 
-const mu_hat   = Array.from(fit.x[0]).map(v => v * ys);     // level [1/cm³]
-const mu_std   = fit.xstd.map(row => row[0] * ys);
-const beta_solar = Array.from(fit.x[6]);
-const beta_qbo1  = Array.from(fit.x[7]);
-const beta_qbo2  = Array.from(fit.x[8]);
+const mu_hat   = Array.from(fit.smoothed.series(0)).map(v => v * ys);     // level [1/cm³]
+const mu_std   = Array.from({ length: N }, (_, t) => fit.smoothedStd.get(t, 0) * ys);
+const beta_solar = Array.from(fit.smoothed.series(6));
+const beta_qbo1  = Array.from(fit.smoothed.series(7));
+const beta_qbo2  = Array.from(fit.smoothed.series(8));
 
 const beta_solar_f = beta_solar[N - 1];
 const beta_qbo1_f  = beta_qbo1[N - 1];
@@ -130,7 +130,7 @@ const s_median = [...s_filled].sort((a, b) => a - b)[Math.floor(s_filled.length 
 const H_FORE = 180;  // 15 years
 const X_forecast_zero = Array.from({ length: H_FORE }, () => [0, 0, 0]);
 const fore = await withLeakCheck(() =>
-  dlmForecast(fit, s_median, H_FORE, DType.Float64, X_forecast_zero)
+  dlmForecast(fit, s_median, H_FORE, { X: X_forecast_zero })
 );
 
 // Build forecast time axis (monthly steps from end of data)
@@ -143,8 +143,8 @@ const foreTime: number[] = Array.from({ length: H_FORE }, (_, k) => time[N - 1] 
 // would make the "trend forecast" look like a 36-month seasonal projection
 // rather than a smooth trendline. The level state is the quantity the paper
 // actually analyses (the long-term ozone trend).
-const fore_level: number[] = Array.from(fore.x[0]).map(v => v * ys);
-const fore_level_std: number[] = fore.xstd.map(row => row[0] * ys);
+const fore_level: number[] = Array.from(fore.predicted.series(0)).map(v => v * ys);
+const fore_level_std: number[] = Array.from({ length: H_FORE }, (_, t) => fore.predictedStd.get(t, 0) * ys);
 const fore_upper = fore_level.map((v, i) => v + 2 * fore_level_std[i]);
 const fore_lower = fore_level.map((v, i) => v - 2 * fore_level_std[i]);
 

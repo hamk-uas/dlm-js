@@ -64,23 +64,26 @@ export function deepAlmostEqual(
     }
     return { equal: true };
   }
-  if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
-    for (let i = 0; i < a.length; i++) {
-      const res = deepAlmostEqual(a[i], b[i], relativeTolerance, `${path}[${i}]`, absoluteTolerance);
+  // Normalize TypedArrays to plain arrays for comparison
+  const aArr = ArrayBuffer.isView(a) ? Array.from(a as Float64Array) : a;
+  const bArr = ArrayBuffer.isView(b) ? Array.from(b as Float64Array) : b;
+  if (Array.isArray(aArr) && Array.isArray(bArr) && aArr.length === bArr.length) {
+    for (let i = 0; i < aArr.length; i++) {
+      const res = deepAlmostEqual(aArr[i], bArr[i], relativeTolerance, `${path}[${i}]`, absoluteTolerance);
       if (!res.equal) return res;
     }
     return { equal: true };
   }
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
+  if (aArr && bArr && typeof aArr === 'object' && typeof bArr === 'object') {
+    const aKeys = Object.keys(aArr);
+    const bKeys = Object.keys(bArr);
     if (aKeys.length !== bKeys.length) {
       return { equal: false, path: path + ' (key length mismatch)', a: aKeys, b: bKeys };
     }
     for (const k of aKeys) {
       const res = deepAlmostEqual(
-        (a as Record<string, unknown>)[k],
-        (b as Record<string, unknown>)[k],
+        (aArr as Record<string, unknown>)[k],
+        (bArr as Record<string, unknown>)[k],
         relativeTolerance,
         path ? `${path}.${k}` : k,
         absoluteTolerance,
@@ -89,7 +92,7 @@ export function deepAlmostEqual(
     }
     return { equal: true };
   }
-  if (a !== b) {
+  if (aArr !== bArr) {
     return { equal: false, path, a, b };
   }
   return { equal: true };

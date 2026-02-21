@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
-import { dlmFit } from '../src/index';
+import { dlmFit, toMatlab } from '../src/index';
 import { filterKeys, deepAlmostEqual, withLeakCheck } from './utils';
-import { getTestConfigs, applyConfig, type TestConfig } from './test-matrix';
+import { getTestConfigs, applyConfig, getDlmDtype, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -31,18 +31,19 @@ const runTest = async (config: TestConfig) => {
   }
 
   const result = await withLeakCheck(() =>
-    dlmFit(nileInput.y, nileInput.s, nileInput.w, config.dtype)
+    dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config) })
   );
 
+  const matlab = toMatlab(result);
   const outputFileName = path.join(outputDir, `niledemo-out-${config.label.replace('/', '-')}.json`);
-  fs.writeFileSync(outputFileName, JSON.stringify(result, (_key, value) =>
+  fs.writeFileSync(outputFileName, JSON.stringify(matlab, (_key, value) =>
     ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
   , 2));
 
-  let filteredResult: Record<string, unknown> = result as unknown as Record<string, unknown>;
+  let filteredResult: Record<string, unknown> = matlab as unknown as Record<string, unknown>;
   let filteredReference: Record<string, unknown> = reference;
   if (compareKeys) {
-    filteredResult = filterKeys(result, compareKeys) as Record<string, unknown>;
+    filteredResult = filterKeys(matlab, compareKeys) as Record<string, unknown>;
     filteredReference = filterKeys(reference, compareKeys) as Record<string, unknown>;
   }
 

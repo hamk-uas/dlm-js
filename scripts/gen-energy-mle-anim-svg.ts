@@ -247,7 +247,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, trig, ns=12, AR(1)), ${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s, ${backendLabel}</text>`);
+push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, harmonics=1, seasonLength=12, AR(1)), ${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s, ${backendLabel}</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 
@@ -275,7 +275,7 @@ push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#
 push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#666" font-size="10">Final \u22122\u00b7logL = ${finalLik.toFixed(1)}</text>`);
 
 // Model description
-push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#999" font-size="9">order=1, trig=1, ns=12, fitar=true</text>`);
+push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#999" font-size="9">order=1, harmonics=1, seasonLength=12, fitAr=true</text>`);
 
 // ── Convergence miniplots (right half) ─────────────────────────────────────
 

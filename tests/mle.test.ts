@@ -9,7 +9,7 @@
  * Uses WASM backend + Float64 for all tests.
  * Synthetic data from a deterministic PRNG guarantees reproducibility.
  */
-import { defaultDevice, DType } from '@hamk-uas/jax-js-nonconsuming';
+import { defaultDevice } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmMLE, dlmGenSys, findArInds } from '../src/index';
 import { withLeakCheck } from './utils';
@@ -68,7 +68,6 @@ function generateData(
 describe('dlmMLE', async () => {
   // Set backend once for all MLE tests
   defaultDevice('wasm');
-  const dtype = DType.Float64;
 
   it('recovers s and w for local-level model', async () => {
     const s_true = 10;
@@ -78,22 +77,22 @@ describe('dlmMLE', async () => {
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     const result = await withLeakCheck(() =>
-      dlmMLE(y, options, { s: s_true, w: w_true }, 200, 0.05, 1e-6, dtype)
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' })
     );
 
     // MLE should converge
     expect(result.iterations).toBeLessThan(200);
     // Parameters should be in the right ballpark (MLE is not exact on finite data)
-    expect(result.s).toBeGreaterThan(s_true * 0.3);
-    expect(result.s).toBeLessThan(s_true * 3);
-    expect(result.w[0]).toBeGreaterThan(0);
+    expect(result.obsStd).toBeGreaterThan(s_true * 0.3);
+    expect(result.obsStd).toBeLessThan(s_true * 3);
+    expect(result.processStd[0]).toBeGreaterThan(0);
     // Fit result should be populated
     expect(result.fit.y.length).toBe(200);
-    expect(result.fit.x[0].length).toBe(200);
-    // arphi should be undefined (no AR)
-    expect(result.arphi).toBeUndefined();
-    // likHistory should be non-increasing (mostly)
-    expect(result.likHistory.length).toBeGreaterThan(0);
+    expect(result.fit.smoothed.series(0).length).toBe(200);
+    // arCoefficients should be undefined (no AR)
+    expect(result.arCoefficients).toBeUndefined();
+    // devianceHistory should be non-increasing (mostly)
+    expect(result.devianceHistory.length).toBeGreaterThan(0);
   });
 
   it('recovers AR coefficient with fitar=true', async () => {
@@ -101,7 +100,7 @@ describe('dlmMLE', async () => {
     const s_true = 3;
     const w_true = [5, 4]; // level noise, AR noise
 
-    const options = { order: 0, arphi: [phi_true], fitar: true };
+    const options = { order: 0, arCoefficients: [phi_true], fitAr: true };
     const sys = dlmGenSys(options);
     expect(sys.m).toBe(2);
 
@@ -113,27 +112,27 @@ describe('dlmMLE', async () => {
 
     const result = await withLeakCheck(() =>
       dlmMLE(
-        y, options,
-        { s: s_true, w: w_true, arphi: [0.5] }, // init arphi away from true
-        200, 0.02, 1e-6, dtype,
+        y, { ...options,
+        init: { obsStd: s_true, processStd: w_true, arCoefficients: [0.5] }, // init arCoefficients away from true
+        maxIter: 200, lr: 0.02, tol: 1e-6, dtype: 'f64' },
       )
     );
 
-    // arphi should be returned
-    expect(result.arphi).toBeDefined();
-    expect(result.arphi!.length).toBe(1);
+    // arCoefficients should be returned
+    expect(result.arCoefficients).toBeDefined();
+    expect(result.arCoefficients!.length).toBe(1);
 
-    // arphi should be reasonably close to true value
+    // arCoefficients should be reasonably close to true value
     // (on 200 datapoints with good init, expect within 0.2 of true)
-    const phi_err = Math.abs(result.arphi![0] - phi_true);
+    const phi_err = Math.abs(result.arCoefficients![0] - phi_true);
     expect(phi_err).toBeLessThan(0.2);
 
     // Fit result should exist and be valid
     expect(result.fit.y.length).toBe(200);
-    expect(result.fit.x[0].length).toBe(200);
+    expect(result.fit.smoothed.series(0).length).toBe(200);
 
-    // lik should be finite
-    expect(Number.isFinite(result.lik)).toBe(true);
+    // deviance should be finite
+    expect(Number.isFinite(result.deviance)).toBe(true);
   });
 
   it('fitar=false keeps AR coefficients fixed', async () => {
@@ -141,22 +140,22 @@ describe('dlmMLE', async () => {
     const s_true = 3;
     const w_true = [5, 4];
 
-    const options = { order: 0, arphi: [phi_fixed] }; // fitar defaults to false
+    const options = { order: 0, arCoefficients: [phi_fixed] }; // fitAr defaults to false
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     const result = await withLeakCheck(() =>
-      dlmMLE(y, options, undefined, 100, 0.02, 1e-6, dtype)
+      dlmMLE(y, { ...options, maxIter: 100, lr: 0.02, tol: 1e-6, dtype: 'f64' })
     );
 
-    // arphi should NOT be returned (not fitted)
-    expect(result.arphi).toBeUndefined();
+    // arCoefficients should NOT be returned (not fitted)
+    expect(result.arCoefficients).toBeUndefined();
 
-    // s and w should still be fitted
-    expect(result.s).toBeGreaterThan(0);
-    expect(result.w.length).toBe(2);
+    // obsStd and processStd should still be fitted
+    expect(result.obsStd).toBeGreaterThan(0);
+    expect(result.processStd.length).toBe(2);
     expect(result.fit.y.length).toBe(200);
-    expect(Number.isFinite(result.lik)).toBe(true);
+    expect(Number.isFinite(result.deviance)).toBe(true);
   });
 
   it('dlmMLE converges with NaN observations (missing data)', async () => {
@@ -174,22 +173,22 @@ describe('dlmMLE', async () => {
     expect(nobs_expected).toBe(80);
 
     const result = await withLeakCheck(() =>
-      dlmMLE(yForMle, options, undefined, 150, 0.05, 1e-6, dtype)
+      dlmMLE(yForMle, { ...options, maxIter: 150, lr: 0.05, tol: 1e-6, dtype: 'f64' })
     );
 
-    // lik must be finite (NaN lik would indicate a bug in masking)
-    expect(Number.isFinite(result.lik)).toBe(true);
+    // deviance must be finite (NaN deviance would indicate a bug in masking)
+    expect(Number.isFinite(result.deviance)).toBe(true);
 
-    // s and w estimates should be positive
-    expect(result.s).toBeGreaterThan(0);
-    expect(result.w[0]).toBeGreaterThan(0);
+    // obsStd and processStd estimates should be positive
+    expect(result.obsStd).toBeGreaterThan(0);
+    expect(result.processStd[0]).toBeGreaterThan(0);
 
     // fit.nobs should reflect only the observed timesteps
     expect(result.fit.nobs).toBe(nobs_expected);
 
     // fit outputs should be fully interpolated (finite everywhere)
     expect(Array.from(result.fit.yhat).every(Number.isFinite)).toBe(true);
-    expect(result.fit.x[0].every(Number.isFinite)).toBe(true);
+    expect(Array.from(result.fit.smoothed.series(0)).every(Number.isFinite)).toBe(true);
   });
 });
 

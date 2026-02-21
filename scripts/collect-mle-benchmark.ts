@@ -15,7 +15,7 @@
  * Output: assets/timings/collect-mle-benchmark.json
  */
 
-import { DType, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmMLE } from "../src/mle.ts";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -39,17 +39,17 @@ const LR       = 0.05;
 
 async function timedMle(
   y: number[],
-  options: Parameters<typeof dlmMLE>[1],
+  options: Record<string, unknown>,
 ): Promise<{ elapsed: number; iterations: number; lik: number }> {
   // warm-up
-  await dlmMLE(y, options, undefined, MAX_ITER, LR, 1e-6, DType.Float64);
+  await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
 
   const times: number[] = [];
   let last = { elapsed: 0, iterations: 0, lik: 0 };
   for (let i = 0; i < RUNS; i++) {
-    const r = await dlmMLE(y, options, undefined, MAX_ITER, LR, 1e-6, DType.Float64);
+    const r = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
     times.push(r.elapsed);
-    last = { elapsed: r.elapsed, iterations: r.iterations, lik: r.lik };
+    last = { elapsed: r.elapsed, iterations: r.iterations, lik: r.deviance };
   }
   times.sort((a, b) => a - b);
   return { elapsed: times[Math.floor(RUNS / 2)], iterations: last.iterations, lik: last.lik };
@@ -74,7 +74,7 @@ console.log(["Nile order=0 (s+w)", "100", "1",
   `${Math.round(nileOrder0.elapsed)} ms`, String(nileOrder0.iterations), nileOrder0.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
 
-const kaisaniemi = await timedMle(kaisaniemiIn.y, { order: 1, trig: 1, ns: 12 });
+const kaisaniemi = await timedMle(kaisaniemiIn.y, { order: 1, harmonics: 1, seasonLength: 12 });
 console.log(["Kaisaniemi trig (s+w)", "117", "4",
   `${Math.round(kaisaniemi.elapsed)} ms`, String(kaisaniemi.iterations), kaisaniemi.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));

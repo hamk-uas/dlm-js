@@ -17,8 +17,9 @@
  * Output: assets/timings/bench-scaling.json
  */
 
-import { DType, defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
+import { defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
 import { dlmFit } from "../src/index.ts";
+import type { DlmDtype } from "../src/types.ts";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
@@ -58,16 +59,16 @@ function median(arr: number[]): number {
   return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
 }
 
-async function timedMedian(n: number, dtype: DType): Promise<number> {
+async function timedMedian(n: number, dtype: DlmDtype): Promise<number> {
   const y = makeY(n);
 
   // First run (JIT compilation)
-  const r0 = await dlmFit(y, s, w, dtype, options);
+  const r0 = await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
   r0[Symbol.dispose]?.();
 
   // Warmup runs (discard — let JIT stabilize)
   for (let i = 1; i < WARMUP; i++) {
-    const r = await dlmFit(y, s, w, dtype, options);
+    const r = await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
     r[Symbol.dispose]?.();
   }
 
@@ -75,7 +76,7 @@ async function timedMedian(n: number, dtype: DType): Promise<number> {
   const times: number[] = [];
   for (let i = 0; i < RUNS; i++) {
     const t1 = performance.now();
-    const r  = await dlmFit(y, s, w, dtype, options);
+    const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
     times.push(performance.now() - t1);
     r[Symbol.dispose]?.();
   }
@@ -109,7 +110,7 @@ const sidecar: Record<string, number> = {};
 for (const n of N_ALL) {
   // ── WASM / f64 ──────────────────────────────────────────────────────────
   defaultDevice("wasm");
-  const wasmMs = await timedMedian(n, DType.Float64);
+  const wasmMs = await timedMedian(n, 'f64');
   sidecar[`wasm_f64_n${n}`] = wasmMs;
 
   const usPerStep = (wasmMs / n) * 1000;
@@ -118,7 +119,7 @@ for (const n of N_ALL) {
   let gpuMs: number | null = null;
   if (N_GPU.includes(n)) {
     defaultDevice("webgpu");
-    gpuMs = await timedMedian(n, DType.Float32);
+    gpuMs = await timedMedian(n, 'f32');
     sidecar[`webgpu_f32_n${n}`] = gpuMs;
   }
 

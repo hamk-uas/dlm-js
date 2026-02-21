@@ -1,32 +1,74 @@
 import { DType, numpy as np, lax, jit, valueAndGrad, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
-import type { DlmFitResult, FloatArray } from "./types";
-import { getFloatArrayType } from "./types";
+import type { DlmFitResult, FloatArray, DlmMleOptions } from "./types";
+import { getFloatArrayType, parseDtype } from "./types";
 import { dlmGenSys, findArInds } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
 
 /**
- * Result from MLE estimation.
+ * Result from MLE estimation with JS-idiomatic names.
  */
 export interface DlmMleResult {
-  /** Estimated observation noise std dev */
-  s: number;
-  /** Estimated state noise std devs (diagonal of sqrt(W)) */
-  w: number[];  /** Estimated AR coefficients (only when fitar=true) */
-  arphi?: number[];  /** -2 · log-likelihood at optimum */
-  lik: number;
+  /** Estimated observation noise std dev. In MATLAB DLM, this is `s`. */
+  obsStd: number;
+  /** Estimated state noise std devs (diagonal of √W). In MATLAB DLM, this is `w`. */
+  processStd: number[];
+  /** Estimated AR coefficients (only when fitAr=true). In MATLAB DLM, this is `arphi`. */
+  arCoefficients?: number[];
+  /** Deviance: -2 · log-likelihood at optimum. In MATLAB DLM, this is `lik`. */
+  deviance: number;
   /** Number of optimizer iterations */
   iterations: number;
   /** Full DLM fit result using the estimated parameters */
   fit: DlmFitResult;
-  /** Optimization history: lik at each iteration */
-  likHistory: number[];
+  /** Optimization history: deviance at each iteration. In MATLAB DLM, this is `likHistory`. */
+  devianceHistory: number[];
   /** Wall-clock time in ms (total: setup + all iterations + final dlmFit) */
   elapsed: number;
-  /** Wall-clock time in ms for the first optimizer step (JIT compilation + one gradient pass) */
+  /** Wall-clock time in ms for the first optimizer step (JIT compilation + one gradient pass). In MATLAB DLM, this is `jitMs`. */
+  compilationMs: number;
+}
+
+/**
+ * MATLAB DLM-compatible MLE result.
+ * Produced by {@link toMatlabMle}.
+ */
+export interface DlmMleResultMatlab {
+  /** Estimated observation noise std dev */
+  s: number;
+  /** Estimated state noise std devs */
+  w: number[];
+  /** Estimated AR coefficients */
+  arphi?: number[];
+  /** -2 · log-likelihood */
+  lik: number;
+  /** Number of iterations */
+  iterations: number;
+  /** Full DLM fit result (MATLAB layout) */
+  fit: DlmFitResult;
+  /** Optimization history */
+  likHistory: number[];
+  /** Wall-clock time in ms */
+  elapsed: number;
+  /** JIT compilation time in ms */
   jitMs: number;
 }
+
+/**
+ * Convert a JS-idiomatic DlmMleResult to MATLAB DLM-compatible names.
+ */
+export const toMatlabMle = (result: DlmMleResult): DlmMleResultMatlab => ({
+  s: result.obsStd,
+  w: result.processStd,
+  arphi: result.arCoefficients,
+  lik: result.deviance,
+  iterations: result.iterations,
+  fit: result.fit,
+  likHistory: result.devianceHistory,
+  elapsed: result.elapsed,
+  jitMs: result.compilationMs,
+});
 
 /**
  * Build a diagonal matrix W = diag(w²) from the theta parameter vector
@@ -606,62 +648,41 @@ using M = np.linalg.inv(X_reg);
 };
 
 /**
- * Estimate DLM parameters (s, w, and optionally arphi) by maximum likelihood
- * via autodiff.
+ * Estimate DLM parameters (obsStd, processStd, and optionally arCoefficients)
+ * by maximum likelihood via autodiff.
  *
  * The entire optimization step — `valueAndGrad(loss)` (Kalman filter forward
  * pass + AD backward pass) and optax Adam moment/parameter updates — is
  * wrapped in a single `jit()` call, so every iteration runs from compiled code.
  *
  * The parameterization maps unconstrained reals → positive values:
- *   s = exp(θ_s),  w[i] = exp(θ_{w,i})
- * AR coefficients (when `options.fitar = true`) are optimized directly
+ *   obsStd = exp(θ_s),  processStd[i] = exp(θ_{w,i})
+ * AR coefficients (when `fitAr = true`) are optimized directly
  * (unconstrained — not log-transformed, matching MATLAB DLM behavior).
  *
- * When `sFixed` is supplied (a per-timestep σ array, e.g. known measurement
+ * When `obsStdFixed` is supplied (a per-timestep σ array, e.g. known measurement
  * uncertainties), the observation noise is **not estimated** — it is treated as
- * a known constant.  Only W (and optionally arphi) are optimized.  The
- * returned `s` field will be `NaN` in this case.
+ * a known constant.  Only processStd (and optionally arCoefficients) are optimized.
+ * The returned `obsStd` field will be `NaN` in this case.
  *
  * @param y - Observations (n×1)
- * @param options - Model specification (order, trig, ns, arphi, fitar, etc.)
- * @param init - Initial guess for parameters (optional; arphi defaults to options.arphi)
- * @param maxIter - Maximum optimizer iterations (default: 200)
- * @param lr - Learning rate for Adam (default: 0.05)
- * @param tol - Convergence tolerance on relative lik change (default: 1e-6).
- *   Requires 5 consecutive steps below this threshold before stopping, to guard
- *   against transient near-zero steps during oscillation (e.g. assocScan path).
- * @param dtype - Computation precision (default: Float64)
- * @param X - Optional covariate matrix (n rows × q cols), passed through to dlmFit
- * @param sFixed - Optional per-timestep σ array (length n). When provided, s is fixed
- *   and not estimated; only W is optimized.
- * @param adamOpts - Optional Adam hyperparameters (b1, b2, eps). Default: b1=0.9, b2=0.9, eps=1e-8.
- *   The b2=0.9 default is much faster to adapt than the canonical 0.999 on DLM likelihoods
- *   (measured: reaches same loss in ~3× fewer iterations on Nile and ozone benchmarks).
+ * @param opts - MLE options: model specification, optimizer settings, runtime config
  * @returns MLE result with estimated parameters and full DLM fit
  */
 export const dlmMLE = async (
   y: ArrayLike<number>,
-  options: DlmOptions = {},
-  init?: { s?: number; w?: number[]; arphi?: number[] },
-  maxIter: number = 200,
-  lr: number = 0.05,
-  tol: number = 1e-6,
-  dtype: DType = DType.Float64,
-  callbacks?: {
-    /** Called before iteration 0 with the initial theta. */
-    onInit?: (theta: Float64Array | Float32Array) => void;
-    /** Called after each iteration with the updated theta and lik. */
-    onIteration?: (iter: number, theta: Float64Array | Float32Array, lik: number) => void;
-  },
-  X?: ArrayLike<number>[],  // n×q covariate matrix, passed through to dlmFit
-  sFixed?: ArrayLike<number>, // per-timestep σ (fixes V; s is not estimated)
-  adamOpts?: ScaleByAdamOptions, // Adam b1/b2/eps overrides
-  /** Force use of `makeKalmanLossAssoc` (associativeScan-based loss) regardless
-   *  of device/dtype. Useful for benchmarking the parallel loss path on
-   *  CPU/WASM backends where it would not normally be selected. */
-  forceAssocScan?: boolean,
+  opts?: DlmMleOptions,
 ): Promise<DlmMleResult> => {
+  const {
+    order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr,
+    X, init,
+    maxIter = 200, lr = 0.05, tol = 1e-6,
+    obsStdFixed: sFixed, callbacks, adamOpts,
+    algorithm,
+  } = opts ?? {};
+  const dtype = parseDtype(opts?.dtype);
+  const forceAssocScan = algorithm === 'assoc' ? true : undefined;
+  const options: DlmOptions = { order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr };
   const t0 = performance.now();
   const n = y.length;
   const FA = getFloatArrayType(dtype);
@@ -672,9 +693,9 @@ export const dlmMLE = async (
   const m = sys.m;
 
   // AR fitting setup
-  const arphi_orig = options.arphi ?? [];
-  const fitar = !!(options.fitar && arphi_orig.length > 0);
-  const arInds = fitar ? findArInds(options) : [];
+  const arphi_orig = arCoefficients ?? [];
+  const doFitAr = !!(fitAr && arphi_orig.length > 0);
+  const arInds = doFitAr ? findArInds(options) : [];
   const nar = arInds.length;
 
   // Build G: if fitting AR, zero the AR column (those values come from theta)
@@ -701,7 +722,7 @@ export const dlmMLE = async (
   using y_arr = np.array(yList.map(yi => [[isNaN(yi) ? 0 : yi]]), { dtype });
 
   // Initial state — initialised from data mean/variance, NaN-safe
-  const ns = options.ns ?? 12;
+  const ns = seasonLength ?? 12;
   let initSum = 0;
   let initCount = 0;
   const nsActual = Math.min(ns, n);
@@ -726,9 +747,9 @@ export const dlmMLE = async (
   const nObs = yObs.length || 1;
   const variance = yObs.reduce((s, v) => s + v * v, 0) / nObs
     - (yObs.reduce((s, v) => s + v, 0) / nObs) ** 2;
-  const s_init = init?.s ?? (Math.sqrt(Math.abs(variance)) || 1.0);
-  const w_init = init?.w ?? new Array(m).fill(s_init * 0.1);
-  const arphi_init = init?.arphi ?? arphi_orig;
+  const s_init = init?.obsStd ?? (Math.sqrt(Math.abs(variance)) || 1.0);
+  const w_init = init?.processStd ?? new Array(m).fill(s_init * 0.1);
+  const arphi_init = init?.arCoefficients ?? arphi_orig;
 
   // Build fixed V2_arr when sFixed is provided
   const fixS = sFixed !== undefined;
@@ -743,7 +764,7 @@ export const dlmMLE = async (
   const theta_init = [
     ...(fixS ? [] : [Math.log(s_init)]),
     ...w_init.map(wi => Math.log(Math.abs(wi) || 0.01)),
-    ...(fitar ? arphi_init : []),  // unconstrained (not log-transformed); only when fitting AR
+    ...(doFitAr ? arphi_init : []),  // unconstrained (not log-transformed); only when fitting AR
   ];
 
   // Build loss & JIT the entire optimization step:
@@ -837,23 +858,30 @@ export const dlmMLE = async (
     ? Array.from({ length: nar }, (_, i) => thetaData[wOffset + m + i])
     : undefined;
 
-  // Run full dlmFit with optimized parameters (including fitted arphi if applicable)
-  const fitOptions = arphi_opt ? { ...options, arphi: arphi_opt } : options;
+  // Run full dlmFit with optimized parameters (including fitted arCoefficients if applicable)
+  const fitOptions: DlmOptions = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
   // When s was fixed, pass the original sFixed array to dlmFit; otherwise use scalar s_opt
   const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
-  const fit = await dlmFit(yArr, sForFit, w_opt, dtype, fitOptions, X);
+  const fit = await dlmFit(yArr, {
+    obsStd: sForFit,
+    processStd: w_opt,
+    ...fitOptions,
+    X,
+    dtype: opts?.dtype,
+    algorithm: opts?.algorithm,
+  });
 
   const elapsed = performance.now() - t0;
 
   return {
-    s: s_opt,
-    w: w_opt,
-    arphi: arphi_opt,
-    lik: prevLik,
+    obsStd: s_opt,
+    processStd: w_opt,
+    arCoefficients: arphi_opt,
+    deviance: prevLik,
     iterations: iter,
     fit,
-    likHistory,
+    devianceHistory: likHistory,
     elapsed,
-    jitMs,
+    compilationMs: jitMs,
   };
 };

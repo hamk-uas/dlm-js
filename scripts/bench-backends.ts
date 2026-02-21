@@ -14,6 +14,7 @@
 
 import { DType, defaultDevice, init } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmFit } from "../src/index.ts";
+import type { DlmDtype } from "../src/types.ts";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -36,7 +37,7 @@ interface Model {
   y: number[];
   s: number | number[];
   w: number[];
-  options: Parameters<typeof dlmFit>[4];
+  options: Record<string, unknown>;
   n: number;
   m: number;
 }
@@ -60,14 +61,14 @@ const models: Model[] = [
     label: "Kaisaniemi, trig",
     key: "kaisaniemi",
     y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: kaisaniemiIn.w,
-    options: { order: 1, trig: 1, ns: 12 },
+    options: { order: 1, harmonics: 1, seasonLength: 12 },
     n: 117, m: 4,
   },
   {
     label: "Energy, trig+AR",
     key: "trigar",
     y: trigarIn.y, s: trigarIn.s, w: trigarIn.w,
-    options: { order: 1, trig: 1, ns: 12, arphi: trigarIn.arphi },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] },
     n: 120, m: 5,
   },
 ];
@@ -78,13 +79,13 @@ interface Backend {
   label: string;
   key: string;        // sidecar key suffix
   device: string;
-  dtype: DType;
+  dlmDtype: DlmDtype;
 }
 
 const backends: Backend[] = [
-  { label: "cpu/f32",  key: "cpu_f32",  device: "cpu",  dtype: DType.Float32 },
-  { label: "wasm/f32", key: "wasm_f32", device: "wasm", dtype: DType.Float32 },
-  { label: "wasm/f64", key: "wasm_f64", device: "wasm", dtype: DType.Float64 },
+  { label: "cpu/f32",  key: "cpu_f32",  device: "cpu",  dlmDtype: 'f32' },
+  { label: "wasm/f32", key: "wasm_f32", device: "wasm", dlmDtype: 'f32' },
+  { label: "wasm/f64", key: "wasm_f64", device: "wasm", dlmDtype: 'f64' },
 ];
 
 // ── Timing helper ──────────────────────────────────────────────────────────
@@ -95,16 +96,16 @@ async function timedFit(
 ): Promise<{ firstMs: number; warmMs: number }> {
   defaultDevice(backend.device as "cpu" | "wasm");
   const { y, s, w, options } = model;
-  const dtype = backend.dtype;
+  const dtype = backend.dlmDtype;
 
   // First run (JIT compilation)
   const t0 = performance.now();
-  await dlmFit(y, s, w, dtype, options);
+  await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
   const t1 = performance.now();
 
   // Warm run (cached)
   const t2 = performance.now();
-  await dlmFit(y, s, w, dtype, options);
+  await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
   const t3 = performance.now();
 
   return { firstMs: t1 - t0, warmMs: t3 - t2 };

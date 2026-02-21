@@ -13,9 +13,9 @@
  *   x[0]=level, x[1]=slope, x[2..5]=4 trig states, x[6]=β_solar, x[7]=β_qbo1, x[8]=β_qbo2
  */
 import { describe, it } from 'vitest';
-import { dlmFit } from '../src/index';
+import { dlmFit, toMatlab } from '../src/index';
 import { deepAlmostEqual, withLeakCheck } from './utils';
-import { getTestConfigs, applyConfig, type TestConfig } from './test-matrix';
+import { getTestConfigs, applyConfig, getDlmDtype, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -48,16 +48,21 @@ const runTest = async (config: TestConfig) => {
   const result = await withLeakCheck(() =>
     dlmFit(
       inp.yy,                        // scaled observations (NaN-filled)
-      inp.ss,                        // per-observation sigma array (scaled)
-      inp.w,                         // [0, wtrend, wseas, wseas, wseas, wseas]
-      config.dtype,
-      { order: 1, trig: 2 },
-      X_rows,                        // n×3 covariate rows [solar, qbo1, qbo2]
+      {
+        obsStd: inp.ss,              // per-observation sigma array (scaled)
+        processStd: inp.w,           // [0, wtrend, wseas, wseas, wseas, wseas]
+        dtype: getDlmDtype(config),
+        order: 1,
+        harmonics: 2,
+        X: X_rows,                   // n×3 covariate rows [solar, qbo1, qbo2]
+      },
     )
   );
 
+  const matlab = toMatlab(result);
+
   const outFile = path.join(outDir, `ozone-out-${config.label.replace('/', '-')}.json`);
-  fs.writeFileSync(outFile, JSON.stringify(result, (_k, v) =>
+  fs.writeFileSync(outFile, JSON.stringify(matlab, (_k, v) =>
     ArrayBuffer.isView(v) ? Array.from(v as Float64Array) : v
   , 2));
 
@@ -65,7 +70,7 @@ const runTest = async (config: TestConfig) => {
   const pick = (obj: Record<string, unknown>, keys: string[]) =>
     Object.fromEntries(keys.map(k => [k, obj[k]]));
 
-  const resultFiltered   = pick(result as unknown as Record<string, unknown>, COMPARE_KEYS);
+  const resultFiltered   = pick(matlab as unknown as Record<string, unknown>, COMPARE_KEYS);
   const referenceFiltered = pick(ref,   COMPARE_KEYS);
 
   const cmp = deepAlmostEqual(

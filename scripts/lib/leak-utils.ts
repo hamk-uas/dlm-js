@@ -6,7 +6,7 @@
  *
  * Usage:
  *   import { withLeakCheck } from './lib/leak-utils.ts';
- *   const result = await withLeakCheck(() => dlmFit(y, s, w, dtype));
+ *   const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype }));
  */
 
 import { checkLeaks } from '@hamk-uas/jax-js-nonconsuming';

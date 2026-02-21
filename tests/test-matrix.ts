@@ -6,6 +6,7 @@
  * available device/dtype combinations.
  */
 import { init, defaultDevice, DType, type Device } from '@hamk-uas/jax-js-nonconsuming';
+import type { DlmDtype } from '../src/types';
 
 /** A single (device, dtype) test configuration with tolerances */
 export interface TestConfig {
@@ -109,6 +110,11 @@ export async function getTestConfigs(): Promise<TestConfig[]> {
  */
 export function applyConfig(config: TestConfig): void {
   defaultDevice(config.device);
+}
+
+/** Convert a TestConfig's DType to the public DlmDtype string. */
+export function getDlmDtype(config: TestConfig): DlmDtype {
+  return config.dtype === DType.Float32 ? 'f32' : 'f64';
 }
 
 /**

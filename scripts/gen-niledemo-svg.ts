@@ -7,7 +7,6 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -37,11 +36,11 @@ const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }, undefined, isAssoc));
+  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm: isAssoc ? 'assoc' : undefined }));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, { order: 1 }, undefined, isAssoc));
+  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm: isAssoc ? 'assoc' : undefined }));
   const warmEnd = performance.now();
 
   return {
@@ -53,8 +52,9 @@ const timedFit = async () => {
 
 const timed = await timedFit();
 const jsResult = timed.result;
-const jsLevel = Array.from(jsResult.x[0]);              // smoothed state level
-const jsLevelStd = jsResult.xstd.map((row: any) => row[0] as number); // xstd[:,0]
+const jsLevel = Array.from(jsResult.smoothed.series(0));              // smoothed state level
+const n_ = jsResult.n;
+const jsLevelStd = Array.from({ length: n_ }, (_, t) => jsResult.smoothedStd.get(t, 0)); // xstd[:,0]
 
 // ── Octave results ─────────────────────────────────────────────────────────
 

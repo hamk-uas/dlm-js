@@ -8,7 +8,6 @@
  */
 
 import { dlmFit } from "../src/index.ts";
-import { DType } from "@hamk-uas/jax-js-nonconsuming";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -24,6 +23,7 @@ const input = JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-in.json"),
 const octave = JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-out-m.json"), "utf8"));
 
 const tDatenum: number[] = input.t;
+const n = tDatenum.length;
 const y: number[] = input.y;
 const s: number = input.s;
 const w: number[] = input.w;
@@ -35,11 +35,11 @@ const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
+  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', ...options, algorithm: isAssoc ? 'assoc' : undefined }));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, s, w, DType.Float64, options, undefined, isAssoc));
+  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', ...options, algorithm: isAssoc ? 'assoc' : undefined }));
   const warmEnd = performance.now();
 
   return {
@@ -52,20 +52,18 @@ const timedFit = async () => {
 const timed = await timedFit();
 const jsResult = timed.result;
 
-const jsLevel = Array.from(jsResult.x[0]);
-const jsLevelStd = jsResult.xstd.map((row: any) => row[0] as number);
-const jsSeasObs = Array.from(jsResult.x[2]);
+const jsLevel = Array.from(jsResult.smoothed.series(0));
+const jsLevelStd = Array.from({ length: n }, (_, t) => jsResult.smoothedStd.get(t, 0));
+const jsSeasObs = Array.from(jsResult.smoothed.series(2));
 
 const octLevel: number[] = octave.x[0];
 const octLevelStd: number[] = octave.xstd.map((row: number[]) => row[0]);
 const octSeasObs: number[] = octave.x[2];
 
-const n = tDatenum.length;
-
 function varianceCombinedFromJs(t: number): number {
-  const c00 = jsResult.C[0][0][t];
-  const c22 = jsResult.C[2][2][t];
-  const c02 = jsResult.C[0][2][t];
+  const c00 = jsResult.smoothedCov.get(t, 0, 0);
+  const c22 = jsResult.smoothedCov.get(t, 2, 2);
+  const c02 = jsResult.smoothedCov.get(t, 0, 2);
   return Math.max(0, c00 + c22 + 2 * c02);
 }
 

@@ -1,13 +1,12 @@
 /**
- * Comprehensive dlmFit benchmark — full coverage of all DlmRunConfig
+ * Comprehensive dlmFit benchmark — full coverage of all backend/dtype/algorithm
  * option combinations for each demo model.
  *
- * Combinations tested per model (15 total — assoc+joseph is an error and is skipped):
+ * Combinations tested per model:
  *   backend:       cpu, wasm                    → dtype: f64 or f32
  *                  webgpu                       → dtype: f32 only
- *   dtype:         float64, float32
+ *   dtype:         f64, f32
  *   algorithm:     scan, assoc
- *   stabilization: none, joseph
  *
  * Note: float32 + m > 2 is documented as numerically unstable — those rows
  * are included but marked "⚠️ NaN" when the output is non-finite.
@@ -23,7 +22,7 @@
 
 import { DType, defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
 import { dlmFit } from "../src/index.ts";
-import type { DlmRunConfig } from "../src/types.ts";
+import type { DlmDtype, DlmAlgorithm, DlmFitResult } from "../src/types.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
@@ -83,14 +82,13 @@ const models: Model[] = [
     label: "Kaisaniemi, trig",
     // kaisaniemi-in.json includes the options used to generate the reference
     y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: toW(kaisaniemiIn.w),
-    options: kaisaniemiIn.options,      // { order: 1, trig: 1 } — no ns
+    options: kaisaniemiIn.options,      // { order: 1, harmonics: 1 }
     n: 117, m: 4,
   },
   {
     label: "Energy, trig+AR",
     y: trigarIn.y, s: trigarIn.s, w: toW(trigarIn.w),
-    // arphi:[0.7] matches gensys test options (not stored in trigar-in.json)
-    options: { order: 1, trig: 1, ns: 12, arphi: [0.7] },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] },
     n: 120, m: 5,
   },
 ];
@@ -99,30 +97,22 @@ const models: Model[] = [
 
 interface Combo {
   backend: 'cpu' | 'wasm' | 'webgpu';
-  dtype: DType;
-  algorithm: 'scan' | 'assoc';
-  stabilization: 'none' | 'joseph';
+  dlmDtype: DlmDtype;
+  algorithm: DlmAlgorithm;
 }
 
 const combos: Combo[] = [];
 
 for (const backend of ['cpu', 'wasm'] as const) {
-  for (const dtype of [DType.Float64, DType.Float32] as const) {
+  for (const dlmDtype of ['f64', 'f32'] as const) {
     for (const algorithm of ['scan', 'assoc'] as const) {
-      for (const stabilization of ['none', 'joseph'] as const) {
-        // assoc + joseph is an explicit error — skip this combination
-        if (algorithm === 'assoc' && stabilization === 'joseph') continue;
-        combos.push({ backend, dtype, algorithm, stabilization });
-      }
+      combos.push({ backend, dlmDtype, algorithm });
     }
   }
 }
 // webgpu: float32 only
 for (const algorithm of ['scan', 'assoc'] as const) {
-  for (const stabilization of ['none', 'joseph'] as const) {
-    if (algorithm === 'assoc' && stabilization === 'joseph') continue;
-    combos.push({ backend: 'webgpu', dtype: DType.Float32, algorithm, stabilization });
-  }
+  combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm });
 }
 
 // ── Error computation helpers ──────────────────────────────────────────────
@@ -156,24 +146,22 @@ function flattenRef(ref: RefJson, m: number, n: number): number[] {
  * result.xstd = FloatArray[n],        each of length m → xstd[t][i]
  * Uses the result's own dimensions; m/n params are from the reference for sizing only.
  */
-function flattenResult(r: Awaited<ReturnType<typeof dlmFit>>, m: number, n: number): number[] {
+function flattenResult(r: DlmFitResult, m: number, n: number): number[] {
   const out: number[] = [];
-  const yhat = r.yhat as Float64Array;
-  const ystd = r.ystd as Float64Array;
+  const yhat = r.yhat;
+  const ystd = r.ystd;
   const actualN = yhat.length;
-  const actualM = Array.isArray(r.x) ? r.x.length : 0;
   const useN = Math.min(n, actualN);
-  const useM = Math.min(m, actualM);
+  const useM = Math.min(m, r.m);
 
   for (let t = 0; t < useN; t++) out.push(yhat[t]);
   for (let t = 0; t < useN; t++) out.push(ystd[t]);
   for (let i = 0; i < useM; i++) {
-    const xi = r.x[i] as Float64Array;
+    const xi = r.smoothed.series(i);
     for (let t = 0; t < useN; t++) out.push(xi[t]);
   }
   for (let t = 0; t < useN; t++) {
-    const xstdt = r.xstd[t] as Float64Array;
-    for (let i = 0; i < useM; i++) out.push(xstdt[i]);
+    for (let i = 0; i < useM; i++) out.push(r.smoothedStd.get(t, i));
   }
   return out;
 }
@@ -200,7 +188,7 @@ function computeErrors(got: number[], refVals: number[]): { maxAbsErr: number; m
 
 // ── Timing helper ──────────────────────────────────────────────────────────
 
-const dtypeLabel = (d: DType) => d === DType.Float64 ? 'f64' : 'f32';
+const dtypeLabel = (d: DlmDtype) => d;
 
 function isAllFinite(arr: number[] | Float32Array | Float64Array): boolean {
   for (let i = 0; i < arr.length; i++) {
@@ -220,11 +208,6 @@ interface TimingResult {
 async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
   defaultDevice(combo.backend);
   const { y, s, w, options } = model;
-  const run: DlmRunConfig = {
-    dtype: combo.dtype,
-    algorithm: combo.algorithm,
-    stabilization: combo.stabilization,
-  };
 
   const { ref, m, n } = refMap[model.label];
   const refVals = flattenRef(ref, m, n);
@@ -233,9 +216,9 @@ async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
 
   // First run (JIT compilation)
   const t0 = performance.now();
-  let r1: Awaited<ReturnType<typeof dlmFit>>;
+  let r1: DlmFitResult;
   try {
-    r1 = await dlmFit(y, s, w, options, run);
+    r1 = await dlmFit(y, { obsStd: s, processStd: w, dtype: combo.dlmDtype, algorithm: combo.algorithm, ...options });
     if (!isAllFinite(r1.yhat as number[])) stable = false;
     r1[Symbol.dispose]?.();
   } catch {
@@ -245,9 +228,9 @@ async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
 
   // Warm run (cached) — also used for error computation
   const t2 = performance.now();
-  let r2: Awaited<ReturnType<typeof dlmFit>>;
+  let r2: DlmFitResult;
   try {
-    r2 = await dlmFit(y, s, w, options, run);
+    r2 = await dlmFit(y, { obsStd: s, processStd: w, dtype: combo.dlmDtype, algorithm: combo.algorithm, ...options });
   } catch {
     return { firstMs: t1 - t0, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
   }
@@ -277,8 +260,8 @@ function fmtErr(v: number, digits: number): string {
 const allResults: Record<string, unknown>[] = [];
 
 for (const model of models) {
-  const colW = { be: 7, dt: 4, al: 14, st: 7, ti: 8, err: 11 };
-  const divW = colW.be + colW.dt + colW.al + colW.st + colW.ti * 2 + colW.err * 2 + 18;
+  const colW = { be: 7, dt: 4, al: 14, ti: 8, err: 11 };
+  const divW = colW.be + colW.dt + colW.al + colW.ti * 2 + colW.err * 2 + 14;
 
   console.log(`\n${'═'.repeat(divW)}`);
   console.log(`Model: ${model.label}  (n=${model.n}, m=${model.m})`);
@@ -288,7 +271,6 @@ for (const model of models) {
     'backend'.padEnd(colW.be),
     'dtype'.padEnd(colW.dt),
     'algorithm'.padEnd(colW.al),
-    'stab'.padEnd(colW.st),
     'first(ms)'.padStart(colW.ti),
     'warm(ms)'.padStart(colW.ti),
     '  ' + 'max|Δ|'.padStart(colW.err),
@@ -300,22 +282,18 @@ for (const model of models) {
 
   for (const combo of combos) {
     const result = await timedFit(model, combo);
-    const isDefault =
-      (combo.dtype === DType.Float32 && combo.stabilization === 'joseph') ||
-      (combo.dtype === DType.Float64 && combo.stabilization === 'none');
     const isDefaultAlgo =
-      (combo.backend === 'webgpu' && combo.dtype === DType.Float32 && combo.algorithm === 'assoc') ||
+      (combo.backend === 'webgpu' && combo.dlmDtype === 'f32' && combo.algorithm === 'assoc') ||
       (combo.backend !== 'webgpu' && combo.algorithm === 'scan');
-    const defaultMark = (isDefault && isDefaultAlgo) ? ' ←def' : '';
+    const defaultMark = isDefaultAlgo ? ' ←def' : '';
     const status = result.stable
       ? (defaultMark ? `✓${defaultMark}` : '✓')
       : (isNaN(result.firstMs) ? '✗ crash' : '⚠️ NaN');
 
     console.log([
       combo.backend.padEnd(colW.be),
-      dtypeLabel(combo.dtype).padEnd(colW.dt),
+      dtypeLabel(combo.dlmDtype).padEnd(colW.dt),
       combo.algorithm.padEnd(colW.al),
-      combo.stabilization.padEnd(colW.st),
       fmtMs(result.firstMs),
       fmtMs(result.warmMs),
       fmtErr(result.maxAbsErr, 2),
@@ -326,9 +304,8 @@ for (const model of models) {
     allResults.push({
       model: model.label, n: model.n, m: model.m,
       backend: combo.backend,
-      dtype: dtypeLabel(combo.dtype),
+      dtype: dtypeLabel(combo.dlmDtype),
       algorithm: combo.algorithm,
-      stabilization: combo.stabilization,
       firstMs: result.firstMs,
       warmMs: result.warmMs,
       stable: result.stable,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { dlmFit, dlmGenSys } from '../src/index';
+import { dlmFit, dlmGenSys, toMatlab } from '../src/index';
 import { deepAlmostEqual, withLeakCheck } from './utils';
-import { getTestConfigs, applyConfig, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
+import { getTestConfigs, applyConfig, getDlmDtype, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,8 +36,8 @@ describe('dlmGenSys', () => {
     expect(sys.G).toEqual([[1, 1], [0, 1]]);
   });
 
-  it('fullseas=true, ns=12: 11 seasonal states (m=13)', () => {
-    const sys = dlmGenSys({ order: 1, fullseas: true, ns: 12 });
+  it('fullSeasonal=true, seasonLength=12: 11 seasonal states (m=13)', () => {
+    const sys = dlmGenSys({ order: 1, fullSeasonal: true, seasonLength: 12 });
     expect(sys.m).toBe(13);
     expect(sys.F[0]).toBe(1);
     expect(sys.F[1]).toBe(0);
@@ -48,8 +48,8 @@ describe('dlmGenSys', () => {
     expect(sys.G[3][3]).toBe(0);
   });
 
-  it('trig=2, ns=12: 4 harmonic states (m=6)', () => {
-    const sys = dlmGenSys({ order: 1, trig: 2, ns: 12 });
+  it('harmonics=2, seasonLength=12: 4 harmonic states (m=6)', () => {
+    const sys = dlmGenSys({ order: 1, harmonics: 2, seasonLength: 12 });
     expect(sys.m).toBe(6);
     expect(sys.F).toEqual([1, 0, 1, 0, 1, 0]);
     expect(sys.G[2][2]).toBeCloseTo(Math.cos(2 * Math.PI / 12), 10);
@@ -58,24 +58,24 @@ describe('dlmGenSys', () => {
     expect(sys.G[3][3]).toBeCloseTo(Math.cos(2 * Math.PI / 12), 10);
   });
 
-  it('trig > ns/2 throws', () => {
-    expect(() => dlmGenSys({ trig: 7, ns: 12 })).toThrow();
+  it('harmonics > seasonLength/2 throws', () => {
+    expect(() => dlmGenSys({ harmonics: 7, seasonLength: 12 })).toThrow();
   });
 
-  it('trig=ns/2 removes redundant last element', () => {
-    const sys = dlmGenSys({ order: 1, trig: 6, ns: 12 });
+  it('harmonics=seasonLength/2 removes redundant last element', () => {
+    const sys = dlmGenSys({ order: 1, harmonics: 6, seasonLength: 12 });
     expect(sys.m).toBe(13);
   });
 
-  it('arphi: AR(1) adds 1 state', () => {
-    const sys = dlmGenSys({ order: 1, arphi: [0.8] });
+  it('arCoefficients: AR(1) adds 1 state', () => {
+    const sys = dlmGenSys({ order: 1, arCoefficients: [0.8] });
     expect(sys.m).toBe(3);
     expect(sys.G[2][2]).toBeCloseTo(0.8);
     expect(sys.F[2]).toBe(1);
   });
 
-  it('arphi: AR(2) adds 2 states', () => {
-    const sys = dlmGenSys({ order: 1, arphi: [0.5, 0.3] });
+  it('arCoefficients: AR(2) adds 2 states', () => {
+    const sys = dlmGenSys({ order: 1, arCoefficients: [0.5, 0.3] });
     expect(sys.m).toBe(4);
     expect(sys.G[2][2]).toBeCloseTo(0.5);
     expect(sys.G[2][3]).toBeCloseTo(1);
@@ -83,8 +83,8 @@ describe('dlmGenSys', () => {
     expect(sys.G[3][3]).toBeCloseTo(0);
   });
 
-  it('trig=1 + AR(1): seasonal and autoregression combined (m=5)', () => {
-    const sys = dlmGenSys({ order: 1, trig: 1, ns: 12, arphi: [0.7] });
+  it('harmonics=1 + AR(1): seasonal and autoregression combined (m=5)', () => {
+    const sys = dlmGenSys({ order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] });
     expect(sys.m).toBe(5);
     // Trend block: [0..1]
     expect(sys.G[0][0]).toBe(1);
@@ -171,40 +171,40 @@ const modelCases: ModelCase[] = [
     options: { order: 2 },
   },
   {
-    name: 'fullseas=1, ns=12 (full seasonal)',
+    name: 'fullSeasonal=true, seasonLength=12 (full seasonal)',
     inputFile: 'seasonal-in.json',
     referenceFile: 'seasonal-out-m.json',
-    options: { order: 1, fullseas: true, ns: 12 },
+    options: { order: 1, fullSeasonal: true, seasonLength: 12 },
   },
   {
-    name: 'trig=2, ns=12 (trigonometric seasonal, synthetic)',
+    name: 'harmonics=2, seasonLength=12 (trigonometric seasonal, synthetic)',
     inputFile: 'trig-in.json',
     referenceFile: 'trig-out-m.json',
-    options: { order: 1, trig: 2, ns: 12 },
+    options: { order: 1, harmonics: 2, seasonLength: 12 },
   },
   {
-    name: 'Kaisaniemi seasonal demo (order=1, trig=1)',
+    name: 'Kaisaniemi seasonal demo (order=1, harmonics=1)',
     inputFile: 'kaisaniemi-in.json',
     referenceFile: 'kaisaniemi-out-m.json',
-    options: { order: 1, trig: 1 },
+    options: { order: 1, harmonics: 1 },
   },
   {
-    name: 'trig=1, ns=12, arphi=0.7 (seasonal + AR)',
+    name: 'harmonics=1, seasonLength=12, AR(1) (seasonal + AR)',
     inputFile: 'trigar-in.json',
     referenceFile: 'trigar-out-m.json',
-    options: { order: 1, trig: 1, ns: 12, arphi: [0.7] },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] },
   },
   {
     name: 'synthetic energy demand (trend + seasonal + strong AR)',
     inputFile: 'energy-in.json',
     referenceFile: 'energy-out-m.json',
-    options: { order: 1, trig: 1, ns: 12, arphi: [0.85] },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.85] },
   },
   {
     name: 'synthetic AR(2) (damped oscillation)',
     inputFile: 'ar2-in.json',
     referenceFile: 'ar2-out-m.json',
-    options: { order: 1, arphi: [0.6, -0.3] },
+    options: { order: 1, arCoefficients: [0.6, -0.3] },
   },
 ];
 
@@ -247,15 +247,17 @@ describe('dlmGenSys integration tests', async () => {
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
           const result = await withLeakCheck(() =>
-            dlmFit(input.y, input.s, w, config.dtype, mc.options)
+            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options })
           );
+
+          const matlab = toMatlab(result);
 
           // Write debug output
           const outputDir = path.join(__dirname, 'out');
           if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
           fs.writeFileSync(
             path.join(outputDir, mc.referenceFile.replace('-m.json', `-${config.label.replace('/', '-')}.json`)),
-            JSON.stringify(result, (_key, value) =>
+            JSON.stringify(matlab, (_key, value) =>
               ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
             , 2)
           );
@@ -267,7 +269,7 @@ describe('dlmGenSys integration tests', async () => {
           const filteredResult: Record<string, unknown> = {};
           const filteredRef: Record<string, unknown> = {};
           for (const k of keysToCompare) {
-            if (k in result) filteredResult[k] = (result as Record<string, unknown>)[k];
+            if (k in matlab) filteredResult[k] = (matlab as Record<string, unknown>)[k];
             if (k in normalizedRef) filteredRef[k] = normalizedRef[k];
           }
 

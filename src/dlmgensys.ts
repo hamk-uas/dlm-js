@@ -14,18 +14,18 @@
 export interface DlmOptions {
   /** Polynomial trend order: 0 = level, 1 = level+slope, 2 = quadratic (default: 1) */
   order?: number;
-  /** Use full seasonal component with ns-1 states (default: false) */
-  fullseas?: boolean;
-  /** Number of trigonometric harmonic pairs; overrides fullseas if > 0 (default: 0) */
-  trig?: number;
-  /** Number of seasons per cycle (default: 12) */
-  ns?: number;
-  /** AR coefficients; adds AR(p) block where p = arphi.length (default: []) */
-  arphi?: number[];
+  /** Use full seasonal component with seasonLength-1 states (default: false). In MATLAB DLM, this is `fullseas`. */
+  fullSeasonal?: boolean;
+  /** Number of trigonometric harmonic pairs; overrides fullSeasonal if > 0 (default: 0). In MATLAB DLM, this is `trig`. */
+  harmonics?: number;
+  /** Number of seasons per cycle (default: 12). In MATLAB DLM, this is `ns`. */
+  seasonLength?: number;
+  /** AR coefficients; adds AR(p) block where p = arCoefficients.length (default: []). In MATLAB DLM, this is `arphi`. */
+  arCoefficients?: number[];
   /** Spline mode: modifies W for order=1 (default: false) */
   spline?: boolean;
-  /** Fit AR coefficients via MLE optimization (default: false) */
-  fitar?: boolean;
+  /** Fit AR coefficients via MLE optimization (default: false). In MATLAB DLM, this is `fitar`. */
+  fitAr?: boolean;
 }
 
 /**
@@ -38,20 +38,20 @@ export interface DlmOptions {
  * @returns Array of 0-based state indices, or empty if no AR component
  */
 export function findArInds(options: DlmOptions): number[] {
-  const arphi = options.arphi ?? [];
-  const nar = arphi.length;
+  const arCoefficients = options.arCoefficients ?? [];
+  const nar = arCoefficients.length;
   if (nar === 0) return [];
 
   const order = options.order ?? 1;
-  const trig = options.trig ?? 0;
-  const ns = options.ns ?? 12;
-  const fullseas = trig > 0 ? false : (options.fullseas ?? false);
+  const harmonics = options.harmonics ?? 0;
+  const seasonLength = options.seasonLength ?? 12;
+  const fullSeasonal = harmonics > 0 ? false : (options.fullSeasonal ?? false);
 
   let offset = order + 1;  // trend block size
-  if (fullseas) {
-    offset += ns - 1;
-  } else if (trig > 0) {
-    offset += Math.min(ns - 1, trig * 2);
+  if (fullSeasonal) {
+    offset += seasonLength - 1;
+  } else if (harmonics > 0) {
+    offset += Math.min(seasonLength - 1, harmonics * 2);
   }
 
   return Array.from({ length: nar }, (_, i) => offset + i);
@@ -89,15 +89,15 @@ function stackMatrices(a: number[][], b: number[][]): number[][] {
 
 export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
   const order = options.order ?? 1;
-  const trig = options.trig ?? 0;
-  const ns = options.ns ?? 12;
-  const arphi = options.arphi ?? [];
+  const harmonics = options.harmonics ?? 0;
+  const seasonLength = options.seasonLength ?? 12;
+  const arCoefficients = options.arCoefficients ?? [];
 
-  // If trig > 0, disable fullseas (MATLAB convention)
-  const fullseas = trig > 0 ? false : (options.fullseas ?? false);
+  // If harmonics > 0, disable fullSeasonal (MATLAB convention)
+  const fullSeasonal = harmonics > 0 ? false : (options.fullSeasonal ?? false);
 
-  if (trig > ns / 2) {
-    throw new Error(`trig must be between 0 and ns/2, got trig=${trig} with ns=${ns}`);
+  if (harmonics > seasonLength / 2) {
+    throw new Error(`harmonics must be between 0 and seasonLength/2, got harmonics=${harmonics} with seasonLength=${seasonLength}`);
   }
 
   // ─── Polynomial trend component ───
@@ -117,10 +117,10 @@ export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
   let Gs: number[][] = [];
   let Fs: number[] = [];
 
-  if (fullseas) {
-    // Full seasonal: (ns-1)×(ns-1) companion matrix
+  if (fullSeasonal) {
+    // Full seasonal: (seasonLength-1)×(seasonLength-1) companion matrix
     // First row all -1, subdiagonal = 1
-    const seasSize = ns - 1;
+    const seasSize = seasonLength - 1;
     Gs = Array.from({ length: seasSize }, (_, i) => {
       const row = new Array(seasSize).fill(0);
       if (i === 0) {
@@ -132,10 +132,10 @@ export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
     });
     Fs = new Array(seasSize).fill(0);
     Fs[0] = 1;
-  } else if (trig > 0) {
+  } else if (harmonics > 0) {
     // Trigonometric harmonics: k rotation blocks
-    for (let k = 1; k <= trig; k++) {
-      const angle = (2 * Math.PI * k) / ns;
+    for (let k = 1; k <= harmonics; k++) {
+      const angle = (2 * Math.PI * k) / seasonLength;
       const cos_k = Math.cos(angle);
       const sin_k = Math.sin(angle);
 
@@ -154,8 +154,8 @@ export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
       Gs.push(row1, row2);
       Fs.push(1, 0);
     }
-    // If trig == ns/2 and ns is even, remove last element (redundant)
-    if (trig === ns / 2) {
+    // If harmonics == seasonLength/2 and seasonLength is even, remove last element (redundant)
+    if (harmonics === seasonLength / 2) {
       const lastIdx = Gs.length - 1;
       Gs = Gs.slice(0, lastIdx).map(row => row.slice(0, lastIdx));
       Fs = Fs.slice(0, lastIdx);
@@ -165,15 +165,15 @@ export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
   // ─── AR component ───
   let Gar: number[][] = [];
   let Far: number[] = [];
-  const nar = arphi.length;
+  const nar = arCoefficients.length;
   if (nar > 0) {
-    // Companion form: first column = arphi, rest = shifted identity
+    // Companion form: first column = arCoefficients, rest = shifted identity
     // [a1, 1, 0, ...]
     // [a2, 0, 1, ...]
     // [ap, 0, 0, ...]
     Gar = Array.from({ length: nar }, (_, i) => {
       const row = new Array(nar).fill(0);
-      row[0] = arphi[i];
+      row[0] = arCoefficients[i];
       if (i + 1 < nar) row[i + 1] = 1;
       return row;
     });

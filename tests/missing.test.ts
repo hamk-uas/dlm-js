@@ -18,9 +18,9 @@
  * since JSON null ≠ NaN across the wire; deepAlmostEqual handles NaN vs NaN.
  */
 import { describe, it, expect } from 'vitest';
-import { dlmFit } from '../src/index';
+import { dlmFit, toMatlab } from '../src/index';
 import { filterKeys, deepAlmostEqual, normalizeNulls, normalizeMatlabOutput, withLeakCheck } from './utils';
-import { getTestConfigs, applyConfig, type TestConfig } from './test-matrix';
+import { getTestConfigs, applyConfig, getDlmDtype, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -61,16 +61,20 @@ const runTest = async (
   const result = await withLeakCheck(() =>
     dlmFit(
       Float64Array.from(y.map(v => (v === null ? NaN : v))),
-      s,
-      wArr as number[],
-      config.dtype,
-      options as any,
+      {
+        obsStd: s,
+        processStd: wArr as number[],
+        dtype: getDlmDtype(config),
+        ...(options as any),
+      },
     )
   );
 
+  const matlab = toMatlab(result);
+
   // ── Check nobs matches reference ─────────────────────────────────────────
   const refNobs = ref['nobs'] as number;
-  expect(result.nobs).toBe(refNobs);
+  expect(matlab.nobs).toBe(refNobs);
 
   // Normalize Octave reference for structural differences (e.g. m=1 collapsing)
   const normalizedRef = normalizeMatlabOutput(ref as Record<string, unknown>, m);
@@ -78,11 +82,11 @@ const runTest = async (
   // ── Numeric comparison of state estimates and predictions ────────────────
   const outputFileName = path.join(outDir,
     `missing-${label}-${config.label.replace('/', '-')}.json`);
-  fs.writeFileSync(outputFileName, JSON.stringify(result, (_key, value) =>
+  fs.writeFileSync(outputFileName, JSON.stringify(matlab, (_key, value) =>
     ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
   , 2));
 
-  const filteredResult    = filterKeys(result, COMPARE_KEYS) as Record<string, unknown>;
+  const filteredResult    = filterKeys(matlab, COMPARE_KEYS) as Record<string, unknown>;
   const filteredReference = filterKeys(normalizedRef, COMPARE_KEYS) as Record<string, unknown>;
 
   const cmp = deepAlmostEqual(

@@ -12,7 +12,7 @@
  * Output: assets/timings/bench-checkpoint.json
  */
 
-import { DType, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmMLE } from "../src/mle.ts";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -36,7 +36,7 @@ const energyIn = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), 
 
 async function runBench(
   y: number[],
-  options: Parameters<typeof dlmMLE>[1],
+  options: Record<string, unknown>,
   checkpoint: boolean,
 ): Promise<number> {  // returns mean ms
   const times: number[] = [];
@@ -44,17 +44,7 @@ async function runBench(
     const t0 = performance.now();
     await dlmMLE(
       y,
-      options,
-      undefined,  // init
-      MAX_ITER,
-      LR,
-      1e-6,       // tol
-      DType.Float64,
-      undefined,  // callbacks
-      undefined,  // X
-      undefined,  // sFixed
-      undefined,  // adamOpts
-      checkpoint,
+      { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const, checkpoint },
     );
     if (r >= WARMUP_RUNS) times.push(performance.now() - t0);
   }
@@ -81,8 +71,8 @@ console.log(
     `+${Math.round(nile_speedup)}%`].map(s => s.padEnd(22)).join(" ")
 );
 
-const energy_false  = await runBench(energyIn.y, { order: 1, trig: 1, arphi: [0.85] }, false);
-const energy_true   = await runBench(energyIn.y, { order: 1, trig: 1, arphi: [0.85] }, true);
+const energy_false  = await runBench(energyIn.y, { order: 1, harmonics: 1, arCoefficients: [0.85] }, false);
+const energy_true   = await runBench(energyIn.y, { order: 1, harmonics: 1, arCoefficients: [0.85] }, true);
 const energy_speedup = (energy_true / energy_false - 1) * 100;
 console.log(
   ["Energy (n=120, m=5)",

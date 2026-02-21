@@ -10,7 +10,7 @@
  *   tmp/mle-frames-energy-assoc.json  (associativeScan variant)
  */
 
-import { DType, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmFit } from "../src/index.ts";
 import { dlmMLE } from "../src/mle.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -25,10 +25,9 @@ const input = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "ut
 const y: number[] = input.y;
 const n = y.length;
 const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
-const dtype = DType.Float64;
 
 // Model: trend + seasonal + AR(1), with AR coefficient estimation
-const options = { order: 1, trig: 1, ns: 12, arphi: [0.5], fitar: true };
+const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
 const m = 5; // 2 (poly order=1) + 2 (trig k=1) + 1 (AR)
 const nSwParams = 1 + m; // theta[0]=log(s), theta[1..5]=log(w[i])
 const maxIter = 300;
@@ -64,29 +63,30 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
   const thetaHistory: number[][] = [];
 
   const mle = await withLeakCheck(() =>
-    dlmMLE(y, options, undefined, maxIter, lr, tol, dtype, {
-      onInit: (theta) => {
-        thetaHistory.push(Array.from(theta));
+    dlmMLE(y, {
+      ...options, maxIter, lr, tol, dtype: 'f64',
+      callbacks: {
+        onInit: (theta) => {
+          thetaHistory.push(Array.from(theta));
+        },
+        onIteration: (_iter, theta, _lik) => {
+          thetaHistory.push(Array.from(theta));
+        },
       },
-      onIteration: (_iter, theta, _lik) => {
-        thetaHistory.push(Array.from(theta));
-      },
-    },
-    undefined, undefined, undefined,
-    forceAssocScan,
-    )
+      algorithm: forceAssocScan ? 'assoc' : undefined,
+    })
   );
 
   const elapsed = mle.elapsed;
-  const jitMs = mle.jitMs;
+  const jitMs = mle.compilationMs;
   const totalIters = mle.iterations;
-  const likHistory = mle.likHistory;
+  const likHistory = mle.devianceHistory;
 
   // Extract arphi history from theta (AR coeff is at index nSwParams, unconstrained)
   const arphiHistory = thetaHistory.slice(1).map((td) => td[nSwParams]);
 
   console.log(`  Done: ${totalIters} iterations in ${elapsed.toFixed(0)} ms`);
-  console.log(`  Final: s=${mle.s.toFixed(4)}, arphi=${mle.arphi?.[0]?.toFixed(4)}`);
+console.log(`  Final: s=${mle.obsStd.toFixed(4)}, arphi=${mle.arCoefficients?.[0]?.toFixed(4)}`);
 
   // Phase 2: Compute frame sampling
   const animDuration = elapsed / 1000;
@@ -116,21 +116,21 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
     const lik = idx === 0 ? null : likHistory[idx - 1];
 
     // Run dlmFit with the AR coefficient at this iteration
-    const fitOpts = { ...options, arphi, fitar: false };
-    const fit = await withLeakCheck(() => dlmFit(yArr, s, w, dtype, fitOpts));
+    const fitOpts = { ...options, arCoefficients: arphi, fitAr: false };
+    const fit = await withLeakCheck(() => dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f64', ...fitOpts }));
 
     // Combined signal: F·x = x[0] + x[2] + x[4]
     const combined = Array.from({ length: n }, (_, i) =>
-      fInds.reduce((sum, fi) => sum + fit.x[fi][i], 0),
+      fInds.reduce((sum, fi) => sum + fit.smoothed.get(i, fi), 0),
     );
 
     // Combined std: sqrt(sum of Var + 2*sum of Cov for all fInds pairs)
     const combinedStd = Array.from({ length: n }, (_, i) => {
       let variance = 0;
-      for (const fi of fInds) variance += fit.C[fi][fi][i];
+      for (const fi of fInds) variance += fit.smoothedCov.get(i, fi, fi);
       for (let a = 0; a < fInds.length; a++) {
         for (let b = a + 1; b < fInds.length; b++) {
-          variance += 2 * fit.C[fInds[a]][fInds[b]][i];
+          variance += 2 * fit.smoothedCov.get(i, fInds[a], fInds[b]);
         }
       }
       return Math.sqrt(Math.max(0, variance));
@@ -173,9 +173,9 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
 
   // Write timing sidecar
   const sidecar = suffix === "scan" ? "collect-energy-mle-frames" : `collect-energy-mle-frames-${suffix}`;
-  writeTimingsSidecar(sidecar, { elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.lik });
+  writeTimingsSidecar(sidecar, { elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.deviance });
 
-  return { elapsed, totalIters, lik: mle.lik };
+  return { elapsed, totalIters, lik: mle.deviance };
 }
 
 // ── Run both variants ──────────────────────────────────────────────────────

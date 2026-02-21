@@ -13,7 +13,7 @@
  * Output: assets/timings/bench-gpu.json
  */
 
-import { DType, defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
+import { defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
 import { dlmFit } from "../src/index.ts";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -65,14 +65,14 @@ const models: Model[] = [
     label: "Kaisaniemi, trig",
     key: "kaisaniemi",
     y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: kaisaniemiIn.w,
-    options: { order: 1, trig: 1, ns: 12 },
+    options: { order: 1, harmonics: 1, seasonLength: 12 },
     n: 117, m: 4,
   },
   {
     label: "Energy, trig+AR",
     key: "trigar",
     y: trigarIn.y, s: trigarIn.s, w: trigarIn.w,
-    options: { order: 1, trig: 1, ns: 12, arphi: trigarIn.arphi },
+    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: trigarIn.arphi },
     n: 120, m: 5,
   },
 ];
@@ -84,13 +84,13 @@ async function timedFit(model: Model): Promise<{ firstMs: number; warmMs: number
 
   // First run (JIT compilation)
   const t0 = performance.now();
-  const r1 = await dlmFit(y, s, w, DType.Float32, options);
+  const r1 = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f32', ...options });
   const t1 = performance.now();
   r1[Symbol.dispose]?.();
 
   // Warm run (cached)
   const t2 = performance.now();
-  const r2 = await dlmFit(y, s, w, DType.Float32, options);
+  const r2 = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f32', ...options });
   const t3 = performance.now();
   r2[Symbol.dispose]?.();
 

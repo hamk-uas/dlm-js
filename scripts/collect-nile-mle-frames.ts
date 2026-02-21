@@ -10,7 +10,7 @@
  *   tmp/mle-frames-nile-assoc.json  (associativeScan variant)
  */
 
-import { DType, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
+import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmFit } from "../src/index.ts";
 import { dlmMLE } from "../src/mle.ts";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -25,7 +25,6 @@ const input = JSON.parse(readFileSync(resolve(root, "tests/niledemo-in.json"), "
 const y: number[] = input.y;
 const t: number[] = input.t;
 const n = y.length;
-const dtype = DType.Float64;
 const options = { order: 1 };
 const m = 2; // order=1 → m=2
 const maxIter = 300;
@@ -57,23 +56,24 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
   const thetaHistory: number[][] = [];
 
   const mle = await withLeakCheck(() =>
-    dlmMLE(y, options, undefined, maxIter, lr, tol, dtype, {
-      onInit: (theta) => {
-        thetaHistory.push(Array.from(theta));
+    dlmMLE(y, {
+      ...options, maxIter, lr, tol, dtype: 'f64',
+      callbacks: {
+        onInit: (theta) => {
+          thetaHistory.push(Array.from(theta));
+        },
+        onIteration: (_iter, theta, _lik) => {
+          thetaHistory.push(Array.from(theta));
+        },
       },
-      onIteration: (_iter, theta, _lik) => {
-        thetaHistory.push(Array.from(theta));
-      },
-    },
-    undefined, undefined, undefined,
-    forceAssocScan,
-    )
+      algorithm: forceAssocScan ? 'assoc' : undefined,
+    })
   );
 
   const elapsed = mle.elapsed;
-  const jitMs = mle.jitMs;
+  const jitMs = mle.compilationMs;
   const totalIters = mle.iterations;
-  const likHistory = mle.likHistory;
+  const likHistory = mle.devianceHistory;
 
   console.log(`  Done: ${totalIters} iterations in ${elapsed.toFixed(0)} ms`);
 
@@ -103,10 +103,10 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
     const w = Array.from({ length: m }, (_, i) => Math.exp(td[1 + i]));
     const lik = idx === 0 ? null : likHistory[idx - 1];
 
-    const fit = await withLeakCheck(() => dlmFit(yArr, s, w, dtype, options));
-    const level = Array.from(fit.x[0]);
-    const std = fit.xstd.map((row: any) => row[0] as number);
-    const ystd = Array.from(fit.ystd as ArrayLike<number>);
+    const fit = await withLeakCheck(() => dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f64', ...options }));
+    const level = Array.from(fit.smoothed.series(0));
+    const std = Array.from({ length: n }, (_, t) => fit.smoothedStd.get(t, 0));
+    const ystd = Array.from(fit.ystd);
     frames.push({ iter: idx, s, w, lik, level, std, ystd });
 
     const likStr = lik !== null ? lik.toFixed(2) : "—";
@@ -142,9 +142,9 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
 
   // Write timing sidecar
   const sidecar = suffix === "scan" ? "collect-nile-mle-frames" : `collect-nile-mle-frames-${suffix}`;
-  writeTimingsSidecar(sidecar, { elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.lik });
+  writeTimingsSidecar(sidecar, { elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.deviance });
 
-  return { elapsed, totalIters, lik: mle.lik };
+  return { elapsed, totalIters, lik: mle.deviance };
 }
 
 // ── Run both variants ──────────────────────────────────────────────────────
