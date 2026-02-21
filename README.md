@@ -339,23 +339,23 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 
 | backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | Gapped | max \|Δ\| | max \|Δ\|% |
 |---------|-------|-----------|------|----------|----------|------------|--------|---------|----------|------------|
-| **cpu** | **f64** | **scan** | **—** | **166 ms** | **358 ms** | **435 ms** | **478 ms** | **—** | **3.78e-8** | **1.62e-4** |
+| **cpu** | **f64** | **scan** | **—** | **166 ms** | **358 ms** | **435 ms** | **478 ms** | **356 ms** | **3.78e-8** | **1.62e-4** |
 | | | scan | joseph | 191 ms | 389 ms | 481 ms | 528 ms | — | 9.38e-11 | 3.56e-9 |
-| | | assoc | — | 74 ms | 201 ms | 853 ms | 1534 ms | — | 5.12e-9 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **184 ms** | **384 ms** | **484 ms** | **533 ms** | **—** | **1.32e-2** | **0.17** |
+| | | assoc | — | 74 ms | 201 ms | 853 ms | 1534 ms | 213 ms | 1.33e-8 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **184 ms** | **384 ms** | **484 ms** | **533 ms** | **392 ms** | **1.32e-2** | **0.17** |
 | | | scan | — | 171 ms | 345 ms | 439 ms | 482 ms | — | ⚠️ 180 | ⚠️ 1.4e6 |
-| | | assoc | — | 67 ms | 204 ms | 869 ms | 1552 ms | — | 4.93e-3 | 19.7 |
-| **wasm** | **f64** | **scan** | **—** | **16 ms** | **20 ms** | **22 ms** | **23 ms** | **—** | **3.78e-8** | **1.62e-4** |
+| | | assoc | — | 67 ms | 204 ms | 869 ms | 1552 ms | 214 ms | 1.28e-2 | 19.7 |
+| **wasm** | **f64** | **scan** | **—** | **16 ms** | **20 ms** | **22 ms** | **23 ms** | **20 ms** | **3.78e-8** | **1.62e-4** |
 | | | scan | joseph | 18 ms | 22 ms | 22 ms | 22 ms | — | 9.38e-11 | 3.56e-9 |
-| | | assoc | — | 24 ms | 25 ms | 32 ms | 39 ms | — | 5.12e-9 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **17 ms** | **20 ms** | **24 ms** | **21 ms** | **—** | **3.99e-2** | **1.37** |
+| | | assoc | — | 24 ms | 25 ms | 32 ms | 39 ms | 24 ms | 1.33e-8 | 2.17e-5 |
+| | **f32** | **scan** | **joseph** | **17 ms** | **20 ms** | **24 ms** | **21 ms** | **22 ms** | **3.99e-2** | **1.37** |
 | | | scan | — | 15 ms | 20 ms | 21 ms | 19 ms | — | ⚠️ 7000 | ⚠️ 2e6 |
-| | | assoc | — | 23 ms | 24 ms | 33 ms | 36 ms | — | 4.93e-3 | 21.9 |
-| **webgpu** | **f32** | **assoc** | **—** | **325 ms** | **353 ms** | **356 ms** | **372 ms** | **—** | **4.93e-3** | **19.8** |
-| | | scan | — | 549 ms | 913 ms | 1011 ms | 1141 ms | — | ⚠️ 110 | ⚠️ 6.7e4 |
+| | | assoc | — | 23 ms | 24 ms | 33 ms | 36 ms | 23 ms | 1.21e-2 | 21.9 |
+| **webgpu** | **f32** | **assoc** | **—** | **325 ms** | **353 ms** | **356 ms** | **372 ms** | **⚠️ NaN** | **⚠️ 92.2** | **⚠️ 62.8** |
+| | | scan | — | 549 ms | 913 ms | 1011 ms | 1141 ms | ⚠️ NaN | ⚠️ 110 | ⚠️ 6.7e4 |
 | | | scan | joseph | 712 ms | 888 ms | 1041 ms | 1169 ms | — | 2.49e-2 | 1.32 |
 
-⚠️ = numerically unstable: f32 + scan without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). Both columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
+⚠️ = numerically unstable. f32 + scan without Joseph-form stabilization blows up for larger state dimensions (m ≥ 4). WebGPU additionally produces NaN outputs when the data contains missing (NaN) observations. Both columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
@@ -363,7 +363,7 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 - **`assoc` on WASM has no warm-run advantage over `scan`** — warm times are nearly identical (~20–40 ms) for all models; the first-run cost is ~5× higher due to extra JIT compilation paths, so prefer `scan` on WASM unless you need the parallel path explicitly.
 - **Why does joseph/f64 match Octave ~3,000× better than f64 (no joseph)?** MATLAB DLM (`dlmsmo.m`) does not use Joseph form — it uses the standard update plus `triu + triu'` symmetrization and `abs(diag)` correction (see MATLAB DLM comparison above). Both approaches stabilize the numerical trajectory similarly, pushing both implementations toward the same stable attractor. The ~3,000× improvement is real (9.38e-11 vs 3.78e-8 max |Δ|).
 - **`assoc + joseph` is handled automatically** — the assoc path always applies its own numerically stable formulation. Stabilization is auto-selected internally and not a user-facing option.
-- **f32 + scan without joseph is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph, as shown by the reasonable 4.93e-3 max error vs the ⚠️ 7000 for f32+scan.
+- **f32 + scan without joseph is dangerous for large models** — covariance catastrophically cancels for m ≥ 4; `joseph` form (or `assoc`) is required for float32 stability. The `assoc` path is stable with float32 even without joseph on non-gapped data, as shown by the reasonable 1.28e-2 max error vs the ⚠️ 7000 for f32+scan.
 - **Joseph form overhead is negligible on WASM** — f32+joseph vs f64 (no joseph) differ by <5 ms across all models, well within JIT variance. The stabilization (auto-selected internally) is numerically important but not a performance concern.
 - **WebGPU `assoc` is ~4× faster than WebGPU `scan`** for larger models (m=4–5) — sequential scan on WebGPU dispatches O(n) kernels (no GPU parallelism); `assoc` uses O(log n) dispatches (Kogge-Stone), cutting ms from ~1800 to ~450 for Energy.
 - **WebGPU `scan` is the worst option** — 1800 ms warm for Energy (m=5) vs 29 ms on WASM; every filter step is a separate GPU dispatch with no cross-workgroup sync.
