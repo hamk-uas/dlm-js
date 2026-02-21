@@ -7,6 +7,7 @@ import {
 import type {
   DlmFitResult, DlmForecastResult, DlmTensorResult,
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
+  DlmStabilization,
 } from "./types";
 import { dlmGenSys } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
@@ -15,7 +16,7 @@ import type { DlmOptions } from "./dlmgensys";
 export type {
   DlmFitResult, DlmForecastResult, DlmTensorResult,
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
-  DlmDtype, DlmAlgorithm, DlmLossFn,
+  DlmDtype, DlmAlgorithm, DlmLossFn, DlmStabilization,
   FloatArray,
 } from "./types";
 export { StateMatrix, CovMatrix } from "./types";
@@ -76,6 +77,7 @@ const dlmSmo = async (
   dtype: DType = DType.Float64,
   FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
   forceAssocScan?: boolean,
+  stabilization?: DlmStabilization,
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y.length;
 
@@ -99,6 +101,23 @@ const dlmSmo = async (
   const device = defaultDevice();
   const f32 = dtype === DType.Float32;
   const useAssocScan = forceAssocScan || (f32 && device === 'webgpu');
+
+  // ── Stabilization flags (f32 sequential backward step only) ──────────────────
+  // Flags are captured as JS constants — each unique combination produces a
+  // different JIT-compiled kernel (acceptable for research/exploration).
+  const stabNSym  = stabilization?.nSym  ?? false;
+  const stabNDiag = stabilization?.nDiag ?? false;
+  const stabNLeak = stabilization?.nLeak ?? false;
+  const stabCDiag = stabilization?.cDiag ?? false;
+  const stabCEps  = stabilization?.cEps  ?? false;
+  // Pre-computed [m,m] constant tensors for stabilization ops.
+  // Created unconditionally to avoid conditional `using` complexity.
+  // Captured by backwardStep closure; disposed when dlmSmo scope exits after jit.
+  using stab_I_eye       = np.eye(stateSize, undefined, { dtype });               // [m,m]
+  using stab_off_I       = np.subtract(np.ones([stateSize, stateSize], { dtype }), stab_I_eye);
+  using stab_nLeak_fact  = np.array(1.0 - 1e-5, { dtype });                       // scalar
+  using stab_cDiag_eps_I = np.multiply(np.array(1e-7, { dtype }), stab_I_eye);   // [m,m]
+  using stab_cEps_I      = np.multiply(np.array(1e-6, { dtype }), stab_I_eye);   // [m,m]
 
   // Stack observations: shape [n, 1, 1] for matmul compatibility
   using y_arr = np.array(Array.from(y).map(yi => [[yi]]), { dtype });
@@ -270,31 +289,69 @@ const dlmSmo = async (
     // C·N·C product below. N accumulates information over the
     // backward pass, so rounding compounds across timesteps.
     using FtCpInvFF = np.matmul(FtCpInv, FFi);  // [m,m]
-    const N_new = np.add(
+    // jax-js-lint: allow-non-using — N stabilization below may replace this binding
+    let N_new = np.add(
       np.multiply(maski, FtCpInvFF),  // [1,1]×[m,m] → [m,m]: 0 when NaN
       np.einsum('ji,jk,kl->il', L, N, L)
     );
-    
+
+    // ── N stabilization (f32 only, sequential path) ─────────────────────────
+    // Applied in order: nSym → nDiag → nLeak. Each may replace N_new with a
+    // stabilized version (accumulator-swap pattern). Ignored on f64 / assoc path.
+    if (f32) {
+      if (stabNSym) {
+        // Symmetrize: N = 0.5*(N + N').
+        // N is mathematically symmetric but f32 rounding in L'·N·L breaks this;
+        // asymmetries compound each step because the result feeds back as input.
+        using Nt = np.transpose(N_new);
+        using Nsum = np.add(N_new, Nt);
+        // jax-js-lint: allow-non-using — accumulator-swap: N_new.dispose() + N_new = N_stab below
+        const N_stab = np.multiply(np.array(0.5, { dtype }), Nsum);
+        N_new.dispose();
+        N_new = N_stab;
+      }
+      if (stabNDiag) {
+        // Clamp diagonal of N to >= 0.
+        // N is an information matrix (should be PSD); f32 rounding can push
+        // diagonal entries negative, causing C·N·C to undercorrect.
+        // Strategy: split N into diagonal (N*I) and off-diagonal (N*(1-I)) parts,
+        // clamp the diagonal part to zero, recombine.
+        // max(N*I, 0) correctly clamps diagonal; off-diag: max(0,0)=0 (no change).
+        using N_d = np.multiply(N_new, stab_I_eye);
+        using N_o = np.multiply(N_new, stab_off_I);
+        using N_d_c = np.maximum(N_d, np.zerosLike(N_d));
+        // jax-js-lint: allow-non-using — accumulator-swap: N_new.dispose() + N_new = N_stab below
+        const N_stab = np.add(N_d_c, N_o);
+        N_new.dispose();
+        N_new = N_stab;
+      }
+      if (stabNLeak) {
+        // Slight forgetting: N *= (1 - 1e-5) per step.
+        // Prevents N from accumulating unboundedly, which would cause
+        // C·N·C to overshoot and produce negative variances in C_smooth.
+        // jax-js-lint: allow-non-using — accumulator-swap: N_new.dispose() + N_new = N_stab below
+        const N_stab = np.multiply(stab_nLeak_fact, N_new);
+        N_new.dispose();
+        N_new = N_stab;
+      }
+    }
+
     // x_smooth = x_pred + C_pred·r_new  [m,1]
     const x_smooth = np.add(xi, np.matmul(Ci, r_new));
-    
+
     // C_smooth = C_pred - C_pred·N_new·C_pred  [m,m]
     //
     // NUMERICAL PRECISION NOTE — MOST SENSITIVE OPERATION:
-    // This subtraction is the single largest source of numerical
-    // error in the DLM. When the smoothing correction C·N·C is
-    // nearly equal to C_pred, we subtract two similar-magnitude
-    // quantities to get a small result — classic catastrophic
-    // cancellation. Float64 keeps errors manageable via Kahan
-    // compensated summation (v0.2.1); Float32 can produce negative
-    // variances for m > 2.
+    // This subtraction is the single largest source of numerical error in the DLM.
+    // When the smoothing correction C·N·C ≈ C_pred, catastrophic cancellation
+    // produces a small result with large relative error. Float64 keeps errors
+    // manageable via Kahan compensated summation; Float32 produces negative
+    // variances for m > 2 even with the joseph form on the forward step.
     //
-    // Float32 stabilization (applied when f32=true):
-    //   1. Symmetrize: C_smooth = 0.5·(C_smooth + C_smooth')
-    //   2. Clamp diagonal: max(diag, 0) to prevent NaN from sqrt
-    // This doesn't fix the cancellation but prevents downstream NaN.
-    // A future parallel smoother (Särkkä §4) will replace this
-    // entire backward step.
+    // Float32 stabilization layers (applied in order, all on top of joseph+sym):
+    //   (default) symmetrize: C = 0.5·(C + C')  — always applied for f32
+    //   cDiag: clamp diag(C) >= 1e-7             — off-diagonal left intact
+    //   cEps:  C += 1e-6·I                        — shifts all eigenvalues up
     let C_smooth: np.Array;
     {
       using C_raw = np.subtract(
@@ -302,19 +359,33 @@ const dlmSmo = async (
         np.einsum('ij,jk,kl->il', Ci, N_new, Ci)
       );
       if (f32) {
-        // Symmetrize: C = 0.5·(C + C') — fixes tiny asymmetries from f32 rounding.
-        // NOTE: We do NOT clamp entries to ≥ 0 here. Off-diagonal entries of a
-        // covariance matrix CAN be negative (negative correlations). Clamping all
-        // entries would destroy the covariance structure for m > 1.
         using Ct = np.transpose(C_raw);
         using sumC = np.add(C_raw, Ct);
-        C_smooth = np.multiply(np.array(0.5, { dtype }), sumC);
+        // jax-js-lint: allow-non-using — cDiag/cEps branch may take ownership
+        const C_sym = np.multiply(np.array(0.5, { dtype }), sumC);
+        if (stabCDiag) {
+          // Clamp diagonal to >= 1e-7, leave off-diagonal intact.
+          // C_d = C * I  (diagonal entries in-place, zeros off-diagonal).
+          // max(C_d, 1e-7*I): diagonal max(C_ii, 1e-7); off-diag: max(0,0)=0.
+          using C_d = np.multiply(C_sym, stab_I_eye);
+          using C_o = np.multiply(C_sym, stab_off_I);
+          using C_d_c = np.maximum(C_d, stab_cDiag_eps_I);
+          C_smooth = np.add(C_d_c, C_o);
+          C_sym.dispose();
+        } else if (stabCEps) {
+          // Add 1e-6·I: shifts all eigenvalues up by 1e-6 (biased but PSD).
+          C_smooth = np.add(C_sym, stab_cEps_I);
+          C_sym.dispose();
+        } else {
+          // Default: symmetrize only (joseph form applied in forward step)
+          C_smooth = C_sym;
+        }
       } else {
         // Float64: use raw result (matches MATLAB dlmsmo.m reference)
-        C_smooth = np.add(C_raw, np.zeros([stateSize, stateSize], { dtype })); // copy to own
+        C_smooth = np.add(C_raw, np.zeros([stateSize, stateSize], { dtype }));
       }
     }
-    
+
     return [{ r: r_new, N: N_new }, { x_smooth, C_smooth }];
   };
 
@@ -833,7 +904,7 @@ export const dlmFit = async (
   const {
     obsStd: s, processStd: w,
     order, harmonics, seasonLength, fullSeasonal, arCoefficients, spline,
-    X, algorithm,
+    X, algorithm, stabilization,
   } = opts;
   const dtype = parseDtype(opts.dtype);
   const forceAssocScan = algorithm === 'assoc' ? true : undefined;
@@ -954,7 +1025,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr, forceAssocScan);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G, W, C0_data, m, dtype, FF_arr, forceAssocScan, stabilization);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -968,7 +1039,7 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr, forceAssocScan);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G, W, C0_scaled, m, dtype, FF_arr, forceAssocScan, stabilization);
 
   FF_arr?.dispose();
 

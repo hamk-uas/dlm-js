@@ -413,6 +413,49 @@ export interface DlmForecastResult {
 // ─── Options types ──────────────────────────────────────────────────────────
 
 /**
+ * Incremental stabilization flags for the Float32 backward smoother.
+ *
+ * Each flag adds one operation on top of the default joseph+symmetrize baseline.
+ * All flags are f32-only (silently ignored for f64) and apply to the sequential
+ * scan path only (the assoc/WebGPU path has its own internal stabilization).
+ *
+ * Use {@link scripts/stab-search.ts} to run a greedy search finding the best
+ * combination for your model dimension and series length.
+ */
+export interface DlmStabilization {
+  /**
+   * Symmetrize N after each backward step: N = 0.5*(N + N').
+   * N is an information matrix and should be symmetric, but f32 rounding in
+   * the L'·N·L einsum introduces asymmetries that compound over many steps.
+   */
+  nSym?: boolean;
+  /**
+   * Clamp diagonal of N to >= 0 after each backward step.
+   * N is an information (Fisher) matrix and should be PSD; negative diagonal
+   * entries from f32 rounding cause C·N·C to undercorrect, widening C_smooth.
+   */
+  nDiag?: boolean;
+  /**
+   * Multiply N by (1 - 1e-5) after each backward step.
+   * Slight forgetting that prevents N from accumulating unboundedly over long
+   * series, which would cause C·N·C to overshoot and produce negative C_smooth.
+   */
+  nLeak?: boolean;
+  /**
+   * Clamp diagonal of C_smooth to >= 1e-7 after symmetrize.
+   * Off-diagonal entries (which can legitimately be negative) are left intact.
+   * Prevents negative variances from causing NaN in sqrt(diag(C_smooth)).
+   */
+  cDiag?: boolean;
+  /**
+   * Add 1e-6·I to C_smooth after symmetrize.
+   * Stronger PSD guarantee than cDiag (shifts all eigenvalues up by 1e-6)
+   * at the cost of a small bias in the smoothed covariance estimates.
+   */
+  cEps?: boolean;
+}
+
+/**
  * Options for {@link dlmFit} and dlmFitTensor.
  */
 export interface DlmFitOptions {
@@ -449,6 +492,12 @@ export interface DlmFitOptions {
   dtype?: DlmDtype;
   /** Algorithm selection. `'scan'` = sequential, `'assoc'` = parallel associative scan. Default: auto-select from device/dtype. */
   algorithm?: DlmAlgorithm;
+  /**
+   * @experimental Incremental Float32 stabilization flags for the backward smoother.
+   * Stacks on top of the default joseph+symmetrize. See {@link DlmStabilization}.
+   * Ignored when dtype is 'f64' or algorithm is 'assoc'.
+   */
+  stabilization?: DlmStabilization;
 }
 
 /**

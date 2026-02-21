@@ -45,6 +45,7 @@
     "bench:gpu": "deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run scripts/bench-gpu.ts",
     "bench:backends": "npx tsx scripts/bench-backends.ts && pnpm run update:timings",
     "bench:scaling": "deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run scripts/bench-scaling.ts",
+    "stab:search": "npx tsx scripts/stab-search.ts",
     "bench:wasm": "pnpm run gen:svg:fit && npx tsx scripts/collect-nile-mle-frames.ts && npx tsx scripts/gen-nile-mle-anim-svg.ts scan && npx tsx scripts/gen-nile-mle-anim-svg.ts assoc && npx tsx scripts/collect-energy-mle-frames.ts && npx tsx scripts/gen-energy-mle-anim-svg.ts scan && npx tsx scripts/gen-energy-mle-anim-svg.ts assoc && pnpm run bench:backends && pnpm run bench:mle && pnpm run bench:checkpoint && pnpm run update:timings",
     "update:timings": "npx tsx scripts/update-timings.ts",
     "update:timings:dry": "npx tsx scripts/update-timings.ts -- --dry",
