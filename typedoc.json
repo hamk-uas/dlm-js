@@ -13,6 +13,6 @@
   "navigation": {
     "includeFolders": false
   },
-  "plugin": ["typedoc-theme-fresh"],
+  "plugin": ["typedoc-plugin-katex", "typedoc-theme-fresh"],
   "theme": "fresh"
 }

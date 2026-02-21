@@ -19,6 +19,7 @@
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
     "typedoc": "^0.28.17",
+    "typedoc-plugin-katex": "^0.1.2",
     "typedoc-theme-fresh": "^0.2.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",

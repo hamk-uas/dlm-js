@@ -30,6 +30,9 @@ importers:
       typedoc:
         specifier: ^0.28.17
         version: 0.28.17(typescript@5.9.3)
+      typedoc-plugin-katex:
+        specifier: ^0.1.2
+        version: 0.1.2
       typedoc-theme-fresh:
         specifier: ^0.2.3
         version: 0.2.3(typedoc@0.28.17(typescript@5.9.3))
@@ -1444,6 +1447,9 @@ packages:
   type-detect@4.1.0:
     resolution: {integrity: sha512-Acylog8/luQ8L7il+geoSxhEkazvkslg7PSNKOX59mbB9cOveP5aq9h74Y7YU8yDpJwetzQQrfIwtf4Wp4LKcw==}
     engines: {node: '>=4'}
+
+  typedoc-plugin-katex@0.1.2:
+    resolution: {integrity: sha512-2TsaDyvQVYq1yEa7v7MPz4GEM1iWlu4QWeEtcx3B1FyLdHRDoAf0aEW2zo7By8aOyrI1yWA4hnAZKYg1iW/HHA==}
 
   typedoc-theme-fresh@0.2.3:
     resolution: {integrity: sha512-SKSKyULDZMTMViCSY9A1e/Y9+A38oMfjHD6kpNdtb5+EBsiAUJfnuXWGu4tYPn6gon5KqzhWYwIqZv2T8/I/Tw==}
@@ -2925,6 +2931,8 @@ snapshots:
       prelude-ls: 1.2.1
 
   type-detect@4.1.0: {}
+
+  typedoc-plugin-katex@0.1.2: {}
 
   typedoc-theme-fresh@0.2.3(typedoc@0.28.17(typescript@5.9.3)):
     dependencies:
