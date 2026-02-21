@@ -1,6 +1,6 @@
 addpath('tests/octave', 'tests/octave/dlm');
 
-%% Missing data (NaN) test
+%% Gapped data (NaN) test
 %
 % Tests that the Kalman filter correctly handles missing observations by
 % skipping the measurement update at NaN timesteps, matching MATLAB dlmsmo
@@ -10,7 +10,7 @@ addpath('tests/octave', 'tests/octave/dlm');
 %   Test A — order=1 (local level + slope), ~23% missing observations
 %   Test B — order=0 (local level only),    ~23% missing observations
 %
-% Missing pattern is deterministic: every 7th observation is NaN,
+% Gap pattern is deterministic: every 7th observation is NaN,
 % plus a fixed block (indices 30..39).  No MCMC sampling — dlmsmo called
 % with sample=0 to avoid mvnorrnan issues with NaN data.
 
@@ -25,8 +25,8 @@ nan_mask = false(n, 1);
 nan_mask(7:7:n) = true;          % every 7th observation
 nan_mask(30:39) = true;           % contiguous block
 
-y_missing = y_full;
-y_missing(nan_mask) = NaN;
+y_gapped = y_full;
+y_gapped(nan_mask) = NaN;
 
 nobs_expected = n - sum(nan_mask);   % observations actually used
 fprintf('n=%d, nans=%d, nobs=%d\n', n, sum(nan_mask), nobs_expected);
@@ -65,15 +65,15 @@ function out = run_dlm_nosample(y, s, wdiag, options)
 end
 
 %% Test A: order=1 (local level + slope, m=2)
-fprintf('\nTest A: order=1 with missing data\n');
+fprintf('\nTest A: order=1 with gapped data\n');
 
 options_A = struct('order', 1);
-out_A = run_dlm_nosample(y_missing, s, w, options_A);
+out_A = run_dlm_nosample(y_gapped, s, w, options_A);
 
 fprintf('  nobs=%d (expected %d)\n', out_A.nobs, nobs_expected);
 
 inputs_A = struct( ...
-  'y',              y_missing, ...
+  'y',              y_gapped, ...
   'y_full',         y_full, ...
   'nan_mask',       double(nan_mask), ...
   's',              s, ...
@@ -81,28 +81,28 @@ inputs_A = struct( ...
   'options',        options_A, ...
   'nobs_expected',  nobs_expected ...
 );
-save_json(inputs_A, 'tests/missing-in.json');
-save_json(out_A,    'tests/missing-out-m.json');
-disp('  Saved tests/missing-{in,out-m}.json');
+save_json(inputs_A, 'tests/gapped-in.json');
+save_json(out_A,    'tests/gappedout-m.json');
+disp('  Saved tests/gapped-{in,out-m}.json');
 
 %% Test B: order=0 (local level only, m=1)
-fprintf('\nTest B: order=0 with missing data\n');
+fprintf('\nTest B: order=0 with gapped data\n');
 
 w_level = w(1);
 options_B = struct('order', 0);
-out_B = run_dlm_nosample(y_missing, s, w_level, options_B);
+out_B = run_dlm_nosample(y_gapped, s, w_level, options_B);
 
 fprintf('  nobs=%d (expected %d)\n', out_B.nobs, nobs_expected);
 
 inputs_B = struct( ...
-  'y',       y_missing, ...
+  'y',       y_gapped, ...
   's',       s, ...
   'w',       w_level, ...
   'options', options_B ...
 );
-save_json(inputs_B, 'tests/missing-order0-in.json');
-save_json(out_B,    'tests/missing-order0-out-m.json');
-disp('  Saved tests/missing-order0-{in,out-m}.json');
+save_json(inputs_B, 'tests/gapped-order0-in.json');
+save_json(out_B,    'tests/gapped-order0-out-m.json');
+disp('  Saved tests/gapped-order0-{in,out-m}.json');
 
-disp('missingdata_test.m done.');
+disp('gappeddata_test.m done.');
 

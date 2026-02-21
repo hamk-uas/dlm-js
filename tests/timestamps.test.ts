@@ -239,7 +239,7 @@ describe('timestamps', () => {
     });
   });
 
-  // ── Timestamps vs NaN-padded equivalence (order=1, Nile missing data) ──
+  // ── Timestamps vs NaN-padded equivalence (order=1, Nile gapped data) ──
 
   describe('timestamps vs NaN-padded equivalence (order=1)', () => {
     it('smoothed states match at observed indices', async () => {
@@ -249,11 +249,11 @@ describe('timestamps', () => {
       applyConfig(config);
       const dlmDtype = getDlmDtype(config);
 
-      // Use actual Nile missing data from tests/missing-in.json
+      // Use actual Nile gapped data from tests/gapped-in.json
       const { readFileSync } = await import('node:fs');
       const { resolve, dirname } = await import('node:path');
       const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
-      const input = JSON.parse(readFileSync(resolve(root, 'tests/missing-in.json'), 'utf8'));
+      const input = JSON.parse(readFileSync(resolve(root, 'tests/gapped-in.json'), 'utf8'));
 
       const yRaw: (number | null)[] = input.y;
       const y: number[] = yRaw.map((v: number | null) => (v === null ? NaN : v));

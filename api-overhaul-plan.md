@@ -910,7 +910,7 @@ All JSDoc gets updated with:
 | `tests/mle.test.ts` | Update `result.s`, `result.w`, `result.lik` → new names. |
 | `tests/covariate.test.ts` | `fit.x[m_base]` → `fit.smoothed.series(m_base)`. `fit.XX` → `fit.covariates`. |
 | `tests/forecast.test.ts` | Update forecast result access patterns. |
-| `tests/missing.test.ts` | Same `toMatlab()` wrapping for Octave comparison. |
+| `tests/gapped.test.ts` | Same `toMatlab()` wrapping for Octave comparison. |
 | `tests/assocscan.test.ts` | Same `toMatlab()` wrapping for Octave comparison. |
 | `tests/ozone.test.ts` | Update result access patterns. |
 | `tests/test-matrix.ts` | No changes expected (device/dtype configs, not field names). |

@@ -63,21 +63,21 @@ if (LIST) {
 // ── Build value map from available sidecars ─────────────────────────────────
 
 const valueMap = new Map<string, string>();   // key → formatted string
-const missing: string[] = [];
+const gapped: string[] = [];
 
 for (const [key, slot] of Object.entries(timingRegistry)) {
   const sidecar = readTimingsSidecar(slot.sidecar);
   if (sidecar == null || sidecar[slot.field] == null) {
-    missing.push(key);
+    gapped.push(key);
     continue;
   }
   valueMap.set(key, formatTiming(sidecar[slot.field], slot.format));
 }
 
-if (missing.length > 0) {
+if (gapped.length > 0) {
   console.warn(
-    `[update-timings] No sidecar data for ${missing.length} slot(s) — will skip:\n` +
-    missing.map(k => `  ${k}  (run: ${timingRegistry[k].script})`).join("\n")
+    `[update-timings] No sidecar data for ${gapped.length} slot(s) — will skip:\n` +
+    gapped.map(k => `  ${k}  (run: ${timingRegistry[k].script})`).join("\n")
   );
 }
 

@@ -62,7 +62,7 @@ const qbo2   = rows.map(r => r[5]);  // QBO component 2
 const N      = time.length;
 
 // Load scaled yy / ss exactly as Octave prepared them (same stdnan scaling,
-// same missing-data fill: y→ym, s→ss_med).  This ensures dlm-js and MATLAB
+// same gapped-data fill: y→ym, s→ss_med).  This ensures dlm-js and MATLAB
 // run the identical numerical problem so their outputs are directly comparable.
 const ys: number = mInp.ys;
 const ym: number = mInp.ym;

@@ -1,13 +1,13 @@
 /**
- * Generate an SVG plot for the missing-data demo — single panel, dual-fill.
+ * Generate an SVG plot for the gapped-data demo — single panel, dual-fill.
  *
  * Dual-fill layout (matching nile-mle-anim style):
  *   - Outer light band:  yhat ± 2·ystd  (observation prediction interval)
  *   - Inner opaque band: x[0] ± 2·xstd (state uncertainty)
- *   - Gray shading marks contiguous and isolated missing-data regions.
+ *   - Gray shading marks contiguous and isolated gapped-data regions.
  *
- * Usage:  npx tsx scripts/gen-missing-svg.ts
- * Output: assets/missing-demo.svg
+ * Usage:  npx tsx scripts/gen-gapped-svg.ts
+ * Output: assets/gapped-demo.svg
  */
 
 import { dlmFit } from "../src/index.ts";
@@ -24,8 +24,8 @@ import { writeTimingsSidecar } from "./lib/timing-sidecar.ts";
 // ── Load data ──────────────────────────────────────────────────────────────
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
-const input  = JSON.parse(readFileSync(resolve(root, "tests/missing-in.json"), "utf8"));
-const octave = JSON.parse(readFileSync(resolve(root, "tests/missing-out-m.json"), "utf8"));
+const input  = JSON.parse(readFileSync(resolve(root, "tests/gapped-in.json"), "utf8"));
+const octave = JSON.parse(readFileSync(resolve(root, "tests/gapped-out-m.json"), "utf8"));
 
 // y has nulls (JSON encoding of NaN); y_full is the complete Nile series
 const yRaw: (number | null)[] = input.y;
@@ -232,7 +232,7 @@ push(`<text x="${r(margin.left + plotW / 2)}" y="${H - 5}" text-anchor="middle" 
 push(`<text x="14" y="${r(margin.top + plotH / 2)}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${r(margin.top + plotH / 2)})">Annual flow</text>`);
 
 // Title
-push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (missing data, ${jsResult.nobs}/${y.length} observed) — fit (order=1, trend), cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
+push(`<text x="${r(margin.left + plotW / 2)}" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo (gapped data, ${jsResult.nobs}/${y.length} observed) — fit (order=1, trend), cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // Legend — top centre
 const legW = 290;
@@ -264,8 +264,8 @@ push("</svg>");
 
 // ── Write ─────────────────────────────────────────────────────────────────
 
-const outPath = resolve(root, `assets/missing-demo-${variant}.svg`);
+const outPath = resolve(root, `assets/gapped-demo-${variant}.svg`);
 writeSvg(lines, outPath);
-writeTimingsSidecar(isAssoc ? "gen-missing-svg-assoc" : "gen-missing-svg", { firstRunMs, warmRunMs });
+writeTimingsSidecar(isAssoc ? "gen-gapped-svg-assoc" : "gen-gapped-svg", { firstRunMs, warmRunMs });
 console.log(`nobs=${jsResult.nobs}  firstRun=${firstRunMs.toFixed(2)} ms  warmRun=${warmRunMs.toFixed(2)} ms`);
 

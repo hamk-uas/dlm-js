@@ -275,7 +275,7 @@ const dlmSmo = async (
 
     // r_new = F'·Cp⁻¹·v + L'·r  [m,1]
     // vi is already 0 at NaN positions (zeroed in forwardStep), so
-    // FtCpInv·vi contributes 0 automatically at missing timesteps.
+    // FtCpInv·vi contributes 0 automatically at gapped timesteps.
     const r_new = np.add(
       np.multiply(FtCpInv, vi),
       np.matmul(np.transpose(L), r)
@@ -284,7 +284,7 @@ const dlmSmo = async (
     // N_new = mask·(FF'·Cp⁻¹·FF) + L'·N·L  [m,m]
     // The outer-product term must be masked: at NaN timesteps it would
     // otherwise add spurious Fisher information to N, causing the smoother
-    // to over-shrink state uncertainty at and around missing observations.
+    // to over-shrink state uncertainty at and around gappedobservations.
     //
     // NUMERICAL PRECISION NOTE:
     // The L'·N·L product via einsum uses two pairwise dot() calls.
@@ -519,7 +519,7 @@ const dlmSmo = async (
       using FtF_over_S = np.einsum('nij,njk->nik', Ft_over_S, FF_scan);                      // [n,m,m]
       using J_obs = np.einsum('nij,njk,nkl->nil', Gt_batch, FtF_over_S, G_arriving);         // [n,m,m]
 
-      // NaN handling for k>=2 elements: pure prediction for missing y
+      // NaN handling for k>=2 elements: pure prediction for gapped y
       using A_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), G_arriving, A_obs);
       using b_all = np.multiply(mask_arr, b_obs);
       using C_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_arriving, C_obs);
@@ -867,7 +867,7 @@ const dlmSmo = async (
 
     // ─── Observation-space diagnostics ───
 
-    // NaN observation mask [n]: 1.0 where observed, 0.0 where missing.
+    // NaN observation mask [n]: 1.0 where observed, 0.0 where gapped.
     // Squeezed from the [n,1,1] mask stored by forwardStep.
     using mask_flat = np.squeeze(fwd.mask);   // [n]
 
@@ -896,7 +896,7 @@ const dlmSmo = async (
     using is_nan_y = np.isnan(y_1d);       // [n] bool
     using y_safe = np.where(is_nan_y, np.zerosLike(y_1d), y_1d);  // [n]
 
-    // Residuals: naturally NaN at missing positions (y_1d has NaN there)
+    // Residuals: naturally Nan at missing positions (y_1d has NaN there)
     const resid0 = np.subtract(y_1d, yhat);    // [n]: NaN at missing obs
     const resid  = np.divide(resid0, V_flat);  // [n]: NaN at missing obs
     // Standardised prediction residuals: NaN at missing positions (matching MATLAB)

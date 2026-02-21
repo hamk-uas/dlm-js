@@ -32,7 +32,7 @@ if (args.help === "true" || args.h === "true") {
 
 const key = args.key;
 if (!key) {
-  console.error("[mistakes:log] Missing --key");
+  console.error("[mistakes:log] Gapped --key");
   help();
   process.exit(1);
 }

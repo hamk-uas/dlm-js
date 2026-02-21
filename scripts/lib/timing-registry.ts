@@ -128,33 +128,33 @@ export const timingRegistry: Record<string, TimingSlot> = {
     description: "dlmFit warm-run wall-clock — energy/trigar demo (associativeScan)",
   },
 
-  "missing:first": {
-    script:      "scripts/gen-missing-svg.ts",
-    sidecar:     "gen-missing-svg",
+  "gapped:first": {
+    script:      "scripts/gen-gapped-svg.ts",
+    sidecar:     "gen-gapped-svg",
     field:       "firstRunMs",
     format:      "ms2",
-    description: "dlmFit first-run wall-clock — missing-data demo",
+    description: "dlmFit first-run wall-clock — gapped-data demo",
   },
-  "missing:warm": {
-    script:      "scripts/gen-missing-svg.ts",
-    sidecar:     "gen-missing-svg",
+  "gapped:warm": {
+    script:      "scripts/gen-gapped-svg.ts",
+    sidecar:     "gen-gapped-svg",
     field:       "warmRunMs",
     format:      "ms2",
-    description: "dlmFit warm-run wall-clock — missing-data demo",
+    description: "dlmFit warm-run wall-clock — gapped-data demo",
   },
-  "missing:assoc:first": {
-    script:      "scripts/gen-missing-svg.ts",
-    sidecar:     "gen-missing-svg-assoc",
+  "gapped:assoc:first": {
+    script:      "scripts/gen-gapped-svg.ts",
+    sidecar:     "gen-gapped-svg-assoc",
     field:       "firstRunMs",
     format:      "ms2",
-    description: "dlmFit first-run wall-clock — missing-data demo (associativeScan)",
+    description: "dlmFit first-run wall-clock — gapped-data demo (associativeScan)",
   },
-  "missing:assoc:warm": {
-    script:      "scripts/gen-missing-svg.ts",
-    sidecar:     "gen-missing-svg-assoc",
+  "gapped:assoc:warm": {
+    script:      "scripts/gen-gapped-svg.ts",
+    sidecar:     "gen-gapped-svg-assoc",
     field:       "warmRunMs",
     format:      "ms2",
-    description: "dlmFit warm-run wall-clock — missing-data demo (associativeScan)",
+    description: "dlmFit warm-run wall-clock — gapped-data demo (associativeScan)",
   },
 
   // ── dlmMLE benchmarks (collect-*.ts scripts) ────────────────────────────

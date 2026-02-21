@@ -233,18 +233,18 @@ describe('associativeScan niledemo vs Octave', async () => {
 
 // ── Missing data: assocScan vs Octave ──────────────────────────────────────
 
-describe('associativeScan missing data vs Octave', async () => {
+describe('associativeScan gapped data vs Octave', async () => {
   const configs = await getTestConfigs();
   const f64Configs = configs.filter(c => c.label.includes('f64'));
 
-  const inFileA = path.join(__dirname, 'missing-in.json');
-  const refFileA = path.join(__dirname, 'missing-out-m.json');
-  const inFileB = path.join(__dirname, 'missing-order0-in.json');
-  const refFileB = path.join(__dirname, 'missing-order0-out-m.json');
+  const inFileA = path.join(__dirname, 'gapped-in.json');
+  const refFileA = path.join(__dirname, 'gapped-out-m.json');
+  const inFileB = path.join(__dirname, 'gapped-order0-in.json');
+  const refFileB = path.join(__dirname, 'gapped-order0-out-m.json');
 
   if (!fs.existsSync(inFileA) || !fs.existsSync(refFileA) ||
       !fs.existsSync(inFileB) || !fs.existsSync(refFileB)) {
-    throw new Error('Missing data reference files not found — run: pnpm run test:octave');
+    throw new Error('Gapped data reference files not found — run: pnpm run test:octave');
   }
 
   const inpA = JSON.parse(fs.readFileSync(inFileA, 'utf-8'));
@@ -252,12 +252,12 @@ describe('associativeScan missing data vs Octave', async () => {
   const inpB = JSON.parse(fs.readFileSync(inFileB, 'utf-8'));
   const refB = normalizeNulls(JSON.parse(fs.readFileSync(refFileB, 'utf-8'))) as Record<string, unknown>;
 
-  const y_missing = inpA['y'] as (number | null)[];
+  const y_gapped = inpA['y'] as (number | null)[];
   const s = inpA['s'] as number;
   const w = inpA['w'] as number[];
   const w_level = (inpB['w'] instanceof Array ? inpB['w'][0] : inpB['w']) as number;
 
-  const MISSING_KEYS = ['x', 'xstd', 'yhat', 'ystd', 'nobs'];
+  const GAPPED_KEYS = ['x', 'xstd', 'yhat', 'ystd', 'nobs'];
 
   for (const config of f64Configs) {
     it(`order=1 (m=2) should match Octave — assocScan (${config.label})`, async () => {
@@ -265,15 +265,15 @@ describe('associativeScan missing data vs Octave', async () => {
 
       const result = await withLeakCheck(() =>
         dlmFit(
-          Float64Array.from(y_missing.map(v => (v === null ? NaN : v))),
+          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'assoc' },
         )
       );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refA, 2);
-      const filteredResult = filterKeys(matlab, MISSING_KEYS) as Record<string, unknown>;
-      const filteredRef = filterKeys(normalizedRef, MISSING_KEYS) as Record<string, unknown>;
+      const filteredResult = filterKeys(matlab, GAPPED_KEYS) as Record<string, unknown>;
+      const filteredRef = filterKeys(normalizedRef, GAPPED_KEYS) as Record<string, unknown>;
 
       const cmp = deepAlmostEqual(
         filteredResult,
@@ -284,7 +284,7 @@ describe('associativeScan missing data vs Octave', async () => {
       );
       if (!cmp.equal) {
         throw new Error(
-          `[assocScan / ${config.label}] Missing order=1 mismatch at: ${cmp.path}\n` +
+          `[assocScan / ${config.label}] Gapped order=1 mismatch at: ${cmp.path}\n` +
           `Result:    ${JSON.stringify(cmp.a)}\n` +
           `Reference: ${JSON.stringify(cmp.b)}`
         );
@@ -296,15 +296,15 @@ describe('associativeScan missing data vs Octave', async () => {
 
       const result = await withLeakCheck(() =>
         dlmFit(
-          Float64Array.from(y_missing.map(v => (v === null ? NaN : v))),
+          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'assoc' },
         )
       );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refB, 1);
-      const filteredResult = filterKeys(matlab, MISSING_KEYS) as Record<string, unknown>;
-      const filteredRef = filterKeys(normalizedRef, MISSING_KEYS) as Record<string, unknown>;
+      const filteredResult = filterKeys(matlab, GAPPED_KEYS) as Record<string, unknown>;
+      const filteredRef = filterKeys(normalizedRef, GAPPED_KEYS) as Record<string, unknown>;
 
       const cmp = deepAlmostEqual(
         filteredResult,
@@ -315,7 +315,7 @@ describe('associativeScan missing data vs Octave', async () => {
       );
       if (!cmp.equal) {
         throw new Error(
-          `[assocScan / ${config.label}] Missing order=0 mismatch at: ${cmp.path}\n` +
+          `[assocScan / ${config.label}] Gapped order=0 mismatch at: ${cmp.path}\n` +
           `Result:    ${JSON.stringify(cmp.a)}\n` +
           `Reference: ${JSON.stringify(cmp.b)}`
         );
