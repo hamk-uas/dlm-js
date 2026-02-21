@@ -117,7 +117,7 @@ For a more neutral assumption in practice, center covariates before fitting so t
 
 For decision use, prefer scenario forecasting: provide multiple plausible `X_forecast` paths (e.g. low/base/high) and compare resulting forecast bands.
 
-### Mising/gapped data (NaN observations)
+### Missing data (NaN observations)
 
 Place `NaN` in the observation vector `y` wherever a measurement is absent. `dlmFit` automatically skips those timesteps in the Kalman gain and residual calculations (K and v are zeroed), so the smoother interpolates through the gaps without any extra configuration:
 
@@ -286,7 +286,7 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
 
 *Top panel: O₃ density (SAGE II / GOMOS observations, 1984–2011) with smoothed level state ± 2σ and a 15-year `dlmForecast` trend extrapolation. Bottom panel: proxy covariate contributions — solar cycle (β̂·X_solar, amber) and QBO (β̂_qbo1·X₁ + β̂_qbo2·X₂, purple). Model: `order=1`, `harmonics=2`, `seasonLength=12`, 3 static-β covariates, state dimension m=9.*
 
-#### Missing/gapped Data (NaN observations)
+#### Missing Data (NaN observations)
 
 <p align="center">
   <img alt="Gapped-data demo (sequential scan)" src="assets/gapped-demo-scan.svg" width="100%" />
