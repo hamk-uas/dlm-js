@@ -14,5 +14,15 @@
     "includeFolders": false
   },
   "plugin": ["typedoc-plugin-katex", "typedoc-theme-fresh"],
+  "katex": {
+    "options": {
+      "delimiters": [
+        {"left": "$$", "right": "$$", "display": true},
+        {"left": "\\[", "right": "\\]", "display": true},
+        {"left": "$", "right": "$", "display": false},
+        {"left": "\\(", "right": "\\)", "display": false}
+      ]
+    }
+  },
   "theme": "fresh"
 }
