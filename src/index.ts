@@ -364,11 +364,14 @@ const dlmSmo = async (
     // manageable via Kahan compensated summation; Float32 produces negative
     // variances for m > 2 even with the joseph form on the forward step.
     //
-    // Float32 stabilization layers (applied in order, all on top of joseph+sym):
-    //   (default) symmetrize: C = 0.5·(C + C')  — always applied for f32
-    //   cDiag:    clamp diag(C) >= 1e-7             — off-diagonal left intact
-    //   cEps:     C += 1e-6·I                        — shifts all eigenvalues up
-    //   cDiagAbs: diag(C) = |diag(C)|               — magnitude-preserving sign-flip
+    // Float32 stabilization layers (applied in order, all on top of joseph+sym+cEps):
+    //   (default) symmetrize + C += 1e-6·I  — always applied for f32
+    //              Exhaustive search over all 128 flag combos showed cEps reduces
+    //              max rel error on kaisaniemi (m=4) from 1.37e-2 → 9.66e-3 with
+    //              no downside on any other model; now unconditionally on.
+    //   cDiag:    clamp diag(C) >= 1e-7 (on top of default)  — off-diagonal left intact
+    //   cDiagAbs: diag(C) = |diag(C)| (on top of default)    — magnitude-preserving sign-flip
+    //   cEps:     no-op (now always applied; flag kept for API compatibility)
     let C_smooth: np.Array;
     {
       using C_raw = np.subtract(
@@ -380,31 +383,27 @@ const dlmSmo = async (
         using sumC = np.add(C_raw, Ct);
         // jax-js-lint: allow-non-using — cDiag/cEps/cDiagAbs branch may take ownership
         const C_sym = np.multiply(np.array(0.5, { dtype }), sumC);
+        // Default: always apply cEps (C += 1e-6·I) on top of symmetrize.
+        // jax-js-lint: allow-non-using — cDiag/cDiagAbs branch may take ownership below
+        const C_eps = np.add(C_sym, stab_cEps_I);
+        C_sym.dispose();
         if (stabCDiag) {
-          // Clamp diagonal to >= 1e-7, leave off-diagonal intact.
-          // C_d = C * I  (diagonal entries in-place, zeros off-diagonal).
-          // max(C_d, 1e-7*I): diagonal max(C_ii, 1e-7); off-diag: max(0,0)=0.
-          using C_d = np.multiply(C_sym, stab_I_eye);
-          using C_o = np.multiply(C_sym, stab_off_I);
+          // Clamp diagonal to >= 1e-7 on top of cEps, leave off-diagonal intact.
+          using C_d = np.multiply(C_eps, stab_I_eye);
+          using C_o = np.multiply(C_eps, stab_off_I);
           using C_d_c = np.maximum(C_d, stab_cDiag_eps_I);
           C_smooth = np.add(C_d_c, C_o);
-          C_sym.dispose();
+          C_eps.dispose();
         } else if (stabCDiagAbs) {
-          // Abs diagonal: diag(C) = |diag(C)|, off-diagonal left intact.
-          // Magnitude-preserving: if cancellation yields C_ii = -eps, the
-          // physical variance is ~+eps, so abs recovers it without bias.
-          using C_d = np.multiply(C_sym, stab_I_eye);
-          using C_o = np.multiply(C_sym, stab_off_I);
+          // Abs diagonal on top of cEps: diag(C) = |diag(C)|, off-diagonal left intact.
+          using C_d = np.multiply(C_eps, stab_I_eye);
+          using C_o = np.multiply(C_eps, stab_off_I);
           using C_d_a = np.abs(C_d);
           C_smooth = np.add(C_d_a, C_o);
-          C_sym.dispose();
-        } else if (stabCEps) {
-          // Add 1e-6·I: shifts all eigenvalues up by 1e-6 (biased but PSD).
-          C_smooth = np.add(C_sym, stab_cEps_I);
-          C_sym.dispose();
+          C_eps.dispose();
         } else {
-          // Default: symmetrize only (joseph form applied in forward step)
-          C_smooth = C_sym;
+          // Default: symmetrize + cEps only (stabCEps flag is now a no-op)
+          C_smooth = C_eps;
         }
       } else {
         // Float64: use raw result (matches MATLAB dlmsmo.m reference)

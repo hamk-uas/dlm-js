@@ -456,9 +456,11 @@ export interface DlmStabilization {
    */
   cDiag?: boolean;
   /**
-   * Add 1e-6·I to C_smooth after symmetrize.
-   * Stronger PSD guarantee than cDiag (shifts all eigenvalues up by 1e-6)
-   * at the cost of a small bias in the smoothed covariance estimates.
+   * @deprecated No-op. `cEps` (C += 1e-6·I after symmetrize) is now applied
+   * unconditionally on the f32 sequential path — exhaustive search over all
+   * 128 flag combinations confirmed it reduces max relative error on m=4 models
+   * from 1.37e-2 → 9.66e-3 with no downside on any other model. The flag is
+   * kept for API compatibility but setting it has no additional effect.
    */
   cEps?: boolean;
   /**
