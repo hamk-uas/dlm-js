@@ -179,6 +179,21 @@ console.log(result.ystd);      // observation std devs — wider after gaps
 
 **Supported components:** polynomial trend (order 0, 1, 2), trigonometric harmonics, and AR components (integer-spaced timestamps only). `fullSeasonal` throws because it is a purely discrete-time construct with no natural continuous-time extension. AR components are supported when every $\Delta t$ is a positive integer: the companion matrix is raised to the $d$-th power via binary exponentiation ($G_{AR}^d$) and the noise is accumulated as $W_{AR}(d) = \sum_{k=0}^{d-1} C^k \, W_1 \, (C^k)^\top$. Non-integer $\Delta t$ with AR still throws.
 
+**Tip — non-integer base step with AR:** If your data's natural step is non-integer (e.g. months as fractions of a year: $\Delta t = 1/12$), scale `timestamps` so the base step becomes 1. This makes all gaps integer multiples and satisfies the AR requirement:
+
+```js
+const baseStep = 1 / 12;  // monthly data in year units
+const ts_raw = [0, 1/12, 2/12, 6/12, 7/12];  // 3-month gap after March
+
+const result = await dlmFit(y, {
+  timestamps: ts_raw.map(t => t / baseStep),  // [0, 1, 2, 6, 7]
+  arCoefficients: [0.8], processStd: [10, 5], obsStd: 20,
+  dtype: 'f64',
+});
+```
+
+After rescaling, the model's time unit is one base step (one month), so `processStd` and slope states are per-month quantities. Adjust `seasonLength` accordingly (e.g. `seasonLength: 12` for an annual cycle in monthly data).
+
 #### How it works
 
 The standard DLM propagates through each unit timestep as $x_{t+1} = G \cdot x_t + w_t$ with $w_t \sim \mathcal{N}(0, W)$.  For a gap of $\Delta t$ steps between consecutive observations, `dlmGenSysTV` computes:
