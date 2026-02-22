@@ -28,19 +28,23 @@ const y: number[] = input.y;        // observations
 const s: number = input.s;          // observation noise std
 const w: number[] = input.w;        // state noise stds
 
-const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
-const isAssoc = variant === 'assoc';
-const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
+const variant = process.argv[2] === 'assoc' ? 'assoc' : process.argv[2] === 'sqrt-assoc' ? 'sqrt-assoc' : 'scan';
+const algorithm: 'scan' | 'assoc' | 'sqrt-assoc' | undefined =
+  variant === 'assoc' ? 'assoc' : variant === 'sqrt-assoc' ? 'sqrt-assoc' : undefined;
+const scanLabel =
+  variant === 'assoc' ? 'associativeScan/WASM/f64' :
+  variant === 'sqrt-assoc' ? 'sqrt-assoc/WASM/f64' :
+  'scan/WASM/f64';
 
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm: isAssoc ? 'assoc' : undefined }));
+  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm }));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm: isAssoc ? 'assoc' : undefined }));
+  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm }));
   const warmEnd = performance.now();
 
   return {
@@ -141,7 +145,7 @@ push(`<text x="${margin.left + plotW / 2}" y="${H - 5}" text-anchor="middle" fil
 push(`<text x="${14}" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,${margin.top + plotH / 2})">Annual flow</text>`);
 
 // Title
-push(`<text x="${W / 2}" y="${16}" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — fit (order=1, trend), cold ${timed.firstRunMs.toFixed(0)} ms, warm ${timed.warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
+push(`<text x="${W / 2}" y="${16}" text-anchor="middle" fill="#333" font-size="12" font-weight="600">Nile demo — fit (order=1, trend), cold ${timed.firstRunMs.toFixed(0)} ms, warm ${timed.warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // Legend
 const legX = W - margin.right - 255;
@@ -165,7 +169,8 @@ push(`</svg>`);
 
 const outPath = resolve(root, "assets", `niledemo-${variant}.svg`);
 writeSvg(lines, outPath);
-writeTimingsSidecar(isAssoc ? "gen-niledemo-svg-assoc" : "gen-niledemo-svg", { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
+const sidecarKey = variant === 'assoc' ? 'gen-niledemo-svg-assoc' : variant === 'sqrt-assoc' ? 'gen-niledemo-svg-sqrt-assoc' : 'gen-niledemo-svg';
+writeTimingsSidecar(sidecarKey, { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`
 );

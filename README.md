@@ -267,7 +267,7 @@ const mle = await dlmMLE(y, { order: 1, maxIter: 200, lr: 0.05 });
 
 ### Demos
 
-All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `webgpu` variants use an exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020) and match the sequential `scan` results to within numerical tolerance (validated by `assocscan.test.ts`).
+All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `webgpu` variants use an exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020) and match the sequential `scan` results to within numerical tolerance (validated by `assocscan.test.ts`). The `sqrt-assoc` variant implements the square-root form in Cholesky-factor space (Yaghoobi et al. 2022) — same O(log N) depth, validated by `sqrtassoc.test.ts` (wasm/f64 only; see limitations).
 
 #### Nile River Flow (Local Linear Trend)
 
@@ -275,6 +275,8 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Nile demo (sequential scan)" src="assets/niledemo-scan.svg" width="100%" />
   <br/><br/>
   <img alt="Nile demo (associative scan)" src="assets/niledemo-assoc.svg" width="100%" />
+  <br/><br/>
+  <img alt="Nile demo (sqrt-assoc)" src="assets/niledemo-sqrt-assoc.svg" width="100%" />
 </p>
 
 *First smoothed state (level) `smoothed[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `smoothedStd[:,0]` (state uncertainty, not observation prediction intervals).*
@@ -409,6 +411,7 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 | **wasm** | **f64** | **scan** | **triu** | **21 ms** | **25 ms** | **25 ms** | **25 ms** | **25 ms** | **1.14e-10** | **1.11e-9** |
 | | | scan | off | 16 ms | 21 ms | 21 ms | 21 ms | 21 ms | 3.78e-8 | 1.62e-4 |
 | | | assoc | built-in | 24 ms | 26 ms | 33 ms | 39 ms | 25 ms | 1.33e-8 | 2.17e-5 |
+| | | sqrt-assoc† | tria() | 63 ms | 50 ms | 60 ms | 76 ms | 41 ms | 1.59e-3 | 5.44e-3 |
 | | **f32** | **scan** | **joseph** | **17 ms** | **22 ms** | **23 ms** | **23 ms** | **22 ms** | **3.99e-2** | **9.66e-1** |
 | | | scan | joseph+triu | 19 ms | 24 ms | 25 ms | 26 ms | 25 ms | 1.30e-2 | 2.32 |
 | | | assoc | built-in | 27 ms | 24 ms | 32 ms | 41 ms | 24 ms | 1.21e-2 | 21.9 |
@@ -416,7 +419,7 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 | | | scan | joseph | 293 ms | 341 ms | 341 ms | 342 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
 | | | scan | joseph+triu | 305 ms | 336 ms | 340 ms | 334 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
 
-⚠️ = WebGPU produces NaN outputs when the data contains missing (NaN) observations — both algorithms affected. Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
+⚠️ = WebGPU produces NaN outputs when the data contains missing (NaN) observations — both algorithms affected. † `sqrt-assoc` (wasm/f64 only): cpu backend produces NaN for m>1, f32 dtype not implemented, fullSeasonal (m=13) unsupported — see [Known limitations](#known-limitations) above. Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.

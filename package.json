@@ -31,7 +31,7 @@
     "build": "vite build",
     "lint": "eslint src/",
     "docs": "typedoc",
-    "gen:svg:nile": "npx tsx scripts/gen-niledemo-svg.ts scan && npx tsx scripts/gen-niledemo-svg.ts assoc",
+    "gen:svg:nile": "npx tsx scripts/gen-niledemo-svg.ts scan && npx tsx scripts/gen-niledemo-svg.ts assoc && npx tsx scripts/gen-niledemo-svg.ts sqrt-assoc",
     "gen:svg:kaisaniemi": "npx tsx scripts/gen-kaisaniemi-svg.ts scan && npx tsx scripts/gen-kaisaniemi-svg.ts assoc",
     "gen:svg:trigar": "npx tsx scripts/gen-trigar-svg.ts scan && npx tsx scripts/gen-trigar-svg.ts assoc",
     "gen:svg:nile-mle-anim": "npx tsx scripts/collect-nile-mle-frames.ts && npx tsx scripts/gen-nile-mle-anim-svg.ts scan && npx tsx scripts/gen-nile-mle-anim-svg.ts assoc && deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run scripts/collect-nile-mle-frames-webgpu.ts && npx tsx scripts/gen-nile-mle-anim-svg.ts webgpu",
