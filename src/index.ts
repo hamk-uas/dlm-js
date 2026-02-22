@@ -78,6 +78,7 @@ const dlmSmo = async (
   FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
   forceAssocScan?: boolean,
   stabilization?: DlmStabilization,
+  forceSqrtAssocScan?: boolean,
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y.length;
 
@@ -102,7 +103,8 @@ const dlmSmo = async (
   // ─────────────────────────────────────────────────────────────────────────
   const device = defaultDevice();
   const f32 = dtype === DType.Float32;
-  const useAssocScan = forceAssocScan || (f32 && device === 'webgpu');
+  const useSqrtAssocScan = forceSqrtAssocScan ?? false;
+  const useAssocScan = !useSqrtAssocScan && (forceAssocScan || (f32 && device === 'webgpu'));
 
   // ── Stabilization flags (f32 sequential backward step only) ──────────────────
   // Flags are captured as JS constants — each unique combination produces a
@@ -504,7 +506,477 @@ const dlmSmo = async (
     let x_smooth: np.Array;
     let C_smooth: np.Array;
 
-    if (useAssocScan) {
+    if (useSqrtAssocScan) {
+      // ─── Square-Root Parallel Forward Filter (Yaghoobi et al. 2022, arXiv:2207.00426) ───
+      // Reformulates the 5-tuple associative scan in Cholesky factor space.
+      // Covariance matrices C, J (forward) and L (backward) are replaced by their
+      // Cholesky factors U, Z, D.  Composition via block tria() ensures PSD by
+      // construction — no Joseph form, symmetrize, or ε·I needed.
+      //
+      // tria(A) = cholesky(A·A' + ε·I) — fallback for QR-free backend.
+      // Reference: EEA-sensors/sqrt-parallel-smoothers (JAX).
+      type SqrtForwardElem = { A: np.Array; b: np.Array; U: np.Array; eta: np.Array; Z: np.Array };
+      type SqrtBackwardElem = { g: np.Array; E: np.Array; D: np.Array };
+
+      const tria_eps = f32 ? 1e-6 : 1e-12;
+
+      using is_nan = np.isnan(y_arr);                    // [n,1,1] bool
+      using zero_n11 = np.zerosLike(y_arr);              // [n,1,1]
+      using one_n11 = np.onesLike(y_arr);                // [n,1,1]
+      // jax-js-lint: allow-non-using — stored in fwd.mask, disposed after backward pass
+      const mask_arr = np.where(is_nan, zero_n11, one_n11); // [n,1,1]
+      using y_safe_arr = np.where(is_nan, zero_n11, y_arr); // [n,1,1]
+
+      using I_eye = np.eye(stateSize, undefined, { dtype });
+      using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
+
+      // ─── Arriving G/W convention (same as standard assoc path) ───
+      const gArrParts = np.split(G_scan, [n - 1], 0);
+      const wArrParts = np.split(W_scan, [n - 1], 0);
+      using G_head_arr = gArrParts[0];
+      gArrParts[1].dispose();
+      using W_head_arr = wArrParts[0];
+      wArrParts[1].dispose();
+      const gLastParts = np.split(G_scan, [n - 1], 0);
+      using G_last = gLastParts[1];
+      gLastParts[0].dispose();
+      const wLastParts = np.split(W_scan, [n - 1], 0);
+      using W_last = wLastParts[1];
+      wLastParts[0].dispose();
+      using G_arriving = np.concatenate([G_last, G_head_arr], 0);  // [n, m, m]
+      using W_arriving = np.concatenate([W_last, W_head_arr], 0);  // [n, m, m]
+
+      // cholW = cholesky(W_arriving + ε·I)  [n, m, m]
+      using tria_eps_arr = np.array(tria_eps, { dtype });
+      using regI_m = np.multiply(tria_eps_arr, I_exp);             // [n, m, m]
+      using W_reg = np.add(W_arriving, regI_m);
+      using cholW = np.linalg.cholesky(W_reg);                    // [n, m, m]
+
+      // ─── Element construction for k >= 1 (zero prior: m0=0, L0=0) ───
+      // With L0=0: N1_ = tria([G·0, cholW]) = cholW (predicted chol = cholW)
+      //
+      // Psi block [n, 1+m, m+1]:
+      //   [[H·cholW, cholR],     H = FF_scan [n,1,m], cholR = V_std [n,1,1]
+      //    [cholW,   zeros ]]
+      using HcholW = np.einsum('nij,njk->nik', FF_scan, cholW);   // [n, 1, m]
+      using V_std_arr = np.sqrt(V2_arr);                           // [n, 1, 1]
+      using zeroCol = np.zeros([n, stateSize, 1], { dtype });
+      using psi_top = np.concatenate([HcholW, V_std_arr], -1);     // [n, 1, m+1]
+      using psi_bot = np.concatenate([cholW, zeroCol], -1);        // [n, m, m+1]
+      using Psi = np.concatenate([psi_top, psi_bot], -2);          // [n, 1+m, m+1]
+
+      // tria(Psi) = cholesky(Psi·Psi' + ε·I_{1+m})
+      using PsiPsiT = np.einsum('nij,nkj->nik', Psi, Psi);        // [n, 1+m, 1+m]
+      using I_big = np.eye(1 + stateSize, undefined, { dtype });
+      using I_big_exp = np.tile(np.reshape(I_big, [1, 1 + stateSize, 1 + stateSize]), [n, 1, 1]);
+      using PsiPsiT_reg = np.add(PsiPsiT, np.multiply(tria_eps_arr, I_big_exp));
+      using triaPsi = np.linalg.cholesky(PsiPsiT_reg);            // [n, 1+m, 1+m]
+
+      // Extract sub-blocks via split
+      // Split along axis -2 at index 1: top [n,1,1+m], bottom [n,m,1+m]
+      const rowParts = np.split(triaPsi, [1], -2);
+      using triaPsi_top = rowParts[0];                              // [n, 1, 1+m]
+      using triaPsi_bot = rowParts[1];                              // [n, m, 1+m]
+      // From top row: Psi11 = triaPsi_top[:, :, 0:1]  [n, 1, 1]
+      const topColParts = np.split(triaPsi_top, [1], -1);
+      using Psi11 = topColParts[0];                                 // [n, 1, 1]
+      topColParts[1].dispose();
+      // From bottom row: Psi21 = triaPsi_bot[:, :, 0:1], U = triaPsi_bot[:, :, 1:]
+      const botColParts = np.split(triaPsi_bot, [1], -1);
+      using Psi21 = botColParts[0];                                 // [n, m, 1]
+      using U_obs = botColParts[1];                                 // [n, m, m]
+
+      // K = Psi21 / Psi11  [n, m, 1]
+      using K_sqrt = np.divide(Psi21, Psi11);                      // [n, m, 1]
+      // A = G - K·H·G  [n, m, m]
+      using KHG = np.einsum('nij,njk,nkl->nil', K_sqrt, FF_scan, G_arriving);
+      using A_obs = np.subtract(G_arriving, KHG);                   // [n, m, m]
+      // b = K·y  [n, m, 1]  (since m1=0, c=0)
+      using b_obs = np.multiply(K_sqrt, y_safe_arr);                // [n, m, 1]
+
+      // Z construction: solve_tri(Psi11, H·G, lower=True).T
+      // For p=1: Psi11 is [n,1,1], H·G is [n,1,m]
+      using HG = np.einsum('nij,njk->nik', FF_scan, G_arriving);   // [n, 1, m]
+      using HG_over_psi = np.divide(HG, Psi11);                    // [n, 1, m]
+      using Z_thin = np.einsum('nij->nji', HG_over_psi);           // [n, m, 1]
+      // Pad Z to [n, m, m] (rank-1 for p=1 when m > 1)
+      let Z_obs: np.Array;
+      if (stateSize > 1) {
+        using Z_pad = np.zeros([n, stateSize, stateSize - 1], { dtype });
+        Z_obs = np.concatenate([Z_thin, Z_pad], -1);               // [n, m, m]
+      } else {
+        Z_obs = np.multiply(np.array(1.0, { dtype }), Z_thin);     // [n, 1, 1] copy
+      }
+
+      // eta = (Z_thin / Psi11) · y  [n, m, 1]
+      using eta_factor = np.divide(Z_thin, Psi11);                 // [n, m, 1]
+      using eta_obs = np.multiply(eta_factor, y_safe_arr);          // [n, m, 1]
+
+      // ─── NaN handling: pure prediction elements ───
+      // NaN: A = G_arriving, b = 0, U = cholW, Z = 0, eta = 0
+      using nan_mm = np.tile(is_nan, [1, stateSize, stateSize]);
+      using A_all = np.where(nan_mm, G_arriving, A_obs);
+      using b_all = np.multiply(mask_arr, b_obs);
+      using U_all = np.where(nan_mm, cholW, U_obs);
+      using zero_nmm = np.zerosLike(Z_obs);
+      using eta_all = np.multiply(mask_arr, eta_obs);
+      using Z_all_raw = np.where(nan_mm, zero_nmm, Z_obs);
+      Z_obs.dispose();
+
+      // ─── First element (k=0): exact initialization from prior ───
+      // Compute filtered state at t=0 from prior (x0, C0) and first observation y[0].
+      // For sqrt: cholC0 = cholesky(C0), then Psi block with L0 = cholC0.
+      const F_parts = np.split(FF_scan, [1], 0);
+      const V2_parts = np.split(V2_arr, [1], 0);
+      const y_parts = np.split(y_safe_arr, [1], 0);
+      const mask_parts = np.split(mask_arr, [1], 0);
+      const A_parts = np.split(A_all, [1], 0);
+      const b_parts = np.split(b_all, [1], 0);
+      const U_parts = np.split(U_all, [1], 0);
+      const eta_parts = np.split(eta_all, [1], 0);
+      const Z_parts = np.split(Z_all_raw, [1], 0);
+
+      using F1 = F_parts[0];
+      using V2_1 = V2_parts[0];
+      using y1 = y_parts[0];
+      using mask1 = mask_parts[0];
+
+      using C0_first = np.reshape(C0, [1, stateSize, stateSize]);
+      using x0_first = np.reshape(x0, [1, stateSize, 1]);
+
+      // cholC0 = cholesky(C0 + ε·I)
+      using C0_reg = np.add(C0, np.multiply(tria_eps_arr, I_eye));
+      using cholC0 = np.linalg.cholesky(C0_reg);                  // [m, m]
+      using cholC0_1 = np.reshape(cholC0, [1, stateSize, stateSize]);
+
+      // Psi for k=0: N1_ = cholC0 (no prediction step at k=0; prior IS the prediction)
+      // Psi0 = [[H·cholC0, cholR], [cholC0, 0]]
+      using F1_cholC0 = np.einsum('nij,jk->nik', F1, cholC0);     // [1, 1, m]
+      using V_std_1 = np.sqrt(V2_1);                               // [1, 1, 1]
+      using zeroCol_1 = np.zeros([1, stateSize, 1], { dtype });
+      using psi0_top = np.concatenate([F1_cholC0, V_std_1], -1);   // [1, 1, m+1]
+      using psi0_bot = np.concatenate([cholC0_1, zeroCol_1], -1);  // [1, m, m+1]
+      using Psi0 = np.concatenate([psi0_top, psi0_bot], -2);       // [1, 1+m, m+1]
+
+      using Psi0Psi0T = np.einsum('nij,nkj->nik', Psi0, Psi0);
+      using I_big_1 = np.tile(np.reshape(I_big, [1, 1 + stateSize, 1 + stateSize]), [1, 1, 1]);
+      using Psi0_reg = np.add(Psi0Psi0T, np.multiply(tria_eps_arr, I_big_1));
+      using triaPsi0 = np.linalg.cholesky(Psi0_reg);              // [1, 1+m, 1+m]
+
+      const row0Parts = np.split(triaPsi0, [1], -2);
+      using triaPsi0_top = row0Parts[0];
+      using triaPsi0_bot = row0Parts[1];
+      const top0ColParts = np.split(triaPsi0_top, [1], -1);
+      using Psi0_11 = top0ColParts[0];                             // [1, 1, 1]
+      top0ColParts[1].dispose();
+      const bot0ColParts = np.split(triaPsi0_bot, [1], -1);
+      using Psi0_21 = bot0ColParts[0];                             // [1, m, 1]
+      using U1_init = bot0ColParts[1];                              // [1, m, m]
+
+      // K at k=0
+      using K0 = np.multiply(mask1, np.divide(Psi0_21, Psi0_11)); // [1, m, 1]
+      // b at k=0: x0 + K0·(y[0] - H·x0)
+      using Fx0_1 = np.einsum('nij,njk->nik', F1, x0_first);
+      using innov0 = np.subtract(y1, Fx0_1);
+      using K0innov = np.multiply(K0, innov0);
+      const b1 = np.add(x0_first, K0innov);                       // [1, m, 1]
+
+      // First element: A=0, eta=0, Z=0 (prior doesn't propagate A-contribution)
+      const A1 = np.zeros([1, stateSize, stateSize], { dtype });
+      const eta1 = np.zeros([1, stateSize, 1], { dtype });
+      const Z1 = np.zeros([1, stateSize, stateSize], { dtype });
+
+      // Replace timestep 0 with exact first element
+      const A_arr = np.concatenate([A1, A_parts[1]], 0);
+      const b_arr = np.concatenate([b1, b_parts[1]], 0);
+      const U_arr = np.concatenate([U1_init, U_parts[1]], 0);
+      const eta_arr = np.concatenate([eta1, eta_parts[1]], 0);
+      const Z_arr = np.concatenate([Z1, Z_parts[1]], 0);
+
+      F_parts[1].dispose(); V2_parts[1].dispose(); y_parts[1].dispose(); mask_parts[1].dispose();
+      A_parts[0].dispose(); A_parts[1].dispose();
+      b_parts[0].dispose(); b_parts[1].dispose();
+      U_parts[0].dispose(); U_parts[1].dispose();
+      eta_parts[0].dispose(); eta_parts[1].dispose();
+      Z_parts[0].dispose(); Z_parts[1].dispose();
+
+      // ─── Square-root forward composition operator ───
+      const composeSqrtForward = (a: SqrtForwardElem, b_elem: SqrtForwardElem): SqrtForwardElem => {
+        const m = stateSize;
+
+        // Xi block [n, 2m, 2m]:
+        //   [[U1' · Z2,  I],
+        //    [Z2,         0]]
+        using U1t = np.einsum('nij->nji', a.U);                     // [n, m, m]
+        using U1tZ2 = np.einsum('nij,njk->nik', U1t, b_elem.Z);    // [n, m, m]
+        using I1 = np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]);
+        using I_batch = np.add(np.zerosLike(a.U), I1);              // [n, m, m] via broadcast
+        using zero_mm = np.zerosLike(a.U);                          // [n, m, m]
+        // Xi top: [U1'Z2, I] → [n, m, 2m]
+        using xi_top = np.concatenate([U1tZ2, I_batch], -1);
+        // Xi bot: [Z2, 0] → [n, m, 2m]
+        using xi_bot = np.concatenate([b_elem.Z, zero_mm], -1);
+        // Xi: [n, 2m, 2m]
+        using Xi = np.concatenate([xi_top, xi_bot], -2);
+
+        // tria(Xi) = cholesky(Xi·Xi' + ε·I_{2m})
+        using XiXiT = np.einsum('nij,nkj->nik', Xi, Xi);
+        using regI_2m = np.multiply(
+          np.array(tria_eps, { dtype }),
+          np.reshape(np.eye(2 * m, undefined, { dtype }), [1, 2 * m, 2 * m])
+        );
+        using tria_xi = np.linalg.cholesky(np.add(XiXiT, regI_2m)); // [n, 2m, 2m]
+
+        // Extract Xi11 [n,m,m], Xi21 [n,m,m], Xi22 [n,m,m]
+        const xiRowParts = np.split(tria_xi, [m], -2);
+        using xi_top_row = xiRowParts[0];                             // [n, m, 2m]
+        using xi_bot_row = xiRowParts[1];                             // [n, m, 2m]
+        const xiTopCols = np.split(xi_top_row, [m], -1);
+        using Xi11 = xiTopCols[0];                                    // [n, m, m]
+        xiTopCols[1].dispose();
+        const xiBotCols = np.split(xi_bot_row, [m], -1);
+        using Xi21 = xiBotCols[0];                                    // [n, m, m]
+        using Xi22 = xiBotCols[1];                                    // [n, m, m]
+
+        // solve_tri(Xi11, X) → np.linalg.solve(Xi11, X)
+        // S1 = solve(Xi11, U1'·A2') = Xi11⁻¹ · U1'·A2'  [n, m, m]
+        using A2t = np.einsum('nij->nji', b_elem.A);
+        using U1tA2t = np.einsum('nij,njk->nik', U1t, A2t);
+        using S1 = np.linalg.solve(Xi11, U1tA2t);                   // [n, m, m]
+        using S1t = np.einsum('nij->nji', S1);                       // [n, m, m]
+
+        // A_comp = A2·A1 - S1'·Xi21'·A1
+        using A2A1 = np.einsum('nij,njk->nik', b_elem.A, a.A);
+        using Xi21t = np.einsum('nij->nji', Xi21);
+        using S1tXi21tA1 = np.einsum('nij,njk,nkl->nil', S1t, Xi21t, a.A);
+        const A_comp = np.subtract(A2A1, S1tXi21tA1);
+
+        // For b_comp: A2·(I - R'·Xi21')·(b1 + U1·U1'·eta2) + b2
+        // where R = solve(Xi11, U1')  (NOTE: different from S1 which uses U1'·A2')
+        using R_b = np.linalg.solve(Xi11, U1t);                      // Xi11⁻¹·U1'
+        using R_bt = np.einsum('nij->nji', R_b);                     // U1·Xi11⁻ᵀ
+        using RbtXi21t = np.einsum('nij,njk->nik', R_bt, Xi21t);    // [n, m, m]
+        using ImRX = np.subtract(I_batch, RbtXi21t);                 // [n, m, m]
+        using U1U1t = np.einsum('nij,nkj->nik', a.U, a.U);          // [n, m, m] = C1
+        using U1U1tEta2 = np.einsum('nij,njk->nik', U1U1t, b_elem.eta); // [n, m, 1]
+        using b1_plus = np.add(a.b, U1U1tEta2);
+        using A2ImRX = np.einsum('nij,njk->nik', b_elem.A, ImRX);
+        using A2ImRX_b1 = np.einsum('nij,njk->nik', A2ImRX, b1_plus);
+        const b_comp = np.add(A2ImRX_b1, b_elem.b);
+
+        // U_comp = tria([S1', U2])
+        using U_wide = np.concatenate([S1t, b_elem.U], -1);         // [n, m, 2m]
+        using U_UUt = np.einsum('nij,nkj->nik', U_wide, U_wide);
+        using regI_m1 = np.multiply(np.array(tria_eps, { dtype }), I1);
+        using U_reg = np.add(U_UUt, regI_m1);
+        const U_comp = np.linalg.cholesky(U_reg);                   // [n, m, m]
+
+        // eta_comp = A1'·(I - solve(Xi11, Xi21', trans=True)'·U1')·(eta2 - Z2·Z2'·b1) + eta1
+        // solve(Xi11, Xi21', trans=True) = solve(Xi11', Xi21') — transpose solve
+        // For symmetric-ish Xi11, use: Xi11⁻ᵀ·Xi21' = solve(Xi11', Xi21')
+        using Xi11t = np.einsum('nij->nji', Xi11);
+        using R1 = np.linalg.solve(Xi11t, Xi21t);                   // [n, m, m]
+        using R1t = np.einsum('nij->nji', R1);                       // [n, m, m]
+        using R1tU1t = np.einsum('nij,njk->nik', R1t, U1t);         // [n, m, m]
+        using ImRU = np.subtract(I_batch, R1tU1t);                 // [n, m, m]
+        using Z2Z2t = np.einsum('nij,nkj->nik', b_elem.Z, b_elem.Z); // [n, m, m] = J2
+        using Z2Z2tb1 = np.einsum('nij,njk->nik', Z2Z2t, a.b);      // [n, m, 1]
+        using eta_diff = np.subtract(b_elem.eta, Z2Z2tb1);           // [n, m, 1]
+        using ImRU_eta = np.einsum('nij,njk->nik', ImRU, eta_diff);  // [n, m, 1]
+        using A1t = np.einsum('nij->nji', a.A);
+        using A1t_ImRU_eta = np.einsum('nij,njk->nik', A1t, ImRU_eta);
+        const eta_comp = np.add(A1t_ImRU_eta, a.eta);
+
+        // Z_comp = tria([A1'·Xi22, Z1])
+        using A1tXi22 = np.einsum('nij,njk->nik', A1t, Xi22);      // [n, m, m]
+        using Z_wide = np.concatenate([A1tXi22, a.Z], -1);          // [n, m, 2m]
+        using Z_ZZt = np.einsum('nij,nkj->nik', Z_wide, Z_wide);
+        using regI_m2 = np.multiply(np.array(tria_eps, { dtype }), I1);
+        using Z_reg = np.add(Z_ZZt, regI_m2);
+        const Z_comp = np.linalg.cholesky(Z_reg);                   // [n, m, m]
+
+        return { A: A_comp, b: b_comp, U: U_comp, eta: eta_comp, Z: Z_comp };
+      };
+
+      const scanned = lax.associativeScan(
+        composeSqrtForward,
+        { A: A_arr, b: b_arr, U: U_arr, eta: eta_arr, Z: Z_arr },
+      ) as SqrtForwardElem;
+
+      // Recover filtered state: x_filt = A·x0 + b
+      using x0_exp = np.tile(np.reshape(x0, [1, stateSize, 1]), [n, 1, 1]);
+      using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
+      const x_filt = np.add(Ax0, scanned.b);                        // [n, m, 1]
+
+      // Recover filtered covariance: C_filt = A·C0·A' + U·U'   (where C = U U')
+      using C0_exp = np.tile(np.reshape(C0, [1, stateSize, stateSize]), [n, 1, 1]);
+      using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
+      using UUt = np.einsum('nij,nkj->nik', scanned.U, scanned.U);
+      const C_filt = np.add(AC0At, UUt);                            // [n, m, m]
+
+      scanned.A.dispose(); scanned.b.dispose(); scanned.U.dispose();
+      scanned.eta.dispose(); scanned.Z.dispose();
+      A1.dispose(); b1.dispose(); U_arr.dispose(); eta1.dispose(); Z1.dispose();
+      A_arr.dispose(); b_arr.dispose(); eta_arr.dispose(); Z_arr.dispose();
+
+      // ─── Recover sequential-convention diagnostics ───
+      // (Same recovery logic as the standard assoc path)
+      const gParts = np.split(G_scan, [n - 1], 0);
+      using G_arr_head = gParts[0];
+      gParts[1].dispose();
+      const wParts = np.split(W_scan, [n - 1], 0);
+      using W_arr_head = wParts[0];
+      wParts[1].dispose();
+
+      const xFiltParts = np.split(x_filt, [n - 1], 0);
+      xFiltParts[1].dispose();
+      using x_filt_head = xFiltParts[0];
+      using x_filt_pred = np.einsum('nij,njk->nik', G_arr_head, x_filt_head);
+      using x0_1 = np.reshape(x0, [1, stateSize, 1]);
+      // jax-js-lint: allow-non-using — stored in fwd.x_pred
+      const x_pred_arr = np.concatenate([x0_1, x_filt_pred], 0);
+
+      const cFiltParts = np.split(C_filt, [n - 1], 0);
+      cFiltParts[1].dispose();
+      using C_filt_head = cFiltParts[0];
+      using GCGt_pred = np.einsum('nij,njk,nlk->nil', G_arr_head, C_filt_head, G_arr_head);
+      using C_filt_pred = np.add(GCGt_pred, W_arr_head);
+      using C0_1 = np.reshape(C0, [1, stateSize, stateSize]);
+      // jax-js-lint: allow-non-using — stored in fwd.C_pred
+      const C_pred_arr = np.concatenate([C0_1, C_filt_pred], 0);
+
+      using Fx_pred = np.einsum('nij,njk->nik', FF_scan, x_pred_arr);
+      using v_raw = np.subtract(y_safe_arr, Fx_pred);
+      // jax-js-lint: allow-non-using — stored in fwd.v
+      const v_arr = np.multiply(mask_arr, v_raw);
+
+      using FCFt = np.einsum('nij,njk,nlk->nil', FF_scan, C_pred_arr, FF_scan);
+      // jax-js-lint: allow-non-using — stored in fwd.Cp
+      const Cp_arr = np.add(FCFt, V2_arr);
+
+      using GCFt2 = np.einsum('nij,njk,nlk->nil', G_scan, C_pred_arr, FF_scan);
+      using K_raw2 = np.divide(GCFt2, Cp_arr);
+      // jax-js-lint: allow-non-using — stored in fwd.K
+      const K_arr = np.multiply(mask_arr, K_raw2);
+
+      fwd = {
+        x_pred: x_pred_arr, C_pred: C_pred_arr,
+        K: K_arr, v: v_arr, Cp: Cp_arr,
+        FF: FF_scan, mask: mask_arr,
+      } as unknown as ForwardY;
+
+      // ─── Square-root Parallel Backward Smoother (Yaghoobi et al. 2022) ───
+      {
+        // Compute Cholesky of filtered covariance for backward elements
+        using C_filt_reg = np.add(C_filt, regI_m);
+        using cholC_filt = np.linalg.cholesky(C_filt_reg);          // [n, m, m]
+
+        // Backward element construction: Phi block → E, g, D
+        // Phi = [[G·cholC, cholW], [cholC, 0]]   size [n, 2m, 2m]
+        using GcholC = np.einsum('nij,njk->nik', G_scan, cholC_filt); // [n, m, m]
+        // Recompute cholW for departing G/W (already using original G_scan/W_scan)
+        using W_scan_reg = np.add(W_scan, regI_m);
+        using cholW_dep = np.linalg.cholesky(W_scan_reg);            // [n, m, m]
+        using zero_bwd = np.zeros([n, stateSize, stateSize], { dtype });
+        using phi_top = np.concatenate([GcholC, cholW_dep], -1);      // [n, m, 2m]
+        using phi_bot = np.concatenate([cholC_filt, zero_bwd], -1);   // [n, m, 2m]
+        using Phi = np.concatenate([phi_top, phi_bot], -2);           // [n, 2m, 2m]
+
+        // tria(Phi) = cholesky(Phi·Phi' + ε·I_{2m})
+        using PhiPhiT = np.einsum('nij,nkj->nik', Phi, Phi);
+        using I_2m = np.eye(2 * stateSize, undefined, { dtype });
+        using I_2m_exp = np.tile(np.reshape(I_2m, [1, 2 * stateSize, 2 * stateSize]), [n, 1, 1]);
+        using PhiPhiT_reg = np.add(PhiPhiT, np.multiply(tria_eps_arr, I_2m_exp));
+        using triaPhi = np.linalg.cholesky(PhiPhiT_reg);            // [n, 2m, 2m]
+
+        // Extract Phi11, Phi21, D
+        const phiRowParts = np.split(triaPhi, [stateSize], -2);
+        using phi_top_row = phiRowParts[0];                           // [n, m, 2m]
+        using phi_bot_row = phiRowParts[1];                           // [n, m, 2m]
+        const phiTopCols = np.split(phi_top_row, [stateSize], -1);
+        using Phi11 = phiTopCols[0];                                  // [n, m, m]
+        phiTopCols[1].dispose();
+        const phiBotCols = np.split(phi_bot_row, [stateSize], -1);
+        using Phi21 = phiBotCols[0];                                  // [n, m, m]
+        // jax-js-lint: allow-non-using — D_raw disposed after terminal masking
+        const D_raw = phiBotCols[1];                                  // [n, m, m]
+
+        // E = solve(Phi11', Phi21')'  [n, m, m]
+        using Phi11t = np.einsum('nij->nji', Phi11);
+        using Phi21t = np.einsum('nij->nji', Phi21);
+        using E_solve = np.linalg.solve(Phi11t, Phi21t);            // [n, m, m]
+        using E_raw = np.einsum('nij->nji', E_solve);                // [n, m, m]
+
+        // g = x_filt - E·(G·x_filt + b)  = (I - E·G)·x_filt  (b=0 for DLM)
+        using EG = np.einsum('nij,njk->nik', E_raw, G_scan);
+        using ImEG = np.subtract(I_exp, EG);
+        using g_raw = np.einsum('nij,njk->nik', ImEG, x_filt);      // [n, m, 1]
+
+        // Terminal element: E[n-1]=0, g[n-1]=x_filt[n-1], D[n-1]=cholC_filt[n-1]
+        using term_mask = np.array(
+          Array.from({ length: n }, (_, t) => [[t < n - 1 ? 1.0 : 0.0]]),
+          { dtype }
+        );  // [n, 1, 1]
+        // jax-js-lint: allow-non-using — E_all, g_all, D_all disposed after scan
+        const E_all = np.multiply(E_raw, term_mask);
+        // For g at terminal: g[n-1] = x_filt[n-1] (not (I-E·G)·x_filt which would be same since E=0)
+        // Since E[n-1] gets zeroed, g[n-1] = (I - 0)·x_filt[n-1] = x_filt[n-1]. Correct.
+        const g_all = np.add(
+          np.multiply(term_mask, g_raw),
+          np.multiply(np.subtract(np.onesLike(term_mask), term_mask),
+                      np.einsum('nij,njk->nik', I_exp, x_filt))   // x_filt for terminal
+        );
+        // D[n-1] = cholC_filt[n-1], D[k] = D_raw[k] for k < n-1
+        // Terminal D: cholC_filt at last timestep
+        using term_mask_mm = np.tile(term_mask, [1, stateSize, stateSize]);
+        using anti_mask_mm = np.subtract(np.onesLike(term_mask_mm), term_mask_mm);
+        const D_all = np.add(
+          np.multiply(term_mask_mm, D_raw),
+          np.multiply(anti_mask_mm, cholC_filt)
+        );
+        D_raw.dispose();
+
+        // ─── Square-root backward composition operator ───
+        const composeSqrtBackward = (a: SqrtBackwardElem, b_elem: SqrtBackwardElem): SqrtBackwardElem => {
+          // g = E2·g1 + g2
+          using E2g1 = np.einsum('nij,njk->nik', b_elem.E, a.g);
+          const g_comp = np.add(E2g1, b_elem.g);
+          // E = E2·E1
+          const E_comp = np.einsum('nij,njk->nik', b_elem.E, a.E);
+          // D = tria([E2·D1, D2])
+          using E2D1 = np.einsum('nij,njk->nik', b_elem.E, a.D);
+          using D_wide = np.concatenate([E2D1, b_elem.D], -1);     // [n, m, 2m]
+          using D_DDt = np.einsum('nij,nkj->nik', D_wide, D_wide);
+          const m = stateSize;
+          using D_regI = np.multiply(
+            np.array(tria_eps, { dtype }),
+            np.reshape(np.eye(m, undefined, { dtype }), [1, m, m])
+          );
+          const D_comp = np.linalg.cholesky(np.add(D_DDt, D_regI)); // [n, m, m]
+          return { g: g_comp, E: E_comp, D: D_comp };
+        };
+
+        const smoothed = lax.associativeScan(
+          composeSqrtBackward,
+          { g: g_all, E: E_all, D: D_all },
+          { reverse: true }
+        ) as SqrtBackwardElem;
+
+        // Smoothed estimates: x_smooth = g_comp, C_smooth = D·D'
+        x_smooth = smoothed.g;                                      // [n, m, 1]
+        // jax-js-lint: allow-non-using — ownership transferred to C_smooth (returned)
+        C_smooth = np.einsum('nij,nkj->nik', smoothed.D, smoothed.D); // [n, m, m] — PSD by construction
+        smoothed.E.dispose();
+        smoothed.D.dispose();
+        E_all.dispose();
+        g_all.dispose();
+        D_all.dispose();
+      }
+
+      x_filt.dispose();
+      C_filt.dispose();
+
+    } else if (useAssocScan) {
       // ─── Exact Parallel Forward Filter (Särkkä & García-Fernández 2020, Lemmas 1–2) ───
       // 5-tuple elements: (A, b, C, eta, J)
       type ForwardElem = { A: np.Array; b: np.Array; C: np.Array; eta: np.Array; J: np.Array };
@@ -1036,6 +1508,7 @@ export const dlmFit = async (
   } = opts;
   const dtype = parseDtype(opts.dtype);
   const forceAssocScan = algorithm === 'assoc' ? true : undefined;
+  const forceSqrtAssocScan = algorithm === 'sqrt-assoc' ? true : undefined;
 
   // Build DlmOptions for dlmGenSys
   const genSysOpts: DlmOptions = {
@@ -1193,7 +1666,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G_scan, W_scan, C0_data, m, dtype, FF_arr, forceAssocScan, stabilization);
+    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G_scan, W_scan, C0_data, m, dtype, FF_arr, forceAssocScan, stabilization, forceSqrtAssocScan);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -1207,7 +1680,7 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G_scan, W_scan, C0_scaled, m, dtype, FF_arr, forceAssocScan, stabilization);
+  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G_scan, W_scan, C0_scaled, m, dtype, FF_arr, forceAssocScan, stabilization, forceSqrtAssocScan);
 
   FF_arr?.dispose();
   G_scan.dispose();
