@@ -16,12 +16,35 @@ export type DlmDtype = 'f32' | 'f64';
 export type DlmAlgorithm = 'scan' | 'assoc' | 'sqrt-assoc';
 
 /**
- * Custom loss function type for MAP estimation.
- * Receives the traceable Kalman loss (scalar np.Array) and the current
- * parameter vector theta (np.Array), and returns a scalar np.Array loss.
- * Must be AD-safe: only use jax-js ops on the inputs.
+ * Describes the layout of the `params` vector passed to {@link DlmLossFn}.
+ *
+ * `params = [s?, w₀, …, w_{m-1}, φ₁, …, φ_p]`  (natural scale)
+ * - Observation std `s` is present only when `nObs === 1` (absent when `obsStdFixed` is set).
+ * - Process std devs `wᵢ` (`nProcess` elements).
+ * - AR coefficients `φⱼ` (`nAr` elements, 0 when `fitAr` is off).
  */
-export type DlmLossFn = (kalmanLoss: np.Array, theta: np.Array) => np.Array;
+export interface DlmParamMeta {
+  /** 1 if observation std (s) is estimated, 0 if fixed. */
+  nObs: number;
+  /** Number of process std dev parameters (= state dimension m). */
+  nProcess: number;
+  /** Number of AR coefficients (0 unless `fitAr: true`). */
+  nAr: number;
+}
+
+/**
+ * Custom loss function type for MAP estimation.
+ *
+ * Receives the Kalman deviance (−2·logL, scalar `np.Array`), the current
+ * parameter vector in **natural scale** (`np.Array`), and a layout
+ * descriptor ({@link DlmParamMeta}).  Must return a scalar `np.Array`.
+ * All operations on the inputs must be AD-safe (jax-js ops only).
+ *
+ * `params` layout: `[s?, w₀, …, w_{m-1}, φ₁, …, φ_p]`
+ * - `s` and `wᵢ` are positive std devs (not log-transformed).
+ * - `φⱼ` are unconstrained AR coefficients.
+ */
+export type DlmLossFn = (deviance: np.Array, params: np.Array, meta: DlmParamMeta) => np.Array;
 
 /** Map user-facing dtype string to internal DType enum */
 export function parseDtype(d?: DlmDtype): DType {
@@ -657,27 +680,31 @@ export interface DlmMleOptions {
    * Custom loss function for MAP estimation or other regularised objectives.
    * Default: `'ml'` (standard Kalman prediction-error likelihood).
    *
-   * When a function is provided it receives the Kalman −2·logL (scalar
-   * `np.Array`) and the current parameter vector θ (1-D `np.Array`),
-   * and must return a scalar `np.Array`.  The entire chain —
-   * Kalman scan + custom penalty + AD backward pass + optimizer update —
-   * is wrapped in a single `jit()` call.
+   * When a function is provided it receives:
+   *   1. `deviance` — Kalman −2·logL (scalar `np.Array`).
+   *   2. `params`   — natural-scale parameter vector (1-D `np.Array`).
+   *   3. `meta`     — {@link DlmParamMeta} describing the params layout.
    *
-   * θ layout: `[log(s), log(w₀)…log(w_{m-1}), φ₁…φ_p]`
-   *   - Variance parameters are log-transformed (always positive after `exp`).
+   * `params` layout: `[s?, w₀, …, w_{m-1}, φ₁, …, φ_p]`
+   *   - `s` and `wᵢ` are positive std devs (not log-transformed).
    *   - AR coefficients (when `fitAr`) are unconstrained.
-   *   - When `obsStdFixed` is set, the leading `log(s)` slot is absent.
+   *   - When `obsStdFixed` is set, the leading `s` slot is absent.
    *
-   * @example MAP with log-normal prior on process noise
+   * The entire chain — Kalman scan + custom penalty + AD backward pass +
+   * optimizer update — is wrapped in a single `jit()` call.
+   *
+   * Tip: use {@link dlmPrior} to create a callback with MATLAB DLM-style
+   * Inverse-Gamma priors on variances — no manual coding needed.
+   *
+   * @example Manual L2 prior on process std devs
    * ```ts
-   * import { numpy as np } from '@hamk-uas/jax-js-nonconsuming';
-   *
    * const result = await dlmMLE(y, {
    *   order: 1,
-   *   loss: (deviance, theta) => {
-   *     // theta = [log(s), log(w0), log(w1)]
-   *     const logW = np.slice(theta, [1], [3]);
-   *     const prior = np.multiply(np.array(0.1), np.sum(np.square(logW)));
+   *   loss: (deviance, params, meta) => {
+   *     // Split params into [obsStd, processStd] using meta
+   *     const parts = np.split(params, [meta.nObs], 0);
+   *     const processStd = parts[meta.nObs > 0 ? 1 : 0];
+   *     const prior = np.multiply(np.array(0.1), np.sum(np.square(processStd)));
    *     return np.add(deviance, prior);
    *   },
    * });

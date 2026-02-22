@@ -269,26 +269,54 @@ By default `dlmMLE` minimizes the Kalman −2·log-likelihood (pure MLE). The `l
 
 Inspired by [dynamax](https://probml.github.io/dynamax/) (`log_prior + marginal_loglik`), [GPJax](https://docs.jaxgaussianprocesses.com/) (composable objectives), and [BayesNewton](https://github.com/AaltoML/BayesNewton) (energy-based optimization). Unlike these Python libraries which use class hierarchies, dlm-js uses a single callback — simpler and equally expressive when the prior is a jax-js function.
 
-```js
-import { dlmMLE } from "dlm-js";
-import { numpy as np } from "@hamk-uas/jax-js-nonconsuming";
+#### `dlmPrior` — Inverse-Gamma / Normal priors (MATLAB DLM style)
 
-// MAP with L2 prior on log-params (pulls parameters toward prior mean)
+The easiest way to add priors. `dlmPrior` creates the loss callback for you, matching MATLAB/R DLM `dlmGibbsDIG` conventions: Inverse-Gamma on variances, Normal on AR coefficients.
+
+```js
+import { dlmMLE, dlmPrior } from "dlm-js";
+
+// Weakly informative IG(2, 1) on both obs and process variances
 const result = await dlmMLE(y, {
   order: 1,
-  loss: (deviance, theta) => {
-    // theta = [log(s), log(w0), log(w1)] for order=1
-    // L2 penalty centered at 0 (i.e. prior mode at s=1, w=1):
-    const penalty = np.multiply(np.array(0.1), np.sum(np.square(theta)));
-    return np.add(deviance, penalty);
-  },
+  loss: dlmPrior({
+    obsVar:     { shape: 2, rate: 1 },   // IG(α=2, β=1) on s²
+    processVar: { shape: 2, rate: 1 },   // IG(α=2, β=1) on each wᵢ²
+  }),
 });
 
 console.log(result.deviance);      // pure −2·logL at the MAP optimum
 console.log(result.priorPenalty);   // MAP_objective − pure_deviance (≥ 0)
 ```
 
-The `loss` callback receives two `np.Array` arguments: `deviance` (the scalar Kalman −2·logL) and `theta` (the 1-D parameter vector in log-variance / raw-AR space). It must return a scalar `np.Array`. Use only jax-js ops inside the callback — it runs inside the traced AD graph.
+Available prior specs:
+- `obsVar: { shape, rate }` — Inverse-Gamma on observation variance s².
+- `processVar: { shape, rate }` — IG on process variance(s) wᵢ² (single spec recycled for all components, or array for per-component priors).
+- `arCoef: { mean, std }` — Normal on AR coefficients (requires `fitAr: true`).
+
+#### Custom loss callback
+
+For full control, pass a function directly. The `loss` callback receives three arguments: `deviance` (scalar Kalman −2·logL), `params` (natural-scale 1-D parameter vector), and `meta` (layout descriptor). Use only jax-js ops inside — it runs inside the traced AD graph.
+
+```js
+import { dlmMLE } from "dlm-js";
+import { numpy as np } from "@hamk-uas/jax-js-nonconsuming";
+
+// Manual L2 prior on natural-scale params
+const result = await dlmMLE(y, {
+  order: 1,
+  loss: (deviance, params, meta) => {
+    // params = [s, w0, w1] for order=1 (natural scale, not log-transformed)
+    // L2 penalty pulling std devs toward 1:
+    const target = np.array([1, 1, 1]);
+    const diff = np.subtract(params, target);
+    const penalty = np.multiply(np.array(0.1), np.sum(np.square(diff)));
+    return np.add(deviance, penalty);
+  },
+});
+```
+
+`params` layout: `[s?, w₀, …, w_{m-1}, φ₁, …, φ_p]` — `s` and `wᵢ` are positive std devs; `φⱼ` are unconstrained AR coefficients. The `meta` object (`{ nObs, nProcess, nAr }`) describes how many of each type are present.
 
 ## Fit
 

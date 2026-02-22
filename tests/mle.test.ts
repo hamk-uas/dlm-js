@@ -11,7 +11,7 @@
  */
 import { defaultDevice, numpy as np } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
-import { dlmMLE, dlmGenSys, findArInds } from '../src/index';
+import { dlmMLE, dlmGenSys, findArInds, dlmPrior } from '../src/index';
 import type { DlmLossFn } from '../src/index';
 import { withLeakCheck } from './utils';
 
@@ -371,13 +371,14 @@ describe('dlmMLE', async () => {
   // MAP / custom loss tests
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // Strong L2 prior on log-params that pulls estimates toward a known target.
-  // The prior is: penalty = λ · Σ (θ_i − μ_i)²
+  // Strong L2 prior on natural-scale params that pulls estimates toward a known target.
+  // The prior is: penalty = λ · Σ (param_i − μ_i)²
   // With large λ the MAP estimate should be close to μ, different from MLE.
+  // Params are natural scale: [s, w₀, ...] (std devs), not log-transformed.
   const makePrior = (priorMean: number[], strength: number): DlmLossFn =>
-    (deviance, theta) => {
+    (deviance, params, _meta) => {
       const mu = np.array(priorMean);
-      const diff = np.subtract(theta, mu);
+      const diff = np.subtract(params, mu);
       const penalty = np.multiply(np.array(strength), np.sum(np.square(diff)));
       return np.add(deviance, penalty);
     };
@@ -396,9 +397,9 @@ describe('dlmMLE', async () => {
     );
     expect(mle.priorPenalty).toBeUndefined();
 
-    // MAP: strong prior pulling log-params toward 0 (i.e. s≈1, w≈1)
-    // θ layout: [log(s), log(w0)]
-    const prior = makePrior([0, 0], 50);
+    // MAP: strong prior pulling natural-scale params toward 1 (i.e. s≈1, w≈1)
+    // params layout: [s, w0] (natural scale, not log-transformed)
+    const prior = makePrior([1, 1], 50);
     const map = await withLeakCheck(() =>
       dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
         maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior })
@@ -410,7 +411,7 @@ describe('dlmMLE', async () => {
     // deviance should be pure −2·logL (larger than MLE deviance since MAP is suboptimal for likelihood)
     expect(Number.isFinite(map.deviance)).toBe(true);
     expect(map.deviance).toBeGreaterThanOrEqual(mle.deviance - 1);
-    // MAP obsStd should be pulled toward exp(0) = 1, i.e. smaller than MLE
+    // MAP obsStd should be pulled toward 1, i.e. smaller than MLE
     expect(map.obsStd).toBeLessThan(mle.obsStd);
     // Fit should be valid
     expect(map.fit.y.length).toBe(200);
@@ -423,8 +424,8 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    // MAP: strong prior pulling log-params toward 0
-    const prior = makePrior([0, 0], 50);
+    // MAP: strong prior pulling natural-scale params toward 1
+    const prior = makePrior([1, 1], 50);
     const map = await withLeakCheck(() =>
       dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
         tol: 1e-6, dtype: 'f64', optimizer: 'natural', loss: prior })
@@ -467,7 +468,7 @@ describe('dlmMLE', async () => {
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     // Identity loss: just return the Kalman deviance unchanged
-    const identity: DlmLossFn = (deviance, _theta) => deviance;
+    const identity: DlmLossFn = (deviance, _params, _meta) => deviance;
     const result = await withLeakCheck(() =>
       dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
         maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: identity })
@@ -479,6 +480,116 @@ describe('dlmMLE', async () => {
     // Parameters should be close to pure MLE
     expect(result.obsStd).toBeGreaterThan(s_true * 0.3);
     expect(result.obsStd).toBeLessThan(s_true * 3);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // dlmPrior factory tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  it('dlmPrior: IG on obsVar shifts obsStd toward prior mode', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    // MLE baseline
+    const mle = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' })
+    );
+
+    // Strong IG prior on obsVar pulling s toward low values
+    // IG(shape=2, rate=0.5): mode = β/(α+1) = 0.5/3 ≈ 0.17 for variance
+    // This should pull obsStd well below the MLE estimate
+    const prior = dlmPrior({ obsVar: { shape: 2, rate: 0.5 } });
+    const map = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior })
+    );
+
+    expect(map.priorPenalty).toBeDefined();
+    expect(map.priorPenalty!).toBeGreaterThan(0);
+    expect(map.obsStd).toBeLessThan(mle.obsStd);
+    expect(map.fit.y.length).toBe(200);
+  });
+
+  it('dlmPrior: IG on processVar shifts processStd', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    // MLE baseline
+    const mle = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' })
+    );
+
+    // Strong IG prior on processVar pulling w toward low values
+    const prior = dlmPrior({ processVar: { shape: 2, rate: 0.1 } });
+    const map = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior })
+    );
+
+    expect(map.priorPenalty).toBeDefined();
+    expect(map.priorPenalty!).toBeGreaterThan(0);
+    expect(map.processStd[0]).toBeLessThan(mle.processStd[0]);
+  });
+
+  it('dlmPrior: IG on both obsVar + processVar (MATLAB DLM style)', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    // Combined prior — matches MATLAB dlmGibbsDIG style
+    const prior = dlmPrior({
+      obsVar:     { shape: 2, rate: 1 },
+      processVar: { shape: 2, rate: 1 },
+    });
+    const map = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior })
+    );
+
+    expect(map.priorPenalty).toBeDefined();
+    expect(map.priorPenalty!).toBeGreaterThan(0);
+    expect(Number.isFinite(map.deviance)).toBe(true);
+    expect(map.fit.y.length).toBe(200);
+  });
+
+  it('dlmPrior: IG with natural gradient optimizer', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    const prior = dlmPrior({
+      obsVar:     { shape: 2, rate: 1 },
+      processVar: { shape: 2, rate: 1 },
+    });
+    const map = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        tol: 1e-6, dtype: 'f64', optimizer: 'natural', loss: prior })
+    );
+
+    expect(map.priorPenalty).toBeDefined();
+    expect(map.priorPenalty!).toBeGreaterThan(0);
+    expect(Number.isFinite(map.deviance)).toBe(true);
+  });
+
+  it('dlmPrior: validation rejects invalid specs', () => {
+    expect(() => dlmPrior({ obsVar: { shape: -1, rate: 1 } })).toThrow();
+    expect(() => dlmPrior({ obsVar: { shape: 1, rate: 0 } })).toThrow();
+    expect(() => dlmPrior({ processVar: { shape: 0, rate: 1 } })).toThrow();
+    expect(() => dlmPrior({ arCoef: { mean: 0, std: -1 } })).toThrow();
+    // Valid specs should not throw
+    expect(() => dlmPrior({ obsVar: { shape: 0.001, rate: 0.001 } })).not.toThrow();
   });
 });
 

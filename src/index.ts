@@ -16,7 +16,7 @@ import type { DlmOptions } from "./dlmgensys";
 export type {
   DlmFitResult, DlmForecastResult, DlmTensorResult,
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
-  DlmDtype, DlmAlgorithm, DlmLossFn, DlmStabilization,
+  DlmDtype, DlmAlgorithm, DlmLossFn, DlmParamMeta, DlmStabilization,
   FloatArray,
 } from "./types";
 export { StateMatrix, CovMatrix } from "./types";
@@ -24,6 +24,8 @@ export type { DlmOptions, DlmSystem, DlmSystemTV } from "./dlmgensys";
 export { dlmGenSys, dlmGenSysTV, findArInds } from "./dlmgensys";
 export { dlmMLE, toMatlabMle } from "./mle";
 export type { DlmMleResult, DlmMleResultMatlab, DlmMleOptions } from "./mle";
+export { dlmPrior } from "./priors";
+export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
 
 /**
  * DLM Smoother - Kalman filter (forward) + Rauch-Tung-Striebel smoother (backward).

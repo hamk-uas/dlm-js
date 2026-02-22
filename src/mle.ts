@@ -918,11 +918,39 @@ export const dlmMLE = async (
 
   // Custom loss wrapping (MAP / regularised objectives).
   // When a DlmLossFn is provided, it wraps the Kalman −2·logL so that
-  //   objectiveFn(θ) = userLoss(kalmanLoss(θ), θ)
+  //   objectiveFn(θ) = userLoss(deviance(θ), naturalParams(θ), meta)
+  // Natural-scale params: exp(θ) for variance slots, raw θ for AR slots.
+  // Because np.concatenate lacks VJP in jax-js, we use a float-mask blend:
+  //   params = exp(θ) ⊙ varMask + θ ⊙ arMask
   // The entire chain JITs together — no extra dispatch overhead.
   const hasCustomLoss = typeof lossOption === 'function';
+  const wOffset = fixS ? 0 : 1;
+  const nSwParams = wOffset + m; // number of variance params (s? + w's)
+  let varMask: np.Array | undefined;
+  let arMask: np.Array | undefined;
+  let paramMeta: import('./types').DlmParamMeta | undefined;
+  if (hasCustomLoss) {
+    const nTheta = theta_init.length;
+    paramMeta = { nObs: fixS ? 0 : 1, nProcess: m, nAr: nar };
+    if (nar > 0) {
+      // Build complementary masks: varMask selects variance slots, arMask selects AR slots
+      const vm = new Array(nTheta).fill(0);
+      const am = new Array(nTheta).fill(0);
+      for (let i = 0; i < nSwParams; i++) vm[i] = 1;
+      for (let i = nSwParams; i < nTheta; i++) am[i] = 1;
+      varMask = np.array(vm, { dtype });
+      arMask = np.array(am, { dtype });
+    }
+  }
   const lossFn = hasCustomLoss
-    ? (theta: np.Array): np.Array => (lossOption as import('./types').DlmLossFn)(kalmanLoss(theta), theta)
+    ? (theta: np.Array): np.Array => {
+        using kl = kalmanLoss(theta);
+        // Compute natural-scale params: exp for variances, raw for AR
+        const params = nar > 0
+          ? np.add(np.multiply(np.exp(theta), varMask!), np.multiply(theta, arMask!))
+          : np.exp(theta);
+        return (lossOption as import('./types').DlmLossFn)(kl, params, paramMeta!);
+      }
     : kalmanLoss;
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -1074,12 +1102,14 @@ export const dlmMLE = async (
     theta.dispose();
     fixedV2_arr?.dispose();
     mleMaskArr?.dispose();
+    varMask?.dispose();
+    arMask?.dispose();
 
-    const wOffset = fixS ? 0 : 1;
+    const wOff = fixS ? 0 : 1;
     const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
-    const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOffset + i]));
+    const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOff + i]));
     const arphi_opt = nar > 0
-      ? Array.from({ length: nar }, (_, i) => thetaData[wOffset + m + i])
+      ? Array.from({ length: nar }, (_, i) => thetaData[wOff + m + i])
       : undefined;
 
     const fitOptions: DlmOptions = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
@@ -1225,12 +1255,14 @@ export const dlmMLE = async (
   theta.dispose(); tree.dispose(optState); lastLik.dispose();
   fixedV2_arr?.dispose();
   mleMaskArr?.dispose();
+  varMask?.dispose();
+  arMask?.dispose();
 
-  const wOffset = fixS ? 0 : 1;
+  const wOff = fixS ? 0 : 1;
   const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
-  const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOffset + i]));
+  const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOff + i]));
   const arphi_opt = nar > 0
-    ? Array.from({ length: nar }, (_, i) => thetaData[wOffset + m + i])
+    ? Array.from({ length: nar }, (_, i) => thetaData[wOff + m + i])
     : undefined;
 
   // Run full dlmFit with optimized parameters (including fitted arCoefficients if applicable)
