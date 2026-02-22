@@ -616,6 +616,32 @@ export interface DlmMleOptions {
   };
   /** Adam hyperparameters. Default: b1=0.9, b2=0.9, eps=1e-8. */
   adamOpts?: { b1?: number; b2?: number; eps?: number };
+  /**
+   * Optimizer selection. Default: `'adam'`.
+   * - `'adam'`: optax Adam (first-order, diagonal curvature approximation).
+   * - `'natural'`: Newton / Fisher scoring (second-order, full Hessian).
+   *   Solves `(H + λI)⁻¹ g` with adaptive Levenberg-Marquardt damping.
+   *   Converges in far fewer iterations than Adam but each step costs more.
+   *   Best for small parameter spaces (nParams ≤ ~10).
+   *   Uses `lr` as step size (default 1.0 for Newton).
+   */
+  optimizer?: 'adam' | 'natural';
+  /**
+   * Options for the `'natural'` optimizer.  Ignored when `optimizer` is `'adam'`.
+   */
+  naturalOpts?: {
+    /**
+     * How to compute the Hessian.  Default: `'fd'`.
+     * - `'fd'`: central finite differences of the JIT'd gradient
+     *   (2·nParams extra gradient evaluations per step, no extra JIT trace).
+     * - `'exact'`: exact AD Hessian via `jit(hessian(lossFn))`
+     *   (`jacfwd(grad)`).  More accurate and avoids FD step-size tuning,
+     *   but the first call incurs a large JIT compilation overhead
+     *   (~20 s for nParams=2 on WASM as of jax-js v0.7.8).
+     *   May become competitive as jax-js JIT improves.
+     */
+    hessian?: 'fd' | 'exact';
+  };
 
   // ── Runtime ──
 

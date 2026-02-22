@@ -190,5 +190,95 @@ describe('dlmMLE', async () => {
     expect(Array.from(result.fit.yhat).every(Number.isFinite)).toBe(true);
     expect(Array.from(result.fit.smoothed.series(0)).every(Number.isFinite)).toBe(true);
   });
+
+  // ─── Natural gradient (Fisher dualization) optimizer ──────────────────────
+
+  it('natural: recovers s and w for local-level model', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, tol: 1e-6, dtype: 'f64', optimizer: 'natural' })
+    );
+
+    // Natural gradient should converge in very few iterations (quadratic convergence)
+    expect(result.iterations).toBeLessThan(20);
+    // Parameters should be in the right ballpark
+    expect(result.obsStd).toBeGreaterThan(s_true * 0.3);
+    expect(result.obsStd).toBeLessThan(s_true * 3);
+    expect(result.processStd[0]).toBeGreaterThan(0);
+    // Fit result should be populated
+    expect(result.fit.y.length).toBe(200);
+    expect(result.fit.smoothed.series(0).length).toBe(200);
+    expect(result.arCoefficients).toBeUndefined();
+    expect(result.devianceHistory.length).toBeGreaterThan(0);
+  });
+
+  it('natural: recovers s and w for order=1 model', async () => {
+    const s_true = 5;
+    const w_true = [2, 1];
+    const options = { order: 1 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, tol: 1e-6, dtype: 'f64', optimizer: 'natural' })
+    );
+
+    expect(result.iterations).toBeLessThan(30);
+    expect(result.obsStd).toBeGreaterThan(0);
+    expect(result.processStd.length).toBe(2);
+    expect(result.processStd.every(v => v > 0)).toBe(true);
+    expect(Number.isFinite(result.deviance)).toBe(true);
+    expect(result.fit.y.length).toBe(200);
+  });
+
+  it('natural: recovers AR coefficient with fitar=true', async () => {
+    const phi_true = 0.8;
+    const s_true = 3;
+    const w_true = [5, 4];
+
+    const options = { order: 0, arCoefficients: [phi_true], fitAr: true };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, {
+        ...options,
+        init: { obsStd: s_true, processStd: w_true, arCoefficients: [0.5] },
+        tol: 1e-6, dtype: 'f64', optimizer: 'natural',
+      })
+    );
+
+    expect(result.arCoefficients).toBeDefined();
+    expect(result.arCoefficients!.length).toBe(1);
+    const phi_err = Math.abs(result.arCoefficients![0] - phi_true);
+    expect(phi_err).toBeLessThan(0.3);
+    expect(Number.isFinite(result.deviance)).toBe(true);
+    expect(result.fit.y.length).toBe(200);
+  });
+
+  it('natural: converges with NaN observations (missing data)', async () => {
+    const s_true = 8;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const yClean = generateData(sys.G, sys.F, s_true, w_true, 100, 7);
+
+    const y = yClean.map((v, i) => (i % 5 === 0 ? NaN : v));
+
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, tol: 1e-6, dtype: 'f64', optimizer: 'natural' })
+    );
+
+    expect(Number.isFinite(result.deviance)).toBe(true);
+    expect(result.obsStd).toBeGreaterThan(0);
+    expect(result.processStd[0]).toBeGreaterThan(0);
+    expect(result.fit.nobs).toBe(80);
+    expect(Array.from(result.fit.yhat).every(Number.isFinite)).toBe(true);
+  });
 });
 

@@ -1,4 +1,4 @@
-import { DType, numpy as np, lax, jit, valueAndGrad, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
+import { DType, numpy as np, lax, jit, valueAndGrad, hessian as adHessian, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray, DlmMleOptions } from "./types";
 import { getFloatArrayType, parseDtype } from "./types";
@@ -647,6 +647,122 @@ using M = np.linalg.inv(X_reg);
   };
 };
 
+// ── Plain-JS linear algebra for the natural gradient optimizer ──────────────
+//
+// Solve (H + λI) δ = g  for δ  where H is nTheta×nTheta (symmetric),
+// g is nTheta×1, and λ is the Levenberg-Marquardt damping.
+// Uses Gaussian elimination with partial pivoting.  For nTheta ≤ 10 this
+// is exact and trivially fast in plain JS (no GPU needed).
+
+/**
+ * Solve `(H + λI) x = b` via Gaussian elimination with partial pivoting.
+ * @returns solution vector x
+ * @internal
+ */
+const solveRegularized = (
+  H: number[][], b: number[], lambda: number,
+): number[] => {
+  const n = b.length;
+  // Build augmented matrix [H + λI | b]
+  const A = H.map((row, i) => {
+    const r = [...row];
+    r[i] += lambda;
+    return [...r, b[i]];
+  });
+
+  // Forward elimination with partial pivoting
+  for (let col = 0; col < n; col++) {
+    // Find pivot
+    let maxVal = Math.abs(A[col][col]);
+    let maxRow = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(A[row][col]) > maxVal) {
+        maxVal = Math.abs(A[row][col]);
+        maxRow = row;
+      }
+    }
+    if (maxRow !== col) { const tmp = A[col]; A[col] = A[maxRow]; A[maxRow] = tmp; }
+
+    const pivot = A[col][col];
+    if (Math.abs(pivot) < 1e-30) {
+      // Near-singular: return gradient direction (steepest descent fallback)
+      const gNorm = Math.sqrt(b.reduce((s, v) => s + v * v, 0)) || 1;
+      return b.map(v => v / gNorm);
+    }
+
+    for (let row = col + 1; row < n; row++) {
+      const factor = A[row][col] / pivot;
+      for (let j = col; j <= n; j++) A[row][j] -= factor * A[col][j];
+    }
+  }
+
+  // Back substitution
+  const x = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    x[i] = A[i][n];
+    for (let j = i + 1; j < n; j++) x[i] -= A[i][j] * x[j];
+    x[i] /= A[i][i];
+  }
+  return x;
+};
+
+/**
+ * Compute the Hessian of a scalar function via central finite differences
+ * of the gradient.  Uses the already-JIT'd gradFn to evaluate grad(θ ± h·eⱼ)
+ * at 2·nTheta perturbed points — no extra JIT tracing needed.
+ *
+ * Cost: 2·nTheta gradient evaluations × ~50 ms each (on WASM+f64).
+ * For nTheta = 2–6, that's 200–600 ms — far cheaper than JIT-compiling
+ * `jacfwd(grad(loss))` which takes ~24 s for the trace alone.
+ *
+ * Accuracy: O(h²) with h = ε^(1/3) ≈ 6e-6 for float64.
+ * Result is explicitly symmetrized: H → (H + Hᵀ) / 2.
+ *
+ * @internal
+ */
+const computeHessianFD = async (
+  gradFn: (theta: np.Array) => unknown,
+  thetaData: number[],
+  nTheta: number,
+  dtype: DType,
+): Promise<number[][]> => {
+  const h = 1e-5;  // ε^(1/3) ≈ 6e-6 for float64; 1e-5 is safe + accurate
+  const H: number[][] = Array.from({ length: nTheta }, () => new Array(nTheta).fill(0));
+
+  for (let j = 0; j < nTheta; j++) {
+    // θ + h·eⱼ
+    const thetaPlus = [...thetaData];
+    thetaPlus[j] += h;
+    using tpArr = np.array(thetaPlus, { dtype });
+    const [lpArr, gpArr] = gradFn(tpArr) as [np.Array, np.Array];
+    const gPlus = Array.from(await gpArr.data() as Float64Array | Float32Array);
+    lpArr.dispose(); gpArr.dispose();
+
+    // θ - h·eⱼ
+    const thetaMinus = [...thetaData];
+    thetaMinus[j] -= h;
+    using tmArr = np.array(thetaMinus, { dtype });
+    const [lmArr, gmArr] = gradFn(tmArr) as [np.Array, np.Array];
+    const gMinus = Array.from(await gmArr.data() as Float64Array | Float32Array);
+    lmArr.dispose(); gmArr.dispose();
+
+    // H[:,j] = (g⁺ - g⁻) / (2h)
+    for (let i = 0; i < nTheta; i++) {
+      H[i][j] = (gPlus[i] - gMinus[i]) / (2 * h);
+    }
+  }
+
+  // Symmetrize: H ← (H + Hᵀ) / 2
+  for (let i = 0; i < nTheta; i++) {
+    for (let j = i + 1; j < nTheta; j++) {
+      const avg = (H[i][j] + H[j][i]) / 2;
+      H[i][j] = avg;
+      H[j][i] = avg;
+    }
+  }
+  return H;
+};
+
 /**
  * Estimate DLM parameters (obsStd, processStd, and optionally arCoefficients)
  * by maximum likelihood via autodiff.
@@ -676,10 +792,15 @@ export const dlmMLE = async (
   const {
     order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr,
     X, init,
-    maxIter = 200, lr = 0.05, tol = 1e-6,
     obsStdFixed: sFixed, callbacks, adamOpts,
-    algorithm,
+    algorithm, optimizer: optimizerChoice, naturalOpts,
   } = opts ?? {};
+  const useNatural = optimizerChoice === 'natural';
+  const hessianMode = naturalOpts?.hessian ?? 'fd';
+  // Default lr: 0.05 for Adam, 1.0 for Newton (full step)
+  const lr = opts?.lr ?? (useNatural ? 1.0 : 0.05);
+  const maxIter = opts?.maxIter ?? (useNatural ? 50 : 200);
+  const tol = opts?.tol ?? 1e-6;
   const dtype = parseDtype(opts?.dtype);
   const forceAssocScan = algorithm === 'assoc' ? true : undefined;
   const options: DlmOptions = { order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr };
@@ -783,6 +904,172 @@ export const dlmMLE = async (
   const lossFn = useAssocScanLoss
     ? makeKalmanLossAssoc(F, G, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, mleMaskArr)
     : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Natural gradient (Fisher dualization) optimizer path
+  // ════════════════════════════════════════════════════════════════════════════
+  //
+  // Solves  Δθ = −η · (H + λI)⁻¹ · g  where H is the Hessian of the
+  // Kalman −2·logL computed via central finite differences of the gradient,
+  // and g is the gradient.  This is the Modula "modular dualization"
+  // procedure with the Fisher Information metric as the norm on parameter
+  // space.
+  //
+  // Levenberg-Marquardt damping adapts λ: shrink when loss decreases (trust
+  // the quadratic model), grow when it increases (fall back toward gradient
+  // descent).  For nTheta ≤ ~10 the (nTheta×nTheta) solve is done in plain
+  // JS — effectively free.
+  //
+  // Cost per iteration:
+  //   hessian='fd' (default): one valueAndGrad + 2·nTheta perturbed gradient
+  //     evals (all using the same JIT-compiled gradFn — no extra trace).
+  //   hessian='exact': one valueAndGrad + one jit(hessian(lossFn)) call
+  //     (exact AD; first call incurs a large JIT trace, ~20 s on WASM v0.7.8).
+  // Convergence is quadratic near the optimum: 3–15 steps vs 50–200 for Adam.
+  //
+  if (useNatural) {
+    const nTheta = theta_init.length;
+    // JIT the valueAndGrad call (only one trace, ~300 ms).
+    const gradFn = jit(valueAndGrad(lossFn));
+    // Exact Hessian (lazy): only JIT-traced when hessianMode === 'exact'.
+    // The first call takes ~20 s (jax-js v0.7.8) but warm calls are fast.
+    const exactHessFn = hessianMode === 'exact' ? jit(adHessian(lossFn)) : undefined;
+
+    let theta = np.array(theta_init, { dtype });
+
+    // Notify callback with initial theta
+    if (callbacks?.onInit) {
+      const initData = await theta.data() as Float64Array | Float32Array;
+      callbacks.onInit(initData);
+    }
+
+    const likHistory: number[] = [];
+    let prevLik = Infinity;
+    let lambda = -1;  // sentinel: will be set from Hessian diagonal on first iteration
+    let jitMs = 0;
+    let iter = 0;
+
+    for (iter = 0; iter < maxIter; iter++) {
+      const tStep = iter === 0 ? performance.now() : NaN;
+
+      // ── 1. Evaluate loss + gradient at current θ ──
+      const [likArr, gradArr] = gradFn(theta) as [np.Array, np.Array];
+      const likNum = (await likArr.data() as Float64Array | Float32Array)[0];
+      const g = Array.from(await gradArr.data() as Float64Array | Float32Array);
+      likArr.dispose(); gradArr.dispose();
+
+      if (iter === 0) jitMs = Math.round(performance.now() - tStep);
+      likHistory.push(likNum);
+
+      // Read thetaData for FD Hessian and line search
+      const thetaData = Array.from(await theta.data() as Float64Array | Float32Array);
+
+      // Notify callback
+      if (callbacks?.onIteration) {
+        const td = await theta.data() as Float64Array | Float32Array;
+        callbacks.onIteration(iter + 1, td, likNum);
+      }
+
+      // ── 2. Check convergence ──
+      if (iter > 0) {
+        const relChange = Math.abs((likNum - prevLik) / (Math.abs(prevLik) + 1e-30));
+        if (relChange < tol) { prevLik = likNum; iter++; break; }
+      }
+      prevLik = likNum;
+
+      // ── 3. Compute Hessian ──
+      //   'fd' (default): 2·nTheta perturbed gradient evaluations using the
+      //     same JIT'd gradFn.  For nTheta ≤ 10, ~50 ms × 2·nTheta.
+      //   'exact': single call to jit(hessian(lossFn)).  Accurate, but first
+      //     call incurs a large JIT trace (~20 s on WASM, jax-js v0.7.8).
+      let H: number[][];
+      if (exactHessFn) {
+        const hessArr = exactHessFn(theta) as np.Array;
+        const hessData = await hessArr.data() as Float64Array | Float32Array;
+        H = Array.from({ length: nTheta }, (_, i) =>
+          Array.from({ length: nTheta }, (_, j) => hessData[i * nTheta + j])
+        );
+        hessArr.dispose();
+      } else {
+        H = await computeHessianFD(gradFn, thetaData, nTheta, dtype);
+      }
+
+      // Marquardt initialization: λ = τ · max(diag(H))
+      // Start close to gradient descent (large λ) when far from optimum.
+      if (lambda < 0) {
+        let maxDiag = 0;
+        for (let i = 0; i < nTheta; i++) maxDiag = Math.max(maxDiag, Math.abs(H[i][i]));
+        lambda = Math.max(maxDiag * 1e-2, 1e-6);
+      }
+
+      // ── 4. Solve (H + λI) δ = g  via Gaussian elimination ──
+      //   For nTheta ≤ 10 this is trivially cheap in plain JS.
+      const delta = solveRegularized(H, g, lambda);
+
+      // ── 5. Backtracking line search with LM damping fallback ──
+      //   Try the Newton step; if loss doesn't decrease, increase λ and
+      //   re-solve up to 5 times (damps toward gradient descent).
+      let accepted = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const d = attempt === 0 ? delta : solveRegularized(H, g, lambda);
+        const thetaNew = thetaData.map((t, i) => t - lr * d[i]);
+        using tNewArr = np.array(thetaNew, { dtype });
+        const [lNewArr, gNewArr] = gradFn(tNewArr) as [np.Array, np.Array];
+        const lNew = (await lNewArr.data() as Float64Array | Float32Array)[0];
+        lNewArr.dispose(); gNewArr.dispose();
+
+        if (lNew < likNum) {
+          // Good step — accept and reduce damping
+          theta.dispose();
+          theta = np.array(thetaNew, { dtype });
+          lambda = Math.max(lambda * 0.5, 1e-10);
+          accepted = true;
+          break;
+        }
+        // Increase damping for next attempt
+        lambda *= 4;
+      }
+
+      if (!accepted) {
+        // All attempts failed — take a small gradient descent step
+        const gNorm = Math.sqrt(g.reduce((s, v) => s + v * v, 0)) || 1;
+        const thetaGD = thetaData.map((t, i) => t - 0.01 * g[i] / gNorm);
+        theta.dispose();
+        theta = np.array(thetaGD, { dtype });
+      }
+    }
+
+    // ── Extract results ──
+    const thetaData = await theta.data() as Float64Array | Float32Array;
+    theta.dispose();
+    fixedV2_arr?.dispose();
+    mleMaskArr?.dispose();
+
+    const wOffset = fixS ? 0 : 1;
+    const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
+    const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOffset + i]));
+    const arphi_opt = nar > 0
+      ? Array.from({ length: nar }, (_, i) => thetaData[wOffset + m + i])
+      : undefined;
+
+    const fitOptions: DlmOptions = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
+    const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
+    const fit = await dlmFit(yArr, {
+      obsStd: sForFit, processStd: w_opt, ...fitOptions,
+      X, dtype: opts?.dtype, algorithm: opts?.algorithm,
+    });
+
+    const elapsed = performance.now() - t0;
+    return {
+      obsStd: s_opt, processStd: w_opt, arCoefficients: arphi_opt,
+      deviance: prevLik, iterations: iter, fit,
+      devianceHistory: likHistory, elapsed, compilationMs: jitMs,
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Adam optimizer path (default)
+  // ════════════════════════════════════════════════════════════════════════════
   const optimizer = adam(lr, { b2: 0.9, ...adamOpts });
 
   // ── On-device batched training loop ──
