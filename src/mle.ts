@@ -28,6 +28,8 @@ export interface DlmMleResult {
   elapsed: number;
   /** Wall-clock time in ms for the first optimizer step (JIT compilation + one gradient pass). In MATLAB DLM, this is `jitMs`. */
   compilationMs: number;
+  /** Prior penalty at the optimum: −2·log p(θ*).  Only present when a custom `loss` function is used. */
+  priorPenalty?: number;
 }
 
 /**
@@ -47,6 +49,8 @@ export interface DlmMleResultMatlab {
   iterations: number;
   /** Full DLM fit result (MATLAB layout) */
   fit: DlmFitResult;
+  /** Prior penalty at optimum (only when custom loss) */
+  priorPenalty?: number;
   /** Optimization history */
   likHistory: number[];
   /** Wall-clock time in ms */
@@ -65,6 +69,7 @@ export const toMatlabMle = (result: DlmMleResult): DlmMleResultMatlab => ({
   lik: result.deviance,
   iterations: result.iterations,
   fit: result.fit,
+  priorPenalty: result.priorPenalty,
   likHistory: result.devianceHistory,
   elapsed: result.elapsed,
   jitMs: result.compilationMs,
@@ -795,6 +800,7 @@ export const dlmMLE = async (
     X, init,
     obsStdFixed: sFixed, callbacks, adamOpts,
     algorithm, optimizer: optimizerChoice, naturalOpts,
+    loss: lossOption,
   } = opts ?? {};
   const useNatural = optimizerChoice === 'natural';
   const hessianMode = naturalOpts?.hessian ?? 'fd';
@@ -906,9 +912,18 @@ export const dlmMLE = async (
   // checkpoint: false stores all N carries — no recomputation on backward pass.
   // Benchmarks show ~25–30% speedup over default √N checkpointing for typical
   // DLM dataset sizes (n ≲ few hundred), where carry memory is negligible.
-  const lossFn = useAssocScanLoss
+  const kalmanLoss = useAssocScanLoss
     ? makeKalmanLossAssoc(F, G, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, mleMaskArr)
     : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
+
+  // Custom loss wrapping (MAP / regularised objectives).
+  // When a DlmLossFn is provided, it wraps the Kalman −2·logL so that
+  //   objectiveFn(θ) = userLoss(kalmanLoss(θ), θ)
+  // The entire chain JITs together — no extra dispatch overhead.
+  const hasCustomLoss = typeof lossOption === 'function';
+  const lossFn = hasCustomLoss
+    ? (theta: np.Array): np.Array => (lossOption as import('./types').DlmLossFn)(kalmanLoss(theta), theta)
+    : kalmanLoss;
 
   // ════════════════════════════════════════════════════════════════════════════
   // Natural gradient (Fisher dualization) optimizer path
@@ -1045,6 +1060,16 @@ export const dlmMLE = async (
     }
 
     // ── Extract results ──
+    // When a custom loss is used, prevLik is the MAP objective.
+    // Evaluate pure Kalman −2·logL at the optimum to separate prior penalty.
+    let pureDeviance = prevLik;
+    let priorPenalty: number | undefined;
+    if (hasCustomLoss) {
+      using devArr = kalmanLoss(theta);
+      pureDeviance = (await devArr.data() as Float64Array | Float32Array)[0];
+      priorPenalty = prevLik - pureDeviance;
+    }
+
     const thetaData = await theta.data() as Float64Array | Float32Array;
     theta.dispose();
     fixedV2_arr?.dispose();
@@ -1067,8 +1092,9 @@ export const dlmMLE = async (
     const elapsed = performance.now() - t0;
     return {
       obsStd: s_opt, processStd: w_opt, arCoefficients: arphi_opt,
-      deviance: prevLik, iterations: iter, fit,
+      deviance: pureDeviance, iterations: iter, fit,
       devianceHistory: likHistory, elapsed, compilationMs: jitMs,
+      ...(priorPenalty !== undefined ? { priorPenalty } : {}),
     };
   }
 
@@ -1185,6 +1211,16 @@ export const dlmMLE = async (
   }
 
   // Extract optimized parameters
+  // When a custom loss is used, prevLik is the MAP objective.
+  // Evaluate pure Kalman −2·logL at the optimum to separate prior penalty.
+  let pureDeviance = prevLik;
+  let priorPenalty: number | undefined;
+  if (hasCustomLoss) {
+    using devArr = kalmanLoss(theta);
+    pureDeviance = (await devArr.data() as Float64Array | Float32Array)[0];
+    priorPenalty = prevLik - pureDeviance;
+  }
+
   const thetaData = await theta.data() as Float64Array | Float32Array;
   theta.dispose(); tree.dispose(optState); lastLik.dispose();
   fixedV2_arr?.dispose();
@@ -1216,11 +1252,12 @@ export const dlmMLE = async (
     obsStd: s_opt,
     processStd: w_opt,
     arCoefficients: arphi_opt,
-    deviance: prevLik,
+    deviance: pureDeviance,
     iterations: iter,
     fit,
     devianceHistory: likHistory,
     elapsed,
     compilationMs: jitMs,
+    ...(priorPenalty !== undefined ? { priorPenalty } : {}),
   };
 };

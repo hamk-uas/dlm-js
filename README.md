@@ -263,6 +263,33 @@ const mle = await dlmMLE(y, { order: 1, maxIter: 200, lr: 0.05 });
 // mle.fit.nobs reports the count of non-NaN observations used
 ```
 
+### MAP estimation (custom loss / priors)
+
+By default `dlmMLE` minimizes the Kalman −2·log-likelihood (pure MLE). The `loss` option lets you supply a custom objective that wraps the Kalman loss, enabling MAP estimation, regularization, or any user-defined penalty. The entire chain — Kalman scan + custom penalty + AD backward pass + optimizer update — is compiled in a single `jit()` call with no extra dispatch overhead.
+
+Inspired by [dynamax](https://probml.github.io/dynamax/) (`log_prior + marginal_loglik`), [GPJax](https://docs.jaxgaussianprocesses.com/) (composable objectives), and [BayesNewton](https://github.com/AaltoML/BayesNewton) (energy-based optimization). Unlike these Python libraries which use class hierarchies, dlm-js uses a single callback — simpler and equally expressive when the prior is a jax-js function.
+
+```js
+import { dlmMLE } from "dlm-js";
+import { numpy as np } from "@hamk-uas/jax-js-nonconsuming";
+
+// MAP with L2 prior on log-params (pulls parameters toward prior mean)
+const result = await dlmMLE(y, {
+  order: 1,
+  loss: (deviance, theta) => {
+    // theta = [log(s), log(w0), log(w1)] for order=1
+    // L2 penalty centered at 0 (i.e. prior mode at s=1, w=1):
+    const penalty = np.multiply(np.array(0.1), np.sum(np.square(theta)));
+    return np.add(deviance, penalty);
+  },
+});
+
+console.log(result.deviance);      // pure −2·logL at the MAP optimum
+console.log(result.priorPenalty);   // MAP_objective − pure_deviance (≥ 0)
+```
+
+The `loss` callback receives two `np.Array` arguments: `deviance` (the scalar Kalman −2·logL) and `theta` (the 1-D parameter vector in log-variance / raw-AR space). It must return a scalar `np.Array`. Use only jax-js ops inside the callback — it runs inside the traced AD graph.
+
 ## Fit
 
 ### Demos

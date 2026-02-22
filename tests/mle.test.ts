@@ -9,9 +9,10 @@
  * Uses WASM backend + Float64 for all tests.
  * Synthetic data from a deterministic PRNG guarantees reproducibility.
  */
-import { defaultDevice } from '@hamk-uas/jax-js-nonconsuming';
+import { defaultDevice, numpy as np } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmMLE, dlmGenSys, findArInds } from '../src/index';
+import type { DlmLossFn } from '../src/index';
 import { withLeakCheck } from './utils';
 
 // ─── Deterministic PRNG (same as synthetic.test.ts) ─────────────────────────
@@ -364,6 +365,120 @@ describe('dlmMLE', async () => {
     expect(result.processStd[0]).toBeGreaterThan(0);
     expect(result.fit.nobs).toBe(80);
     expect(Array.from(result.fit.yhat).every(Number.isFinite)).toBe(true);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAP / custom loss tests
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Strong L2 prior on log-params that pulls estimates toward a known target.
+  // The prior is: penalty = λ · Σ (θ_i − μ_i)²
+  // With large λ the MAP estimate should be close to μ, different from MLE.
+  const makePrior = (priorMean: number[], strength: number): DlmLossFn =>
+    (deviance, theta) => {
+      const mu = np.array(priorMean);
+      const diff = np.subtract(theta, mu);
+      const penalty = np.multiply(np.array(strength), np.sum(np.square(diff)));
+      return np.add(deviance, penalty);
+    };
+
+  it('MAP: adam returns priorPenalty and shifted parameters', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    // MLE baseline
+    const mle = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' })
+    );
+    expect(mle.priorPenalty).toBeUndefined();
+
+    // MAP: strong prior pulling log-params toward 0 (i.e. s≈1, w≈1)
+    // θ layout: [log(s), log(w0)]
+    const prior = makePrior([0, 0], 50);
+    const map = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior })
+    );
+
+    // priorPenalty should exist and be positive (prior adds a non-negative term)
+    expect(map.priorPenalty).toBeDefined();
+    expect(map.priorPenalty!).toBeGreaterThan(0);
+    // deviance should be pure −2·logL (larger than MLE deviance since MAP is suboptimal for likelihood)
+    expect(Number.isFinite(map.deviance)).toBe(true);
+    expect(map.deviance).toBeGreaterThanOrEqual(mle.deviance - 1);
+    // MAP obsStd should be pulled toward exp(0) = 1, i.e. smaller than MLE
+    expect(map.obsStd).toBeLessThan(mle.obsStd);
+    // Fit should be valid
+    expect(map.fit.y.length).toBe(200);
+  });
+
+  it('MAP: natural gradient returns priorPenalty and shifted parameters', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    // MAP: strong prior pulling log-params toward 0
+    const prior = makePrior([0, 0], 50);
+    const map = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        tol: 1e-6, dtype: 'f64', optimizer: 'natural', loss: prior })
+    );
+
+    expect(map.priorPenalty).toBeDefined();
+    expect(map.priorPenalty!).toBeGreaterThan(0);
+    expect(Number.isFinite(map.deviance)).toBe(true);
+    // MAP should shift obsStd toward 1
+    expect(map.obsStd).toBeLessThan(s_true);
+    expect(map.fit.y.length).toBe(200);
+  });
+
+  it('MAP: loss="ml" behaves identically to no loss option', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    const mlDefault = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' })
+    );
+    const mlExplicit = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: 'ml' })
+    );
+
+    // Same deviance (both pure MLE)
+    expect(Math.abs(mlDefault.deviance - mlExplicit.deviance)).toBeLessThan(0.01);
+    expect(mlExplicit.priorPenalty).toBeUndefined();
+  });
+
+  it('MAP: identity loss (pass-through) gives same result as MLE', async () => {
+    const s_true = 10;
+    const w_true = [3];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
+
+    // Identity loss: just return the Kalman deviance unchanged
+    const identity: DlmLossFn = (deviance, _theta) => deviance;
+    const result = await withLeakCheck(() =>
+      dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+        maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: identity })
+    );
+
+    // priorPenalty should be ~0 (identity adds nothing)
+    expect(result.priorPenalty).toBeDefined();
+    expect(Math.abs(result.priorPenalty!)).toBeLessThan(0.1);
+    // Parameters should be close to pure MLE
+    expect(result.obsStd).toBeGreaterThan(s_true * 0.3);
+    expect(result.obsStd).toBeLessThan(s_true * 3);
   });
 });
 

@@ -651,6 +651,40 @@ export interface DlmMleOptions {
     fdStep?: number;
   };
 
+  // ── Objective ──
+
+  /**
+   * Custom loss function for MAP estimation or other regularised objectives.
+   * Default: `'ml'` (standard Kalman prediction-error likelihood).
+   *
+   * When a function is provided it receives the Kalman −2·logL (scalar
+   * `np.Array`) and the current parameter vector θ (1-D `np.Array`),
+   * and must return a scalar `np.Array`.  The entire chain —
+   * Kalman scan + custom penalty + AD backward pass + optimizer update —
+   * is wrapped in a single `jit()` call.
+   *
+   * θ layout: `[log(s), log(w₀)…log(w_{m-1}), φ₁…φ_p]`
+   *   - Variance parameters are log-transformed (always positive after `exp`).
+   *   - AR coefficients (when `fitAr`) are unconstrained.
+   *   - When `obsStdFixed` is set, the leading `log(s)` slot is absent.
+   *
+   * @example MAP with log-normal prior on process noise
+   * ```ts
+   * import { numpy as np } from '@hamk-uas/jax-js-nonconsuming';
+   *
+   * const result = await dlmMLE(y, {
+   *   order: 1,
+   *   loss: (deviance, theta) => {
+   *     // theta = [log(s), log(w0), log(w1)]
+   *     const logW = np.slice(theta, [1], [3]);
+   *     const prior = np.multiply(np.array(0.1), np.sum(np.square(logW)));
+   *     return np.add(deviance, prior);
+   *   },
+   * });
+   * ```
+   */
+  loss?: 'ml' | DlmLossFn;
+
   // ── Runtime ──
 
   /** Computation precision. Default: `'f64'`. */
