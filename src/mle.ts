@@ -725,8 +725,9 @@ const computeHessianFD = async (
   thetaData: number[],
   nTheta: number,
   dtype: DType,
+  fdStepSize: number = 1e-5,
 ): Promise<number[][]> => {
-  const h = 1e-5;  // ε^(1/3) ≈ 6e-6 for float64; 1e-5 is safe + accurate
+  const h = fdStepSize;
   const H: number[][] = Array.from({ length: nTheta }, () => new Array(nTheta).fill(0));
 
   for (let j = 0; j < nTheta; j++) {
@@ -797,6 +798,10 @@ export const dlmMLE = async (
   } = opts ?? {};
   const useNatural = optimizerChoice === 'natural';
   const hessianMode = naturalOpts?.hessian ?? 'fd';
+  const lmInit = naturalOpts?.lambdaInit ?? 1e-4;
+  const lmShrink = naturalOpts?.lambdaShrink ?? 0.5;
+  const lmGrow = naturalOpts?.lambdaGrow ?? 2;
+  const fdStep = naturalOpts?.fdStep ?? 1e-5;
   // Default lr: 0.05 for Adam, 1.0 for Newton (full step)
   const lr = opts?.lr ?? (useNatural ? 1.0 : 0.05);
   const maxIter = opts?.maxIter ?? (useNatural ? 50 : 200);
@@ -991,7 +996,7 @@ export const dlmMLE = async (
         );
         hessArr.dispose();
       } else {
-        H = await computeHessianFD(gradFn, thetaData, nTheta, dtype);
+        H = await computeHessianFD(gradFn, thetaData, nTheta, dtype, fdStep);
       }
 
       // Marquardt initialization: λ = τ · max(diag(H))
@@ -999,7 +1004,7 @@ export const dlmMLE = async (
       if (lambda < 0) {
         let maxDiag = 0;
         for (let i = 0; i < nTheta; i++) maxDiag = Math.max(maxDiag, Math.abs(H[i][i]));
-        lambda = Math.max(maxDiag * 1e-2, 1e-6);
+        lambda = Math.max(maxDiag * lmInit, 1e-6);
       }
 
       // ── 4. Solve (H + λI) δ = g  via Gaussian elimination ──
@@ -1022,12 +1027,12 @@ export const dlmMLE = async (
           // Good step — accept and reduce damping
           theta.dispose();
           theta = np.array(thetaNew, { dtype });
-          lambda = Math.max(lambda * 0.5, 1e-10);
+          lambda = Math.max(lambda * lmShrink, 1e-10);
           accepted = true;
           break;
         }
         // Increase damping for next attempt
-        lambda *= 4;
+        lambda *= lmGrow;
       }
 
       if (!accepted) {

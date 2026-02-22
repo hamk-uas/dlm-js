@@ -641,6 +641,14 @@ export interface DlmMleOptions {
      *   May become competitive as jax-js JIT improves.
      */
     hessian?: 'fd' | 'exact';
+    /** Initial λ scale: `λ₀ = lambdaInit · max(diag(H))`.  Default: `1e-4`. */
+    lambdaInit?: number;
+    /** λ shrink factor on accepted step.  Default: `0.5`. */
+    lambdaShrink?: number;
+    /** λ grow factor on rejected step.  Default: `2`. */
+    lambdaGrow?: number;
+    /** Finite-difference step size for `hessian='fd'`.  Default: `1e-5`. */
+    fdStep?: number;
   };
 
   // ── Runtime ──
