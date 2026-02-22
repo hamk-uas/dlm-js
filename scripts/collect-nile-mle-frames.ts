@@ -54,6 +54,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
   console.log("Phase 1: Full optimization (capturing theta at every iteration)...");
 
   const thetaHistory: number[][] = [];
+  const iterHistory: number[] = [];
 
   const mle = await withLeakCheck(() =>
     dlmMLE(y, {
@@ -61,9 +62,11 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
       callbacks: {
         onInit: (theta) => {
           thetaHistory.push(Array.from(theta));
+          iterHistory.push(0);
         },
-        onIteration: (_iter, theta, _lik) => {
+        onIteration: (iter, theta, _lik) => {
           thetaHistory.push(Array.from(theta));
+          iterHistory.push(iter);
         },
       },
       algorithm: forceAssocScan ? 'assoc' : undefined,
@@ -80,11 +83,12 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
   // Phase 2: Compute frame sampling
   const animDuration = elapsed / 1000;
   const totalFrames = Math.max(2, Math.round(animDuration * TARGET_FPS));
-  const stepSize = Math.max(1, Math.round(totalIters / totalFrames));
+  const histLen = thetaHistory.length;
+  const stepSize = Math.max(1, Math.round((histLen - 1) / totalFrames));
 
   const sampleIndices: number[] = [0];
-  for (let i = stepSize; i < totalIters; i += stepSize) sampleIndices.push(i);
-  if (sampleIndices[sampleIndices.length - 1] !== totalIters) sampleIndices.push(totalIters);
+  for (let i = stepSize; i < histLen - 1; i += stepSize) sampleIndices.push(i);
+  if (sampleIndices[sampleIndices.length - 1] !== histLen - 1) sampleIndices.push(histLen - 1);
 
   console.log(
     `Phase 2: ${animDuration.toFixed(2)}s at ${TARGET_FPS}fps → ` +
@@ -99,6 +103,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
 
   for (const idx of sampleIndices) {
     const td = thetaHistory[idx];
+    const iterForFrame = iterHistory[idx];
     const s = Math.exp(td[0]);
     const w = Array.from({ length: m }, (_, i) => Math.exp(td[1 + i]));
     const lik = idx === 0 ? null : likHistory[idx - 1];
@@ -107,12 +112,12 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
     const level = Array.from(fit.smoothed.series(0));
     const std = Array.from({ length: n }, (_, t) => fit.smoothedStd.get(t, 0));
     const ystd = Array.from(fit.ystd);
-    frames.push({ iter: idx, s, w, lik, level, std, ystd });
+    frames.push({ iter: iterForFrame, s, w, lik, level, std, ystd });
 
     const likStr = lik !== null ? lik.toFixed(2) : "—";
     console.log(
       `  Frame ${frames.length}/${sampleIndices.length}: ` +
-        `iter=${idx}, s=${s.toFixed(2)}, w=[${w.map(v => v.toFixed(2)).join(",")}], lik=${likStr}`,
+        `iter=${iterForFrame}, s=${s.toFixed(2)}, w=[${w.map(v => v.toFixed(2)).join(",")}], lik=${likStr}`,
     );
   }
 

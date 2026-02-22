@@ -785,18 +785,59 @@ export const dlmMLE = async (
     : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
   const optimizer = adam(lr, { b2: 0.9, ...adamOpts });
 
-  // One jit() wrapping: valueAndGrad (Kalman scan + AD) + optax Adam update.
-  // Traces once, then every iteration is compiled.
-  const optimStep = jit((theta: np.Array, optState: any): [np.Array, any, np.Array] => {
-    const [likVal, grad] = valueAndGrad(lossFn)(theta);
-    const [updates, newOptState] = optimizer.update(grad, optState);
-    const newTheta = applyUpdates(theta, updates);
-    return [newTheta, newOptState, likVal];
-  });
+  // ── On-device batched training loop ──
+  // Instead of returning to JS after every step, run INNER_STEPS optimizer
+  // iterations on-device via lax.scan before reading back the deviance.
+  // The scan carries {theta, optState, lastLik} and returns null outputs
+  // (skip stacking).
+  //
+  // Architecture:
+  //   jit((theta, optState) =>
+  //     lax.scan(step, {theta, optState, lastLik}, null, {length: INNER_STEPS})
+  //   )
+  // Each on-device block runs INNER_STEPS forward+backward+Adam passes
+  // compiled into a single native program. Loss and convergence are checked
+  // only at block boundaries (every INNER_STEPS iters).
+  // INNER_STEPS: number of Adam iterations per on-device block.
+  // For the sequential loss path we batch 10 steps via lax.scan to minimise
+  // JS↔Wasm round-trips.  For the associative-scan loss path we cannot nest
+  // an outer lax.scan around an inner lax.associativeScan (causes
+  // UseAfterFreeError during JIT _inlineLiterals), so we fall back to a
+  // single-step JIT compiled block (INNER_STEPS=1).
+  const INNER_STEPS = useAssocScanLoss ? 1 : 10;
+
+  type OptCarry = { theta: np.Array; optState: any; lastLik: np.Array };
+
+  // Used only by the sequential-scan optimBlock below.
+  const innerStep = (carry: OptCarry, _x: null): [OptCarry, null] => {
+    const [likVal, grad] = valueAndGrad(lossFn)(carry.theta);
+    const [updates, newOptState] = optimizer.update(grad, carry.optState);
+    const newTheta = applyUpdates(carry.theta, updates);
+    return [{ theta: newTheta, optState: newOptState, lastLik: likVal }, null];
+  };
+
+  const optimBlock = useAssocScanLoss
+    ? jit((theta: np.Array, optState: any, _lastLik: np.Array) => {
+        // Single Adam step — avoids nesting lax.scan around lax.associativeScan.
+        const [likVal, grad] = valueAndGrad(lossFn)(theta);
+        const [updates, newOptState] = optimizer.update(grad, optState);
+        const newTheta = applyUpdates(theta, updates);
+        return { theta: newTheta, optState: newOptState, lastLik: likVal } as OptCarry;
+      })
+    : jit((theta: np.Array, optState: any, lastLik: np.Array) => {
+        const [finalCarry, _ys] = lax.scan(
+          innerStep,
+          { theta, optState, lastLik } as OptCarry,
+          null,
+          { length: INNER_STEPS },
+        );
+        return finalCarry;
+      });
 
   // Initialize
   let theta = np.array(theta_init, { dtype });
   let optState: any = optimizer.init(theta);
+  let lastLik = np.array(Infinity, { dtype });
 
   // Notify callback with initial theta
   if (callbacks?.onInit) {
@@ -809,29 +850,35 @@ export const dlmMLE = async (
   let iter = 0;
   let patienceCount = 0;
   let jitMs = 0;
-  const PATIENCE = 5; // require 5 consecutive steps below tol before stopping
+  // Each block runs INNER_STEPS iterations on-device, so a single converged
+  // block already represents 10 consecutive near-zero-change steps. PATIENCE=2
+  // blocks (= 20 steps) is more than the previous per-step PATIENCE=5.
+  const PATIENCE = 2;
+  const nBlocks = Math.ceil(maxIter / INNER_STEPS);
 
-  for (iter = 0; iter < maxIter; iter++) {
-    const t0iter = iter === 0 ? performance.now() : NaN;
-    const [newTheta, newOptState, likVal] = optimStep(theta, optState);
-    const likNum = (await likVal.consumeData() as Float64Array | Float32Array)[0];
-    if (iter === 0) jitMs = Math.round(performance.now() - t0iter);
+  for (let block = 0; block < nBlocks; block++) {
+    const t0block = block === 0 ? performance.now() : NaN;
+    const result = optimBlock(theta, optState, lastLik) as OptCarry;
+    const likNum = (await result.lastLik.data() as Float64Array | Float32Array)[0];
+    if (block === 0) jitMs = Math.round(performance.now() - t0block);
     likHistory.push(likNum);
 
-    // Notify callback with updated theta
+    // Notify callback with updated theta (at block boundary)
     if (callbacks?.onIteration) {
-      const td = await newTheta.data() as Float64Array | Float32Array;
-      callbacks.onIteration(iter, td, likNum);
+      const td = await result.theta.data() as Float64Array | Float32Array;
+      const iterNum = (block + 1) * INNER_STEPS;
+      callbacks.onIteration(iterNum, td, likNum);
     }
 
     // Dispose old state
-    theta.dispose(); tree.dispose(optState);
-    theta = newTheta; optState = newOptState;
+    theta.dispose(); tree.dispose(optState); lastLik.dispose();
+    theta = result.theta; optState = result.optState; lastLik = result.lastLik;
 
-    // Check convergence: require PATIENCE consecutive steps below tol to guard
-    // against transient near-zero steps during oscillation (assocScan path).
+    iter = (block + 1) * INNER_STEPS;
+
+    // Check convergence: require PATIENCE consecutive blocks below tol
     const relChange = Math.abs((likNum - prevLik) / (Math.abs(prevLik) + 1e-30));
-    if (iter > 0) {
+    if (block > 0) {
       if (relChange < tol) {
         patienceCount++;
         if (patienceCount >= PATIENCE) {
@@ -847,7 +894,7 @@ export const dlmMLE = async (
 
   // Extract optimized parameters
   const thetaData = await theta.data() as Float64Array | Float32Array;
-  theta.dispose(); tree.dispose(optState);
+  theta.dispose(); tree.dispose(optState); lastLik.dispose();
   fixedV2_arr?.dispose();
   mleMaskArr?.dispose();
 

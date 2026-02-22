@@ -513,8 +513,11 @@ The parallel-scan model's value (O(log n) depth, GPU efficiency, JIT compilation
 | Fully on-device MLE | `dlmFitTensor` + `y: np.Array` input avoids JS↔GPU data movement entirely |
 | Multivariate observations (p > 1) | `StateMatrix` / `CovMatrix` wrappers are p-agnostic; the filter core would expand from `[n]` to `[n, p]` diagnostics |
 | Arbitrary time steps | `dt` option + time-varying G_t, W_t threaded through scan inputs; see §13 |
+| True continuous-time SDE models | `continuous: true` mode in `dlmGenSysTV` uses exact SDE integral for W_k instead of Faulhaber sums; enables CAR(p) processes; see §19 |
 | MCMC sampling | On-device tensor API + custom loss → stochastic gradient MCMC feasible; see §15 |
 | MAP estimation | Custom loss with log-prior penalty; see §14 |
+| Trajectory MAP (Onsager–Machlup) | Parallel trajectory MAP via reformulation as optimal control problem; reuses assoc scan; see §20 |
+| Extended Kalman Filter (EKF) | Non-linear f(x), h(x) with automatic Jacobians via `jacfwd`; see §21 |
 
 ---
 
@@ -570,6 +573,12 @@ When `dt` is provided, the noise parameters `processStd` in `DlmMleOptions` are 
 ### Impact on scan input sizes
 
 Threading `G_t[n, m, m]` and `W_t[n, m, m]` as scan inputs increases memory from O(m²) (captured constants) to O(n·m²) (stacked per step). For typical dlm-js models (m ≤ 13, n ≤ 10k), this is 13² × 10k × 8 bytes ≈ 13 MB — well within budget. For future large-n or high-m applications, a hybrid approach could compute G_t and W_t inside the scan step from a compact `dt[n]` vector + constant $F_c$, avoiding the full stack.
+
+### Current implementation vs true continuous-time models
+
+The current `dlmGenSysTV` (already implemented in `src/dlmgensys.ts`) uses **Faulhaber sums** — it analytically continues the discrete-time noise accumulation formula $W_k = \sum_{j=0}^{\Delta t - 1} G^j W_1 (G^j)^\top$ to non-integer $\Delta t$. This is the correct formula when the gap represents "skipping $\Delta t$ discrete time steps of the MATLAB DLM model." It collapses exactly to $W_1$ at unit spacing and preserves backward compatibility.
+
+A separate `continuous: true` mode (§19) would instead use the true SDE integral $W_k = \int_0^{\Delta t_k} \exp(F_c \tau) L Q_c L^\top \exp(F_c \tau)^\top d\tau$, which produces the cubic covariance structure (e.g. $\Delta t^3/3$ terms for local linear trend). This is the correct formula when the system genuinely evolves as a continuous SDE between observations. The two formulas agree at unit spacing but diverge for $\Delta t \neq 1$.
 
 ### References
 
@@ -679,15 +688,29 @@ for (let k = 0; k < nSamples; k++) {
 
 **Cons**: each iteration re-enters jit (no cross-iteration compilation benefit); slower than SGLD for large models because `dlmFitTensor` includes the full two-pass smoother, not just the forward filter needed for likelihood.
 
+**3. Hamiltonian Monte Carlo (HMC) / No-U-Turn Sampler (NUTS)**
+
+Uses exact gradients of the log-posterior to simulate Hamiltonian dynamics, exploring the parameter space far more efficiently than random-walk proposals. The gradient $\nabla_\theta \log p(\theta | y)$ is already available from `jit(valueAndGrad(loss))` — the same infrastructure used by MLE. HMC augments $\theta$ with a momentum variable $r$ and simulates the Hamiltonian $H(\theta, r) = -\log p(\theta | y) + \frac{1}{2} r^\top r$ via leapfrog integration:
+
+$$r_{t+\epsilon/2} = r_t - \frac{\epsilon}{2} \nabla_\theta (-\log p(\theta | y)), \quad \theta_{t+\epsilon} = \theta_t + \epsilon \, r_{t+\epsilon/2}, \quad r_{t+\epsilon} = r_{t+\epsilon/2} - \frac{\epsilon}{2} \nabla_\theta (-\log p(\theta | y))$$
+
+Each leapfrog step requires one gradient evaluation (one `jit(valueAndGrad(...))` call). NUTS adaptively selects the number of leapfrog steps to avoid manual tuning.
+
+**Pros**: state-of-the-art sampling efficiency; much higher effective sample size per iteration than random-walk MH; well-understood convergence diagnostics. The jax-js backend makes this almost free — in traditional libraries, deriving the gradient of the Kalman likelihood w.r.t. all parameters is mathematically excruciating, but here it's automatic.
+
+**Cons**: more complex implementation than SGLD; requires tuning the mass matrix and step size (though NUTS + dual averaging largely automates this).
+
 ### API sketch
 
 ```ts
 interface DlmMcmcOptions extends DlmMleOptions {
-  method?: 'sgld' | 'mh';     // default: 'sgld'
+  method?: 'sgld' | 'mh' | 'hmc';  // default: 'sgld'
   nSamples?: number;           // default: 1000
   burnIn?: number;             // default: 200
   prior?: DlmLossFn;           // reuses the custom loss type from §14
   proposalScale?: number;      // for MH: proposal std dev
+  leapfrogSteps?: number;      // for HMC: number of leapfrog steps (default: 10)
+  stepSize?: number;           // for HMC: leapfrog step size (default: auto-tuned)
   // ... diagnostics callbacks
 }
 
@@ -724,11 +747,12 @@ dlmFit(y, opts)                    // → DlmFitResult (materialized)
 dlmFitTensor(y, opts)              // → DlmTensorResult (on-device)
 dlmForecast(fit, obsStd, h, opts?) // → DlmForecastResult
 dlmGenSys(opts?)                   // → DlmSystem  { G, F, m }
+dlmGenSysTV(opts, timestamps, w)   // → DlmSystemTV  { G[n], W[n], F, m }
 findArInds(opts)                   // → number[]
 
 // ─── Parameter estimation ───
 dlmMLE(y, opts?)                   // → DlmMleResult
-dlmMCMC(y, opts?)                  // → DlmMcmcResult (future)
+dlmMCMC(y, opts?)                  // → DlmMcmcResult (future §15)
 
 // ─── MATLAB compat ───
 toMatlab(result)                   // → DlmFitResultMatlab (names + layout)
@@ -736,16 +760,20 @@ toMatlabMle(result)                // → DlmMleResultMatlab (names)
 
 // ─── Types ───
 DlmFitOptions                     // options for dlmFit / dlmFitTensor
+                                   //   continuous?: boolean (§19)
+                                   //   transitionFn?: (x) => x' (§21, EKF)
+                                   //   observationFn?: (x) => y (§21, EKF)
 DlmMleOptions                     // options for dlmMLE
-DlmMcmcOptions                    // options for dlmMCMC (future)
+DlmMcmcOptions                    // options for dlmMCMC (future §15)
 DlmForecastOptions                // options for dlmForecast
 DlmFitResult                      // materialized: StateMatrix / CovMatrix, JS-idiomatic names
 DlmTensorResult                   // on-device: np.Array, JS-idiomatic names
 DlmForecastResult                 // forecast with StateMatrix / CovMatrix
 DlmMleResult                      // MLE result (obsStd, processStd, deviance, ...)
-DlmMcmcResult                     // MCMC result (future)
+DlmMcmcResult                     // MCMC result (future §15)
 DlmFitResultMatlab                // MATLAB-compatible names + layout
 DlmSystem                         // { G, F, m } from dlmGenSys
+DlmSystemTV                       // { G[n,m,m], W[n,m,m], F, m } from dlmGenSysTV
 DlmLossFn                         // custom loss function type
 StateMatrix                       // [n, m] wrapper with at/series/get
 CovMatrix                         // [n, m, m] wrapper with at/series/get/variance
@@ -959,3 +987,152 @@ Create `MIGRATION.md` as part of the release:
 7. **copilot-instructions.md**: Update field references.
 8. **TypeDoc generation**: `pnpm run docs` to regenerate API docs.
 9. **MIGRATION.md**: Write as final step before release.
+
+---
+
+## 19. Continuous-time SDE models and CAR(p) processes
+
+### Motivation
+
+The current `dlmGenSysTV` (§13) uses Faulhaber analytic continuation of the discrete-time noise formula. This is correct for "skipping discrete steps" but does not model systems that genuinely evolve as continuous stochastic differential equations between observations. A true continuous-time mode would enable:
+
+- **CAR(p) processes** (continuous-time autoregressive): physically interpretable dynamics defined by derivatives rather than lagged observations.
+- **Irregular timestamps without aliasing**: the SDE discretization is exact for any $\Delta t$, with no ambiguity about what "inter-sample behavior" looks like.
+- **Proper noise scaling**: the continuous-time integral produces the cubic/quintic covariance structure (e.g. $\Delta t^3/3$ for local linear trend) that correctly captures how uncertainty grows between widely spaced observations.
+
+### CAR(p) processes
+
+A continuous-time autoregressive process of order $p$ (CAR($p$)) is defined by the SDE:
+
+$$y^{(p)}(t) + a_1 y^{(p-1)}(t) + \cdots + a_p y(t) = \sigma \, \frac{dw(t)}{dt}$$
+
+where $y^{(k)}$ denotes the $k$-th time derivative. This is not "looking at the past $p$ samples" but rather encoding the current value and its first $p-1$ derivatives. The state vector is:
+
+$$X(t) = \begin{pmatrix} y(t) \\ \dot{y}(t) \\ \vdots \\ y^{(p-1)}(t) \end{pmatrix}$$
+
+In companion form the SDE becomes $\dot{X}(t) = A_c X(t) + L \, dw(t)$ with:
+
+$$A_c = \begin{pmatrix} 0 & 1 & 0 & \cdots & 0 \\ 0 & 0 & 1 & \cdots & 0 \\ \vdots & & & \ddots & \vdots \\ 0 & 0 & 0 & \cdots & 1 \\ -a_p & -a_{p-1} & \cdots & -a_2 & -a_1 \end{pmatrix}, \quad L = \begin{pmatrix} 0 \\ 0 \\ \vdots \\ 0 \\ \sigma \end{pmatrix}$$
+
+Exact discretization produces $G_k = \exp(A_c \Delta t_k)$ and $W_k = \int_0^{\Delta t_k} \exp(A_c \tau) L L^\top \exp(A_c^\top \tau) d\tau$.
+
+### Aliasing: CAR(p) ≠ discrete AR(p) for p > 1
+
+**CAR(1)** is exactly equivalent to discrete AR(1): $A_c = [-\alpha]$, so $G_k = e^{-\alpha \Delta t}$. Setting $\phi = e^{-\alpha}$ recovers the familiar discrete AR(1) coefficient. ✓
+
+**CAR(p) for p > 1** discretizes to **ARMA(p, p−1)**, not pure AR(p). This is because the continuous noise $dw(t)$ enters through the highest derivative only (via $L$), but during the interval $\Delta t$ it accumulates differently at each derivative level. The differential accumulation introduces lag-1 (and higher) autocorrelation in the discrete innovations, which is exactly the Moving Average component.
+
+An equivalent way to see this: a CAR(2) can be decomposed via partial fractions into a weighted sum of two independent CAR(1) processes (damped oscillator = two exponential modes). Each CAR(1) discretizes exactly to a discrete AR(1). But the sum of two independent discrete AR(1) processes is ARMA(2, 1), not AR(2). This is a well-known result in time series theory (Granger & Morris, 1976).
+
+**Consequence for dlm-js**: a `continuous: true` option with `arCoefficients` cannot claim equivalence to MATLAB DLM's discrete AR(p) models for $p > 1$. This should be clearly documented: the continuous model is a *different* (and often more physically meaningful) model that happens to match the discrete model only for AR(1) and for polynomial trends.
+
+### Implementation plan
+
+1. Add `continuous?: boolean` to `DlmOptions` / `DlmFitOptions`.
+2. When `continuous: true`, `dlmGenSysTV` computes $G_k$ and $W_k$ using the exact SDE discretization instead of Faulhaber sums.
+3. For polynomial trend (order 0, 1, 2) and trigonometric harmonics, the matrix exponential and noise integral have closed-form expressions — no numerical expm needed.
+4. For CAR(p), the companion matrix $A_c$ is constructed from the `arCoefficients` parameter (reinterpreted as continuous-time SDE coefficients $a_1, \ldots, a_p$). The matrix exponential can be computed via eigendecomposition (always available for companion matrices) or Padé approximation.
+5. MLE with `continuous: true` estimates the continuous-time parameters ($a_i$, $\sigma$, $q_c$). Since the closed-form $G_k(a_i, \Delta t_k)$ and $W_k(\sigma, q_c, \Delta t_k)$ are differentiable w.r.t. all parameters, autodiff propagates through naturally.
+
+### References
+
+- Granger, C. W. J. & Morris, M. J. (1976). "Time Series Modelling and Interpretation." *Journal of the Royal Statistical Society, Series A*, 139(2), 246–257.
+- Jones, R. H. (1981). "Fitting a Continuous Time Autoregression to Discrete Data." In *Applied Time Series Analysis II*, ed. D. F. Findley, Academic Press.
+
+---
+
+## 20. Trajectory MAP estimation (Onsager–Machlup)
+
+### Motivation
+
+§14 covers **parameter MAP**: adding a prior penalty on the parameter vector $\theta$ (noise variances, AR coefficients) so that the optimizer finds the posterior mode of $p(\theta | y)$. This leaves the state trajectory estimated by the standard Kalman smoother (conditional mean).
+
+**Trajectory MAP** is a fundamentally different problem: find the most likely *state trajectory* $x_{0:T}^*$ that maximizes $p(x_{0:T} | y_{1:T})$, rather than the conditional mean. For linear Gaussian models, the trajectory MAP and the conditional mean (RTS smoother output) coincide. For non-linear or non-Gaussian models, they diverge — and the MAP trajectory can be more robust to outliers.
+
+### Theory: Onsager–Machlup functional
+
+For a continuous-time SDE $\dot{x}(t) = f(x(t)) + L \, dw(t)$ with discrete observations $y_k = h(x(t_k)) + v_k$, the MAP trajectory minimizes the Onsager–Machlup (OM) action functional:
+
+$$S[x] = \frac{1}{2} \int_0^T \left\| \dot{x}(t) - f(x(t)) \right\|_{Q^{-1}}^2 dt + \frac{1}{2} \sum_{k=1}^{N} \left\| y_k - h(x(t_k)) \right\|_{R^{-1}}^2$$
+
+The first term penalizes trajectories that deviate from the drift $f$; the second term penalizes observation misfit. Minimizing $S[x]$ is a continuous-time optimal control problem.
+
+Razavi, García-Fernández & Särkkä (2025) [1] show that this optimal control problem can be reformulated so that its solution has the same associative structure as the Kalman filter/smoother. In the linear Gaussian case, this yields a **parallel Kalman–Bucy filter** (continuous-time analogue of the discrete Kalman filter) and a **parallel continuous-time RTS smoother**, both computable via `lax.associativeScan` with the same composition rules as the discrete case (Lemmas 1–4 of Särkkä & García-Fernández, 2020).
+
+### Relationship to existing dlm-js architecture
+
+The key insight from [1] is that the sub-interval solutions — whether obtained by exact matrix exponentials (linear case) or by ODE integration (non-linear case) — produce associative 5-tuple elements $(A_k, b_k, C_k, \eta_k, J_k)$ with the **same composition rules** used by the existing `assoc` path. This means:
+
+- The `associativeScan` composition logic in `dlmSmo` is reusable without changes.
+- Only the per-timestep element construction changes: instead of the discrete Kalman prediction/update formulas, the elements are derived from the continuous-time ODE solutions.
+- For the linear case with closed-form matrix exponentials (polynomial trend, harmonic seasonality), no numerical ODE solver is needed.
+
+### Implementation priority
+
+Trajectory MAP is most valuable when combined with:
+- Non-linear models (§21), where the MAP trajectory differs from the conditional mean.
+- Continuous-time SDE models (§19), where the OM functional is the natural cost.
+
+For purely linear Gaussian models (the current dlm-js scope), trajectory MAP gives the same answer as the RTS smoother, so there is no immediate benefit. This feature becomes relevant when §19 and §21 are implemented.
+
+### References
+
+- [1] Razavi, García-Fernández & Särkkä (2025). "Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation." [arXiv:2512.13319](https://arxiv.org/abs/2512.13319)
+
+---
+
+## 21. Extended Kalman Filter (EKF)
+
+### Motivation
+
+The current Kalman filter is strictly linear: both the state transition $x_{t+1} = G x_t + w_t$ and the observation $y_t = F^\top x_t + v_t$ must be linear functions. Many real-world problems have non-linear dynamics or observations:
+
+- **Bearings-only tracking**: observe angle $y = \arctan(x_2 / x_1)$ to a target at position $(x_1, x_2)$.
+- **Epidemiological models**: SIR/SEIR compartment dynamics are non-linear ODEs.
+- **Non-linear sensor fusion**: GPS + IMU + barometer with non-linear observation geometry.
+
+### Design
+
+Allow users to provide non-linear functions instead of matrices:
+
+```ts
+const fit = await dlmFit(y, {
+  // Non-linear state transition (replaces G matrix)
+  transitionFn: (x) => np.array([x.at(0) + x.at(1) * dt, x.at(1)]),
+  // Non-linear observation function (replaces F vector)
+  observationFn: (x) => np.sqrt(np.add(np.square(x.at(0)), np.square(x.at(1)))),
+  // Process and observation noise remain the same
+  processStd: [1, 0.1],
+  obsStd: 5,
+});
+```
+
+### Mechanism: automatic Jacobians
+
+The EKF linearizes the model at each timestep by computing Jacobian matrices. In traditional libraries, users must manually derive and code these Jacobians — which is error-prone and laborious.
+
+With jax-js, the Jacobians are computed automatically:
+
+```ts
+// Automatic linearization at each step:
+const G_t = jacfwd(transitionFn)(x_hat_t);    // [m, m] Jacobian of f
+const F_t = jacfwd(observationFn)(x_hat_t);   // [m] (or [p, m]) Jacobian of h
+```
+
+This is the same autodiff infrastructure used by `dlmMLE` — the Jacobians are exact (not finite-difference approximations) and are JIT-compilable.
+
+### Compatibility with parallel scan
+
+The EKF produces time-varying linearizations $G_t$, $F_t$ that change at every timestep. The machinery for time-varying system matrices is already built (§13, `dlmGenSysTV`). However, the EKF's linearization point depends on the *filtered* state at each step, creating a sequential dependency that prevents direct use of `associativeScan`.
+
+Two approaches:
+1. **Sequential EKF via `lax.scan`**: the `scan` path handles this naturally. Each step linearizes, predicts, and updates sequentially. This is analogous to the current `algorithm: 'scan'` path but with per-step Jacobian computation.
+2. **Iterated EKF (IEKF) via parallel trajectory MAP**: Razavi et al. [1] show that the non-linear trajectory MAP problem can be solved by iterating: (a) linearize around the current trajectory estimate, (b) solve the resulting linear problem in parallel via `associativeScan`, (c) update the trajectory and repeat. This is essentially a Gauss–Newton iteration on the OM functional (§20), with each iteration fully parallelizable.
+
+### Implementation priority
+
+The sequential EKF (approach 1) is straightforward to implement given the existing `scan` path and jax-js `jacfwd`. It should be the first step. The parallel iterated EKF (approach 2) is an advanced optimization that becomes valuable for long time series on WebGPU.
+
+### References
+
+- [1] Razavi, García-Fernández & Särkkä (2025). "Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation." [arXiv:2512.13319](https://arxiv.org/abs/2512.13319)
