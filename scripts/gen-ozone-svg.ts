@@ -302,7 +302,7 @@ svg.push(`<line x1="${l1x}" y1="${l1y+45}" x2="${l1x+22}" y2="${l1y+45}" stroke=
 svg.push(`<text x="${l1x+27}" y="${l1y+49}" fill="#374151" font-size="11">15-year trend forecast ±2σ (level state)</text>`);
 
 // Title
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
+svg.push(`<text x="${W / 2}" y="${p1Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Stratospheric ozone — fit (order=1, trig=2, ns=12, 3 covariates) + 15y forecast, cold ${firstRunMs.toFixed(0)} ms, warm ${warmRunMs.toFixed(0)} ms, ${scanLabel}</text>`);
 
 // ── Panel 2 ──────────────────────────────────────────────────────────────
 svg.push(...renderGridLines(yTicks2Raw, sy2, margin.left, margin.left + plotW));
@@ -340,7 +340,7 @@ svg.push(`<line x1="${l2x}" y1="${l2y+45}" x2="${l2x+22}" y2="${l2y+45}" stroke=
 svg.push(`<text x="${l2x+27}" y="${l2y+49}" fill="#374151" font-size="11">MATLAB QBO (reference)</text>`);
 
 // Panel 2 title
-svg.push(`<text x="${margin.left + plotW / 2}" y="${p2Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Proxy covariate contributions (solar + QBO)</text>`);
+svg.push(`<text x="${W / 2}" y="${p2Top - 10}" text-anchor="middle" fill="#374151" font-size="13" font-weight="bold">Proxy covariate contributions (solar + QBO)</text>`);
 
 svg.push("</svg>");
 

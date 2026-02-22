@@ -247,7 +247,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${margin.left + plotW / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, harmonics=1, seasonLength=12, AR(1)), ${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s, ${backendLabel}</text>`);
+push(`<text x="${W / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, harmonics=1, seasonLength=12, AR(1)), ${iterations} iters, ${(elapsedMs / 1000).toFixed(1)} s, ${backendLabel}</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 

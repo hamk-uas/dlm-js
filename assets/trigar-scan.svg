@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 960" font-family="system-ui,-apple-system,sans-serif" font-size="12">
 <rect width="900" height="960" fill="white"/>
-<text x="472" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — fit (order=1, trig, ns=12, AR(1)), cold 109 ms, warm 50 ms, scan/WASM/f64</text>
+<text x="450" y="18" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — fit (order=1, trig, ns=12, AR(1)), cold 106 ms, warm 57 ms, scan/WASM/f64</text>
 <line x1="66" y1="216.0" x2="878" y2="216.0" stroke="#e5e7eb" stroke-width="1"/>
 <line x1="66" y1="184.1" x2="878" y2="184.1" stroke="#e5e7eb" stroke-width="1"/>
 <line x1="66" y1="152.1" x2="878" y2="152.1" stroke="#e5e7eb" stroke-width="1"/>
