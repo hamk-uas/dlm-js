@@ -122,11 +122,110 @@ describe('timestamps', () => {
       )).toThrow(/fullSeasonal/);
     });
 
-    it('throws on AR coefficients', () => {
+    it('throws on AR coefficients with non-integer Δt', () => {
       expect(() => dlmGenSysTV(
         { order: 0, arCoefficients: [0.5] },
-        [0, 1, 2], [1.0]
-      )).toThrow(/AR/);
+        [0, 1.5, 3], [1.0, 0.3]
+      )).toThrow(/integer/);
+    });
+
+    it('AR(1) unit-spaced timestamps reproduce dlmGenSys matrices', () => {
+      const opts = { order: 0, arCoefficients: [0.7] };
+      const sys = dlmGenSys(opts);
+      const ts = [0, 1, 2, 3];
+      const w = [0.5, 0.3]; // level + AR state
+      const tv = dlmGenSysTV(opts, ts, w);
+
+      // m = 1 (level) + 1 (AR(1)) = 2
+      expect(tv.m).toBe(2);
+      expect(tv.F).toEqual(sys.F);
+
+      // G and W at unit spacing should match static system
+      for (let k = 0; k < ts.length; k++) {
+        expect(tv.G[k]).toEqual(sys.G);
+        // W = diag(w²) = [[0.25, 0], [0, 0.09]]
+        expect(tv.W[k][0][0]).toBeCloseTo(0.25, 10);
+        expect(tv.W[k][1][1]).toBeCloseTo(0.09, 10);
+        expect(tv.W[k][0][1]).toBeCloseTo(0, 10);
+        expect(tv.W[k][1][0]).toBeCloseTo(0, 10);
+      }
+    });
+
+    it('AR(1) Δt=2 gives G_AR^2 and accumulated W', () => {
+      const phi = 0.8;
+      const opts = { order: 0, arCoefficients: [phi] };
+      const ts = [0, 2];
+      const w = [0.5, 0.3]; // level + AR(1)
+      const tv = dlmGenSysTV(opts, ts, w);
+
+      // Step 0 (departing Δt=2):
+      // G_AR^2 = [[φ²]] = [[0.64]]
+      expect(tv.G[0][1][1]).toBeCloseTo(phi ** 2, 10);
+      // Level block: G = [1] (order=0)
+      expect(tv.G[0][0][0]).toBeCloseTo(1.0, 10);
+
+      // W_AR(2) = C^0·W₁·(C^0)' + C^1·W₁·(C^1)'
+      //         = w² + φ²·w² = w²(1 + φ²)
+      const w_ar = 0.3;
+      expect(tv.W[0][1][1]).toBeCloseTo(w_ar ** 2 * (1 + phi ** 2), 10);
+
+      // Level W: d·w₀² = 2·0.25 = 0.5
+      expect(tv.W[0][0][0]).toBeCloseTo(2 * 0.25, 10);
+    });
+
+    it('AR(2) Δt=3 gives correct G and W via companion matrix power', () => {
+      const a1 = 0.5, a2 = -0.3;
+      const opts = { order: 0, arCoefficients: [a1, a2] };
+      const ts = [0, 3, 4];
+      const w = [1.0, 0.5, 0.0]; // order=0 level, AR state 1, AR state 2
+      const tv = dlmGenSysTV(opts, ts, w);
+
+      // m = 1 (level) + 2 (AR(2)) = 3
+      expect(tv.m).toBe(3);
+
+      // Build companion matrix C = [[a1, 1], [a2, 0]]
+      // C^3 by direct multiplication for reference
+      const C = [[a1, 1], [a2, 0]];
+      const C2_00 = a1 * a1 + a2, C2_01 = a1;
+      const C2_10 = a1 * a2, C2_11 = a2;
+      const C3_00 = C2_00 * a1 + C2_01 * a2, C3_01 = C2_00;
+      const C3_10 = C2_10 * a1 + C2_11 * a2, C3_11 = C2_10;
+
+      // Step 0 (Δt=3): AR block at offset 1
+      expect(tv.G[0][1][1]).toBeCloseTo(C3_00, 10);
+      expect(tv.G[0][1][2]).toBeCloseTo(C3_01, 10);
+      expect(tv.G[0][2][1]).toBeCloseTo(C3_10, 10);
+      expect(tv.G[0][2][2]).toBeCloseTo(C3_11, 10);
+
+      // Step 1 (Δt=1): should be same as dlmGenSys
+      const sys = dlmGenSys(opts);
+      expect(tv.G[1]).toEqual(sys.G);
+
+      // W_AR(3) = Σ_{k=0}^{2} C^k·W₁·(C^k)' where W₁ = diag(0.25, 0)
+      // k=0: I·W₁·I = [[0.25, 0], [0, 0]]
+      // k=1: C·W₁·C'
+      // k=2: C²·W₁·(C²)'
+      const w1 = 0.5 ** 2; // 0.25
+      // C^0 contribution: [[w1, 0], [0, 0]]
+      let W_ref_00 = w1;
+      let W_ref_01 = 0;
+      let W_ref_10 = 0;
+      let W_ref_11 = 0;
+      // C^1: col 0 = [a1, a2]
+      W_ref_00 += w1 * a1 * a1;
+      W_ref_01 += w1 * a1 * a2;
+      W_ref_10 += w1 * a2 * a1;
+      W_ref_11 += w1 * a2 * a2;
+      // C^2: col 0 = [C2_00, C2_10]
+      W_ref_00 += w1 * C2_00 * C2_00;
+      W_ref_01 += w1 * C2_00 * C2_10;
+      W_ref_10 += w1 * C2_10 * C2_00;
+      W_ref_11 += w1 * C2_10 * C2_10;
+
+      expect(tv.W[0][1][1]).toBeCloseTo(W_ref_00, 10);
+      expect(tv.W[0][1][2]).toBeCloseTo(W_ref_01, 10);
+      expect(tv.W[0][2][1]).toBeCloseTo(W_ref_10, 10);
+      expect(tv.W[0][2][2]).toBeCloseTo(W_ref_11, 10);
     });
 
     it('throws on non-increasing timestamps', () => {
@@ -439,6 +538,104 @@ describe('timestamps', () => {
       // Index 3 (t=2.5): between y[2]=11 and y[4]=11.5
       expect(yhat[3]).toBeGreaterThanOrEqual(10.5);
       expect(yhat[3]).toBeLessThanOrEqual(12.0);
+    });
+  });
+
+  // ── AR with integer timestamps ─────────────────────────────────────────
+
+  describe('AR with integer timestamps', () => {
+    it('AR(1) uniform timestamps match standard dlmFit', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+
+      const n = LEVEL_DATA.length;
+      const timestamps = Array.from({ length: n }, (_, i) => i);
+
+      // Without timestamps
+      const ref = await withLeakCheck(() => dlmFit(LEVEL_DATA, {
+        obsStd: 1.0, processStd: [0.5, 0.3],
+        order: 0, arCoefficients: [0.7], dtype: dlmDtype,
+      }));
+      const refM = toMatlab(ref);
+
+      // With uniform integer timestamps
+      const res = await withLeakCheck(() => dlmFit(LEVEL_DATA, {
+        obsStd: 1.0, processStd: [0.5, 0.3],
+        order: 0, arCoefficients: [0.7], timestamps, dtype: dlmDtype,
+      }));
+      const resM = toMatlab(res);
+
+      const cmp = deepAlmostEqual(
+        { x: resM.x, xstd: resM.xstd, yhat: resM.yhat, ystd: resM.ystd, lik: resM.lik },
+        { x: refM.x, xstd: refM.xstd, yhat: refM.yhat, ystd: refM.ystd, lik: refM.lik },
+        1e-10, 1e-12,
+      );
+      expect(cmp.equal).toBe(true);
+    });
+
+    it('AR(1) with gap produces finite outputs and wider ystd', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+
+      // Observations with a gap: t=0..9, then t=15..19
+      const res = await withLeakCheck(() => dlmFit(GAP_OBS, {
+        obsStd: 1.0, processStd: [0.5, 0.3],
+        order: 0, arCoefficients: [0.7],
+        timestamps: GAP_TIMESTAMPS, dtype: dlmDtype,
+      }));
+      const m = toMatlab(res);
+
+      assertAllFinite(m.yhat);
+      assertAllFinite(m.ystd);
+      assertAllFinite(m.x);
+      assertAllFinite(m.xstd);
+
+      // ystd should widen after the gap (index 10, t=15)
+      const ystd = m.ystd as number[];
+      expect(ystd[10]).toBeGreaterThan(ystd[5]);
+    });
+
+    it('order=1 + AR(1) with integer gaps is finite', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+
+      // Order=1 trend + AR(1): m = 2 (trend) + 1 (AR) = 3
+      const y = TREND_DATA.slice(0, 15);
+      // Integer gaps: 0,1,2,...,9, then 12,13,14,15,16
+      const ts = [0,1,2,3,4,5,6,7,8,9, 12,13,14,15,16];
+
+      const res = await withLeakCheck(() => dlmFit(y, {
+        obsStd: 2.0, processStd: [0.5, 0.1, 0.2],
+        order: 1, arCoefficients: [0.5],
+        timestamps: ts, dtype: dlmDtype,
+      }));
+      const m = toMatlab(res);
+
+      assertAllFinite(m.yhat);
+      assertAllFinite(m.ystd);
+      assertAllFinite(m.x);
+
+      // 3 state variables: level, slope, AR
+      expect((m.x as Float64Array[]).length).toBe(3);
+    });
+
+    it('throws on AR with non-integer timestamps', () => {
+      expect(() => {
+        // This should fail synchronously at dlmGenSysTV validation
+        dlmGenSysTV(
+          { order: 0, arCoefficients: [0.5] },
+          [0, 1.5, 3], [1.0, 0.3]
+        );
+      }).toThrow(/integer/);
     });
   });
 });

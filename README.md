@@ -177,7 +177,7 @@ console.log(result.yhat);      // smoothed predictions at each timestamp
 console.log(result.ystd);      // observation std devs — wider after gaps
 ```
 
-**Supported components:** polynomial trend (order 0, 1, 2) and trigonometric harmonics. `fullSeasonal` and AR components throw because they are purely discrete-time constructs with no natural continuous-time extension.
+**Supported components:** polynomial trend (order 0, 1, 2), trigonometric harmonics, and AR components (integer-spaced timestamps only). `fullSeasonal` throws because it is a purely discrete-time construct with no natural continuous-time extension. AR components are supported when every $\Delta t$ is a positive integer: the companion matrix is raised to the $d$-th power via binary exponentiation ($G_{AR}^d$) and the noise is accumulated as $W_{AR}(d) = \sum_{k=0}^{d-1} C^k \, W_1 \, (C^k)^\top$. Non-integer $\Delta t$ with AR still throws.
 
 #### How it works
 

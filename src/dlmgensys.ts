@@ -67,6 +67,79 @@ export interface DlmSystem {
   m: number;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Small matrix helpers (JS arrays, used by dlmGenSys / dlmGenSysTV)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** p×p identity matrix. */
+function eyeMatrix(p: number): number[][] {
+  return Array.from({ length: p }, (_, i) => {
+    const row = new Array(p).fill(0);
+    row[i] = 1;
+    return row;
+  });
+}
+
+/** Multiply two square p×p matrices. */
+function matMul(a: number[][], b: number[][]): number[][] {
+  const p = a.length;
+  const out: number[][] = Array.from({ length: p }, () => new Array(p).fill(0));
+  for (let i = 0; i < p; i++)
+    for (let k = 0; k < p; k++) {
+      const aik = a[i][k];
+      for (let j = 0; j < p; j++) out[i][j] += aik * b[k][j];
+    }
+  return out;
+}
+
+/** Transpose of a p×p matrix. */
+function matTranspose(a: number[][]): number[][] {
+  const p = a.length;
+  return Array.from({ length: p }, (_, i) =>
+    Array.from({ length: p }, (_, j) => a[j][i]),
+  );
+}
+
+/**
+ * Integer matrix power A^d via binary exponentiation.
+ * Requires d >= 0. d=0 returns I.
+ */
+function matPow(A: number[][], d: number): number[][] {
+  const p = A.length;
+  let result = eyeMatrix(p);
+  // Clone base to avoid mutating caller's matrix
+  let base = A.map(row => [...row]);
+  let exp = d;
+  while (exp > 0) {
+    if (exp & 1) result = matMul(result, base);
+    base = matMul(base, base);
+    exp >>= 1;
+  }
+  return result;
+}
+
+/**
+ * Accumulated process noise for a companion-form AR block over d integer steps:
+ *   W(d) = Σ_{k=0}^{d-1} C^k · W₁ · (C^k)ᵀ
+ *
+ * @param C  - AR companion matrix (p×p)
+ * @param W1 - Unit-step noise matrix (p×p, typically diagonal)
+ * @param d  - Number of integer steps (positive integer)
+ */
+function arNoiseAccum(C: number[][], W1: number[][], d: number): number[][] {
+  const p = C.length;
+  const W_acc: number[][] = Array.from({ length: p }, () => new Array(p).fill(0));
+  let Ck = eyeMatrix(p); // C^0 = I
+  for (let k = 0; k < d; k++) {
+    const CkW = matMul(Ck, W1);
+    const CkWCkt = matMul(CkW, matTranspose(Ck));
+    for (let i = 0; i < p; i++)
+      for (let j = 0; j < p; j++) W_acc[i][j] += CkWCkt[i][j];
+    Ck = matMul(Ck, C);
+  }
+  return W_acc;
+}
+
 /**
  * Block-diagonal concatenation of two matrices.
  * stack(A, B) = [ A  0 ]
@@ -246,9 +319,12 @@ function writeBlock(target: number[][], block: number[][], r: number, c: number)
  * discrete time steps" rather than "evolving a continuous SDE for Δt time units".
  * It collapses exactly to W_1 = diag(w²) at unit spacing.
  *
- * **Supported components:** polynomial trend (order 0, 1, 2) and trigonometric
- * harmonics. Throws if fullSeasonal or AR components are requested (these are
- * purely discrete-time constructs with no natural continuous-time extension).
+ * **Supported components:** polynomial trend (order 0, 1, 2), trigonometric
+ * harmonics, and AR components (integer timestep spacing only).
+ * Throws if fullSeasonal is requested (purely discrete-time construct with
+ * no natural continuous-time extension). AR components require all Δt to be
+ * positive integers; G_AR^d is computed via binary matrix exponentiation and
+ * W_AR(d) = Σ_{k=0}^{d-1} C^k · W₁ · (C^k)ᵀ by direct summation.
  *
  * @param options - Model specification (same as dlmGenSys)
  * @param timestamps - Observation times (length n). Timesteps Δt_k = t_{k} - t_{k-1}
@@ -281,11 +357,11 @@ export function dlmGenSysTV(
     );
   }
   if (arCoefficients.length > 0) {
-    throw new Error(
-      'dlmGenSysTV: AR components are discrete-time constructs. Arbitrary ' +
-      'timesteps with AR are not supported. Consider the binary-power ' +
-      'decomposition approach for future support.'
-    );
+    // AR components are purely discrete-time.  For integer-spaced timestamps
+    // (integer Δt between all consecutive observations) we can compute
+    // G_AR^d via matrix power and accumulate W_AR(d) = Σ C^k W₁ (C^k)'.
+    // Non-integer Δt with AR is not supported.
+    // Validation of integer Δt is deferred until the dt array is available.
   }
 
   const n = timestamps.length;
@@ -331,6 +407,44 @@ export function dlmGenSysTV(
   }
 
   const w = processStd;
+
+  // ── AR integer-Δt validation ──
+  const nar = arCoefficients.length;
+  if (nar > 0) {
+    for (let k = 0; k < n - 1; k++) {
+      const d = dt[k];
+      if (!Number.isInteger(d)) {
+        throw new Error(
+          `dlmGenSysTV: AR components require integer timestep spacing, but ` +
+          `Δt between t[${k}]=${timestamps[k]} and t[${k + 1}]=${timestamps[k + 1]} ` +
+          `is ${d} (not an integer). Use uniform integer timestamps or remove ` +
+          `the AR component.`
+        );
+      }
+    }
+  }
+
+  // ── AR companion matrix (pre-built once, reused per step) ──
+  let arCompanion: number[][] | undefined;
+  let arW1: number[][] | undefined;
+  const arOffset = trendSize + trigSize;
+  if (nar > 0) {
+    // Same companion form as dlmGenSys:
+    //   [a1, 1, 0, ...;  a2, 0, 1, ...;  ...; ap, 0, 0, ...]
+    arCompanion = Array.from({ length: nar }, (_, i) => {
+      const row = new Array(nar).fill(0);
+      row[0] = arCoefficients[i];
+      if (i + 1 < nar) row[i + 1] = 1;
+      return row;
+    });
+    // Unit-step AR noise: diag(w²) restricted to AR state indices
+    arW1 = Array.from({ length: nar }, (_, i) => {
+      const row = new Array(nar).fill(0);
+      const wIdx = arOffset + i;
+      if (wIdx < w.length) row[i] = w[wIdx] ** 2;
+      return row;
+    });
+  }
 
   const G_arr: number[][][] = new Array(n);
   const W_arr: number[][][] = new Array(n);
@@ -427,6 +541,15 @@ export function dlmGenSysTV(
         if (trigOffset < w.length) W_k[trigOffset][trigOffset] = d * (w[trigOffset] ** 2);
         trigOffset += 1;
       }
+    }
+
+    // ─── AR block: G_AR^d via matrix power, W via summation ───
+    if (nar > 0 && arCompanion && arW1) {
+      const dInt = Math.round(d);  // validated as integer above
+      const G_ar_d = matPow(arCompanion, dInt);
+      const W_ar_d = arNoiseAccum(arCompanion, arW1, dInt);
+      writeBlock(G_k, G_ar_d, arOffset, arOffset);
+      writeBlock(W_k, W_ar_d, arOffset, arOffset);
     }
 
     G_arr[k] = G_k;
