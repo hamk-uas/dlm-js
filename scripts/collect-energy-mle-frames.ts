@@ -7,7 +7,7 @@
  *
  * Output:
  *   tmp/mle-frames-energy-scan.json   (sequential scan variant)
- *   tmp/mle-frames-energy-assoc.json  (associativeScan variant)
+ *   tmp/mle-frames-energy-assoc.json  (assoc variant)
  */
 
 import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";

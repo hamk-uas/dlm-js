@@ -154,7 +154,7 @@
 <text x="707.8" y="348" text-anchor="middle" fill="#333">1960</text>
 <text x="422.5" y="375" text-anchor="middle" fill="#333" font-size="13">Year</text>
 <text x="14" y="180" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,180)">Annual flow</text>
-<text x="400" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — MLE (order=1, trend), 108 iters, 773 ms, associativeScan/WASM/f64</text>
+<text x="400" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — MLE (order=1, trend), 108 iters, 773 ms, assoc/WASM/f64</text>
 <rect x="330" y="38" width="445" height="78" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>
 <rect x="610.0" y="70" width="0" height="11" fill="#f3f4f6">
   <animate attributeName="width" values="0;62.0;62.0;62.0" keyTimes="0;0.1107;0.2788;1" dur="2.8s" repeatCount="indefinite"/>

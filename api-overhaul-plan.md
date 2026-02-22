@@ -7,7 +7,7 @@
 3. **Options objects** for all function parameters beyond `y`.
 4. **Zero-cost materialization**: the internal `[n, m]` row-major layout from `consumeData()` is used directly — no transpose.
 5. **Abstract away jax-js-nonconsuming** for casual users; expose it cleanly for power users.
-6. **No streaming/incremental API**: incompatible with the `lax.scan` / `associativeScan` parallel model; see §11.
+6. **No streaming/incremental API**: incompatible with the `lax.scan` / `assoc` parallel model; see §11.
 7. **Forward-compatible with time-varying system matrices**: current G, W are constant; the API and internal structures must accommodate per-timestep `G_t`, `W_t` for arbitrary time steps (see §13).
 8. **Composable loss functions**: the tensor API and loss function design should support custom losses for MAP estimation and future MCMC (see §14, §15).
 9. **JS-idiomatic naming**: replace single-letter and MATLAB-abbreviated field names with descriptive camelCase names. System matrices (G, F, W) retain their standard notation. Provide a `toMatlab()` translator that restores both MATLAB names and MATLAB axis layout (see §5, §17).
@@ -562,7 +562,7 @@ When `dt` is provided, the internal flow changes:
 
 1. **`dlmGenSys` extended**: a new function `dlmGenSysTV(options, dt)` returns per-timestep `G_t[n, m, m]` and `W_t[n, m, m]` tensors instead of constant matrices.
 2. **`dlmSmo` change**: G and W become scan inputs `[n, m, m]` threaded alongside `FF_scan`, `y_arr`, `V2_arr` — instead of constants captured by closure. The `lax.scan` step function receives `(G_t, W_t)` per step.
-3. **`associativeScan` path**: the per-timestep 5-tuple elements already use G and W to construct $(A_k, b_k, C_k, \eta_k, J_k)$. Making them time-varying only changes element construction — the Lemma 2 composition rule is unchanged, as shown in [1].
+3. **`assoc` path**: the per-timestep 5-tuple elements already use G and W to construct $(A_k, b_k, C_k, \eta_k, J_k)$. Making them time-varying only changes element construction — the Lemma 2 composition rule is unchanged, as shown in [1].
 4. **`dlmForecast`**: accepts `dt` for forecast-step intervals.
 
 The key constraint is that G_t and W_t must be **pre-computed as full `[n, m, m]` tensors** before entering the scan. This is necessary because `lax.scan` requires fixed-shape inputs and cannot branch on per-step metadata. For polynomial trend + trigonometric seasonal models, the closed-form matrix exponential is cheap; for more complex continuous-time models, the ODE integration to produce each sub-interval's G_t and W_t can be done in parallel (embarrassingly parallel across timesteps), then the result fed into the scan.
@@ -1064,7 +1064,7 @@ Razavi, García-Fernández & Särkkä (2025) [1] show that this optimal control 
 
 The key insight from [1] is that the sub-interval solutions — whether obtained by exact matrix exponentials (linear case) or by ODE integration (non-linear case) — produce associative 5-tuple elements $(A_k, b_k, C_k, \eta_k, J_k)$ with the **same composition rules** used by the existing `assoc` path. This means:
 
-- The `associativeScan` composition logic in `dlmSmo` is reusable without changes.
+- The `assoc` composition logic in `dlmSmo` is reusable without changes.
 - Only the per-timestep element construction changes: instead of the discrete Kalman prediction/update formulas, the elements are derived from the continuous-time ODE solutions.
 - For the linear case with closed-form matrix exponentials (polynomial trend, harmonic seasonality), no numerical ODE solver is needed.
 

@@ -172,7 +172,7 @@
 <text x="780.0" y="348" text-anchor="middle" fill="#333">10y</text>
 <text x="422.5" y="375" text-anchor="middle" fill="#333" font-size="13">Month</text>
 <text x="14" y="180" text-anchor="middle" fill="#333" font-size="13" transform="rotate(-90,14,180)">Energy demand</text>
-<text x="422.5" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, harmonics=1, seasonLength=12, AR(1)), 300 iters, 40.2 s, associativeScan/WebGPU/f32</text>
+<text x="422.5" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Synthetic energy demand — MLE (order=1, harmonics=1, seasonLength=12, AR(1)), 300 iters, 40.2 s, assoc/WebGPU/f32</text>
 <rect x="70" y="38" width="400" height="72" rx="4" fill="white" stroke="#e5e7eb" stroke-width="1"/>
 <rect x="320.0" y="57" width="0" height="11" fill="#f3f4f6">
   <animate attributeName="width" values="0;2.0;2.0;2.0" keyTimes="0;0.0169;0.9526;1" dur="42.2s" repeatCount="indefinite"/>

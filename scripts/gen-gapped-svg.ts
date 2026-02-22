@@ -38,7 +38,7 @@ const opts = input.options;
 
 const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
 const isAssoc = variant === 'assoc';
-const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
+const scanLabel = isAssoc ? 'assoc/WASM/f64' : 'scan/WASM/f64';
 
 const n = yRaw.length;
 const t: number[] = Array.from({ length: n }, (_, i) => 1871 + i);  // 1871–1970

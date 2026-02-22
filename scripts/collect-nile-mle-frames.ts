@@ -7,7 +7,7 @@
  *
  * Output:
  *   tmp/mle-frames-nile-scan.json   (sequential scan variant)
- *   tmp/mle-frames-nile-assoc.json  (associativeScan variant)
+ *   tmp/mle-frames-nile-assoc.json  (assoc variant)
  */
 
 import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";

@@ -97,7 +97,7 @@ const dlmSmo = async (
   // Float32 default: Joseph form (L·C·L' + K·V²·K' + W), (C+C')/2 symmetrize,
   // and C += 1e-6·I (cEps) — prevents covariance from going non-PD for m > 2.
   //
-  // The associativeScan path (webgpu) reformulates the forward Kalman filter
+  // The assoc path (webgpu) reformulates the forward Kalman filter
   // as an associative prefix scan per Särkkä & García-Fernández (2020),
   // reducing sequential depth from O(n) to O(log n) on parallel hardware.
   // ─────────────────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ import {
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const variant = (process.argv[2] || "scan") as "scan" | "assoc" | "webgpu";
 
-const backendLabel: Record<string, string> = { scan: "scan/WASM/f64", assoc: "associativeScan/WASM/f64", webgpu: "associativeScan/WebGPU/f32" }[variant] ?? "scan/WASM/f64";
+const backendLabel: Record<string, string> = { scan: "scan/WASM/f64", assoc: "assoc/WASM/f64", webgpu: "assoc/WebGPU/f32" }[variant] ?? "scan/WASM/f64";
 const inputPath = resolve(root, `tmp/mle-frames-nile-${variant}.json`);
 const data = JSON.parse(readFileSync(inputPath, "utf8"));
 

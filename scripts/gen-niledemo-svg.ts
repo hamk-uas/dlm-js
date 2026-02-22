@@ -39,7 +39,7 @@ const algorithm: 'scan' | 'assoc' | 'sqrt-assoc' | undefined =
   : (variant === 'sqrt-assoc' || variant === 'sqrt-assoc-f32') ? 'sqrt-assoc'
   : undefined;
 const scanLabel =
-  variant === 'assoc' ? 'associativeScan/WASM/f64' :
+  variant === 'assoc' ? 'assoc/WASM/f64' :
   variant === 'sqrt-assoc' ? 'sqrt-assoc/WASM/f64' :
   variant === 'sqrt-assoc-f32' ? 'sqrt-assoc/WASM/f32' :
   'scan/WASM/f64';

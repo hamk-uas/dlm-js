@@ -96,7 +96,7 @@ const COMPARE_KEYS = [
 
 // ── Integration tests: assocScan vs Octave ─────────────────────────────────
 
-describe('associativeScan dlmFit vs Octave', async () => {
+describe('assoc dlmFit vs Octave', async () => {
   const configs = await getTestConfigs();
   // Only test Float64 configs — Float32 has known precision limits for m > 2
   const f64Configs = configs.filter(c => c.label.includes('f64'));
@@ -170,7 +170,7 @@ describe('associativeScan dlmFit vs Octave', async () => {
 
 // ── Niledemo: assocScan vs Octave ──────────────────────────────────────────
 
-describe('associativeScan niledemo vs Octave', async () => {
+describe('assoc niledemo vs Octave', async () => {
   const configs = await getTestConfigs();
   const f64Configs = configs.filter(c => c.label.includes('f64'));
 
@@ -233,7 +233,7 @@ describe('associativeScan niledemo vs Octave', async () => {
 
 // ── Missing data: assocScan vs Octave ──────────────────────────────────────
 
-describe('associativeScan gapped data vs Octave', async () => {
+describe('assoc gapped data vs Octave', async () => {
   const configs = await getTestConfigs();
   const f64Configs = configs.filter(c => c.label.includes('f64'));
 

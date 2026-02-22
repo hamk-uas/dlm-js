@@ -2,7 +2,7 @@
  * WebGPU `dlmFit` benchmark — float32 with associativeScan forward filter.
  *
  * Runs the same models as bench-backends.ts but on the WebGPU backend,
- * which triggers the exact 5-tuple parallel forward filter + associativeScan path.
+ * which triggers the exact 5-tuple parallel forward filter + assoc path.
  *
  * Must be run with Deno (WebGPU requires --unstable-webgpu):
  *   pnpm run bench:gpu
@@ -99,7 +99,7 @@ async function timedFit(model: Model): Promise<{ firstMs: number; warmMs: number
 
 // ── Run benchmarks ─────────────────────────────────────────────────────────
 
-console.log("=== dlmFit WebGPU benchmark (float32, associativeScan) ===\n");
+console.log("=== dlmFit WebGPU benchmark (float32, assoc) ===\n");
 
 const colW = [32, 8, 6, 14, 14];
 const hdr = [

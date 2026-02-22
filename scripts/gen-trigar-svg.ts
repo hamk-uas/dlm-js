@@ -38,7 +38,7 @@ const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.8
 
 const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
 const isAssoc = variant === 'assoc';
-const scanLabel = isAssoc ? 'associativeScan/WASM/f64' : 'scan/WASM/f64';
+const scanLabel = isAssoc ? 'assoc/WASM/f64' : 'scan/WASM/f64';
 
 // Time axis: months 1..n (synthetic monthly data)
 const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
