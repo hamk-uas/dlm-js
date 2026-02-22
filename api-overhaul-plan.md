@@ -518,6 +518,7 @@ The parallel-scan model's value (O(log n) depth, GPU efficiency, JIT compilation
 | MAP estimation | Custom loss with log-prior penalty; see §14 |
 | Trajectory MAP (Onsager–Machlup) | Parallel trajectory MAP via reformulation as optimal control problem; reuses assoc scan; see §20 |
 | Extended Kalman Filter (EKF) | Non-linear f(x), h(x) with automatic Jacobians via `jacfwd`; see §21 |
+| Square-root parallel smoother | Replace covariance matrices in assoc 5-tuple/3-tuple with Cholesky factors; QR-based composition eliminates Joseph form, symmetrize, and ε·I on Float32; see §22 |
 
 ---
 
@@ -1131,8 +1132,125 @@ Two approaches:
 
 ### Implementation priority
 
-The sequential EKF (approach 1) is straightforward to implement given the existing `scan` path and jax-js `jacfwd`. It should be the first step. The parallel iterated EKF (approach 2) is an advanced optimization that becomes valuable for long time series on WebGPU.
+The sequential EKF (approach 1) is straightforward to implement given the existing `scan` path and jax-js `jacfwd`. It should be the first step. The parallel iterated EKF (approach 2) is an advanced optimization that becomes valuable for long time series on WebGPU. The EEA-sensors repos [2][3] provide JAX reference implementations of both approaches (EKF, CKF, IEKS, ICKS) with a sqrt variant [3] that improves Float32 stability; see §22.
 
 ### References
 
 - [1] Razavi, García-Fernández & Särkkä (2025). "Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation." [arXiv:2512.13319](https://arxiv.org/abs/2512.13319)
+- [2] Yaghoobi, Corenflos, Hassan & Särkkä (2021). "Parallel Iterated Extended and Sigma-Point Kalman Smoothers." Proc. IEEE ICASSP. [Code](https://github.com/EEA-sensors/parallel-non-linear-gaussian-smoothers).
+- [3] Yaghoobi, Corenflos, Hassan & Särkkä (2022). "Parallel Square-Root Statistical Linear Regression for Inference in Nonlinear State Space Models." [arXiv:2207.00426](https://arxiv.org/abs/2207.00426). [Code](https://github.com/EEA-sensors/sqrt-parallel-smoothers).
+
+---
+
+## 22. Square-root parallel smoother
+
+### Motivation
+
+The current `assoc` path stores full covariance matrices $C$, $J$ (forward 5-tuple) and $L$ (backward 3-tuple) during the associative scan. On Float32, these can lose positive semi-definiteness during composition, requiring Joseph form, symmetrization, and $\epsilon \cdot I$ regularization — a stack that works but limits precision to ~1e-2 relative error for m > 2.
+
+Yaghoobi et al. [2][3] reformulate the same parallel scan in **square-root (Cholesky factor) space**, where covariances are never explicitly formed — they remain PSD by construction throughout the scan. This eliminates the entire Float32 stabilization stack.
+
+### References
+
+- [1] Särkkä & García-Fernández (2020). "Temporal Parallelization of Bayesian Smoothers." IEEE TAC 66(1).
+- [2] Yaghoobi, Corenflos, Hassan & Särkkä (2021). "Parallel Iterated Extended and Sigma-Point Kalman Smoothers." Proc. IEEE ICASSP. [Code](https://github.com/EEA-sensors/parallel-non-linear-gaussian-smoothers) (JAX).
+- [3] Yaghoobi, Corenflos, Hassan & Särkkä (2022). "Parallel Square-Root Statistical Linear Regression for Inference in Nonlinear State Space Models." [arXiv:2207.00426](https://arxiv.org/abs/2207.00426). [Code](https://github.com/EEA-sensors/sqrt-parallel-smoothers) (JAX).
+
+### How it works
+
+The standard 5-tuple $(A, b, C, \eta, J)$ becomes $(A, b, U, \eta, Z)$ where $U$ and $Z$ are lower-triangular Cholesky factors: $C = UU^\top$, $J = ZZ^\top$. The backward 3-tuple $(g, E, L)$ becomes $(g, E, D)$ where $L = DD^\top$.
+
+**Element construction** replaces Cholesky factorization with QR-based triangularization. The key utility is `tria(A)`, which computes the lower-triangular factor via QR decomposition:
+
+```python
+def tria(A):
+    _, R = jnp.linalg.qr(A.T, mode='economic')
+    return R.T
+```
+
+For the forward filter, element construction uses block QR to extract the Cholesky factor of the filtered covariance directly:
+
+```python
+# Block system: joint prediction + observation
+Psi = [[H @ N1_,  cholR],
+       [N1_,      zeros ]]
+Tria_Psi = tria(Psi)     # single QR gives all factors
+
+U = Tria_Psi[ny:ny+nx, ny:]   # Cholesky of filtered covariance (never form C explicitly)
+K = solve_triangular(Psi11, Psi21.T, ...).T  # Kalman gain via triangular solve
+```
+
+**Composition** replaces matrix inverse + symmetrize with block QR:
+
+```python
+def sqrt_filtering_operator(elem1, elem2):
+    A1, b1, U1, eta1, Z1 = elem1
+    A2, b2, U2, eta2, Z2 = elem2
+
+    # Block QR replaces inv(I + C₁·J₂)
+    Xi = tria([[U1.T @ Z2, I],
+               [Z2,        0]])
+    Xi11, Xi21, Xi22 = ... # extract blocks
+
+    A = A2 @ A1 - solve_tri(Xi11, U1.T @ A2.T).T @ Xi21.T @ A1
+    b = ...
+    U = tria(concat([solve_tri(Xi11, U1.T @ A2.T).T, U2], axis=1))  # PSD by construction
+    eta = ...
+    Z = tria(concat([A1.T @ Xi22, Z1], axis=1))  # PSD by construction
+    return A, b, U, eta, Z
+```
+
+The backward smoother composition is simpler:
+
+```python
+def sqrt_smoothing_operator(elem1, elem2):
+    g1, E1, D1 = elem1
+    g2, E2, D2 = elem2
+    g = E2 @ g1 + g2
+    E = E2 @ E1
+    D = tria(concat([E2 @ D1, D2], axis=1))  # QR-based: L = DD' is PSD by construction
+    return g, E, D
+```
+
+### What it would replace in dlm-js
+
+| Current (`assoc` path) | Sqrt replacement |
+|---|---|
+| Full $C$ matrix in 5-tuple | Cholesky factor $U$ ($C = UU'$) |
+| Full $J$ matrix in 5-tuple | Cholesky factor $Z$ ($J = ZZ'$) |
+| Full $L$ matrix in 3-tuple | Cholesky factor $D$ ($L = DD'$) |
+| `np.linalg.inv(I + C·J + εI)` | Block QR: `tria([U'Z, I; Z, 0])` + `solve_triangular` |
+| `0.5*(C + C')` symmetrization | Not needed — QR output is triangular by definition |
+| Joseph form: $(I-KF)C(I-KF)' + KV²K'$ | Not needed — `tria(concat([...], axis=1))` is inherently PSD |
+| `C += ε·I` regularization (`cEps`) | Not needed — Cholesky factors cannot represent non-PSD matrices |
+
+### Benefits
+
+1. **Inherent Float32 stability**: covariances stay PSD throughout the scan without any post-hoc repair. This should improve m > 2 Float32 accuracy beyond the current ~1e-2 relative error ceiling.
+2. **Fewer operations per composition**: no symmetrize step, no ε·I addition. The QR decomposition replaces both the inverse and the symmetrize.
+3. **No stabilization flags**: the 7-flag `DlmStabilization` interface becomes unnecessary for the sqrt path.
+4. **Simpler numerical analysis**: stability is structural, not empirical — no exhaustive flag combination search needed.
+
+### Challenges
+
+1. **`np.linalg.qr` in jax-js-nonconsuming**: the sqrt formulation requires efficient QR decomposition. Need to verify that the jax-js backend supports QR with reasonable performance on WASM and WebGPU, and that autodiff (VJP) through QR is correct.
+2. **Block matrix construction**: the `tria(concat([...], axis=1))` pattern requires building block matrices and running QR on them. The concat + QR must be JIT-compilable and efficient inside `lax.associativeScan`.
+3. **Recovery of full covariance**: users ultimately want $C$ not $U$. The final step must compute $C = UU'$ for each timestep — an $O(n \cdot m^2)$ matmul that may partially offset the savings from avoiding symmetrization during the scan.
+4. **Backward compatibility**: the sqrt path would be a new `algorithm: 'sqrt-assoc'` option (or auto-selected for Float32), not a replacement for the existing standard `assoc` path.
+
+### Relationship to EKF (§21)
+
+The [2][3] repos implement the sqrt formulation for nonlinear models (EKF, CKF, iterated smoothers). If dlm-js adds EKF support (§21), the sqrt formulation would be directly applicable — the linearized Jacobians at each step produce the same $(A, b, U, \eta, Z)$ structure. The nonlinear repos also include implicit differentiation (`custom_vjp`) for the iterated smoother fixed point, which avoids memory-expensive unrolling of all iterations.
+
+### As a reference data source
+
+The [3] codebase includes:
+- **Random LGSSM tests** (random $F$, $H$, $Q$, $R$ with dimensions 1–3, fixed seeds) — useful for cross-validating the dlm-js associative scan against a second independent implementation (Octave only tests the sequential path).
+- **Log-likelihood computation** via prediction-error decomposition — could validate dlm-js's deviance values for the assoc path.
+- **Standard vs. sqrt operator equivalence tests** — the test suite verifies that standard and sqrt compositions produce identical results, which demonstrates the mathematical equivalence.
+
+A Python reference data generation script with fixed seeds could produce filtered means, filtered covariances, smoothed means, smoothed covariances, and log-likelihood values that dlm-js tests compare against — complementing the Octave references for the sequential path.
+
+### Implementation priority
+
+Medium. The current Float32 stabilization is adequate for m ≤ 2, and Float64 has no stability issues. The sqrt formulation becomes high priority if (a) Float32 m > 2 use cases become important, (b) `np.linalg.qr` performance on jax-js is confirmed acceptable, or (c) EKF support (§21) is implemented (where Float32 stability is more critical due to linearization errors compounding with covariance drift).
