@@ -12,7 +12,7 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 🤖 AI generated code & documentation with gentle human supervision.
 
 ### Features at a glance
-- **Kalman filter & RTS smoother**: Sequential (`scan`) and exact O(log N) parallel (`assoc`) algorithms.
+- **Kalman filter & RTS smoother**: Sequential (`scan`), exact O(log N) parallel (`assoc`), and square-root parallel (`sqrt-assoc`) algorithms.
 - **Autodiff MLE**: Jointly estimate observation noise, process noise, and AR coefficients via `jit(valueAndGrad + Adam)`.
 - **Multiple backends**: Runs on CPU, WASM (recommended for speed), and WebGPU.
 - **Missing data & irregular timestamps**: Built-in support for NaN observations and arbitrary time steps.
@@ -218,7 +218,7 @@ where $S_1 = \Delta t(\Delta t - 1)/2$ and $S_2 = \Delta t(\Delta t - 1)(2\Delta
 
 **Tip — interpolation at query points:** To obtain smoothed estimates at times where no measurement exists, insert `NaN` observations at those timestamps. The smoother treats NaN as a pure prediction step, giving interpolated state estimates and uncertainty bands at arbitrary query points.
 
-**Related work.** [4] extends the parallel scan framework of [1] to continuous-time models, deriving exact associative elements for MAP trajectory estimation on irregularly-sampled data. dlm-js uses a simpler approach — closed-form $G$ discretization and analytic continuation of $W$ fed to the existing filter — but the parallel scan composition is directly applicable if continuous-time MAP estimation is needed in the future. The EEA-sensors group provides two JAX reference implementations of the same parallel scan framework: [5] implements parallel EKF/CKF/IEKS for non-linear models, and [6] reformulates the same algorithms in square-root (Cholesky factor) form for improved numerical stability — see [square-root formulation](#square-root-parallel-smoother-formulation).
+**Related work.** [4] extends the parallel scan framework of [1] to continuous-time models, deriving exact associative elements for MAP trajectory estimation on irregularly-sampled data. dlm-js uses a simpler approach — closed-form $G$ discretization and analytic continuation of $W$ fed to the existing filter — but the parallel scan composition is directly applicable if continuous-time MAP estimation is needed in the future. The EEA-sensors group provides two JAX reference implementations of the same parallel scan framework: [5] implements parallel EKF/CKF/IEKS for non-linear models, and [6] reformulates the same algorithms in square-root (Cholesky factor) form for improved numerical stability — see [square-root parallel smoother](#square-root-parallel-smoother-sqrt-assoc).
 
 ### MLE parameter estimation
 
@@ -354,27 +354,41 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 | Float mask blending | $A = \text{mask} \cdot A_{\text{obs}} + (1 - \text{mask}) \cdot G$ | Avoids boolean-conditioned `np.where` which can create discontinuous gradients in some AD frameworks. Arithmetic blending is smooth and AD-safe. |
 | Scan output disposal | Individual `scanned.*.dispose()` after `x_filt` and `C_filt` recovery | Safe because `np.add` produces new arrays — `x_filt` and `C_filt` are independent of the scan pytree. |
 
-#### Square-root parallel smoother formulation
+#### Square-root parallel smoother (`sqrt-assoc`)
 
-The standard assoc path stores full covariance matrices $C$ and $J$ in the forward 5-tuple and $L$ in the backward 3-tuple. On Float32, these matrices can lose positive semi-definiteness during composition — requiring Joseph form, symmetrization, and $\epsilon \cdot I$ regularization.
+`algorithm: 'sqrt-assoc'` implements the square-root associative-scan smoother from Yaghoobi et al. [6], reformulating the parallel filter + smoother in **Cholesky-factor space**. The forward 5-tuple becomes $(A, b, U, \eta, Z)$ where $C = U U^\top$ and $J = Z Z^\top$; the backward 3-tuple becomes $(g, E, D)$ where $L = D D^\top$. Covariances are never formed explicitly during composition — they remain PSD by construction, eliminating the need for Joseph form, `(C+C')/2` symmetrization, and `cEps` regularization.
 
-Yaghoobi et al. [6] show that the same parallel scan can be reformulated in **square-root (Cholesky factor) space**: the 5-tuple becomes $(A, b, U, \eta, Z)$ where $C = U U^\top$ and $J = Z Z^\top$, and the backward 3-tuple becomes $(g, E, D)$ where $L = D D^\top$. The composition operator replaces matrix inverse + symmetrize with **block QR decomposition**:
+Both passes use `lax.associativeScan` with ⌈log₂N⌉+1 rounds, same as the standard `assoc` path. Results are validated against the same Octave ground truth (`sqrtassoc.test.ts`; 11 tests on wasm/f64) with max relative error ~3e-5.
 
-```
-# Standard composition (dlm-js current):
-M   = inv(I + C₁·J₂)             # can lose PSD
-C'  = 0.5 * (C + Cᵀ)             # symmetrize to repair
-
-# Sqrt composition ([6]):
-[Xi] = tria([U₁ᵀ·Z₂, I; Z₂, 0]) # QR-based, inherently PSD
-U'   = tria([..., U₂])           # Cholesky factor of C' — never forms C explicitly
+```ts
+const result = await dlmFit(y, {
+  obsStd: 10,
+  processStd: [5, 2],
+  algorithm: 'sqrt-assoc',
+});
 ```
 
-where `tria(A)` computes the lower-triangular factor via QR: `_, R = qr(Aᵀ); return Rᵀ`. Since covariances are never formed explicitly, they remain PSD by construction — eliminating the need for Joseph form, `(C+C')/2` symmetrization, and `cEps` regularization.
+##### Deviations from the reference
 
-**Implications for dlm-js Float32 stability:** The current Float32 stabilization stack (Joseph form + symmetrize + $\epsilon \cdot I$) works but limits precision to ~1e-2 relative error for m > 2. A sqrt reformulation would handle Float32 inherently, potentially improving both accuracy and simplicity. The trade-off is that each composition step requires QR decomposition instead of matrix inverse — the `np.linalg.qr` support in jax-js-nonconsuming would need to be evaluated for performance.
+The [6] reference implementation (JAX, [EEA-sensors/sqrt-parallel-smoothers](https://github.com/EEA-sensors/sqrt-parallel-smoothers)) uses `jnp.linalg.qr`, `jnp.block`, and `jax.scipy.linalg.solve_triangular`. jax-js-nonconsuming provides none of these, so the dlm-js implementation substitutes:
 
-**As a reference data source:** The [6] codebase includes random LGSSM tests (random $F$, $H$, $Q$, $R$ matrices with dimensions 1–3) and a log-likelihood computation. Running these with fixed seeds could provide an independent second reference (alongside Octave) for validating the dlm-js associative scan path — Octave only validates the sequential path.
+| Operation | Reference [6] | dlm-js | Reason | Impact |
+|-----------|--------------|--------|--------|--------|
+| `tria(A)` | `_, R = qr(Aᵀ); Rᵀ` | `chol(A·Aᵀ + ε·I)` | jax-js has no `np.linalg.qr` | Squares the condition number; fails for state dimension m ≳ 8 (e.g. fullSeasonal m=13). |
+| Block matrices | `jnp.block([[A, B], [C, D]])` | `np.concatenate` along last two axes | jax-js has no `jnp.block` | Equivalent; verbose but correct. |
+| Triangular solve | `solve_triangular(L, B)` | `np.linalg.solve(L, B)` | jax-js has no `solve_triangular` | Uses general LU solve instead of back-substitution; ~2× slower per call, same result. |
+| $Z$ padding | Dense $m \times m$ | Rank-1 column + zero padding | Observation dimension $p = 1$ | $J = Z Z^\top$ has rank $\min(p, m) = 1$; zero-padding avoids allocating unused columns. |
+| Scalar $1/\Psi_{11}$ | `solve_triangular(Ψ_{11}, ·)` | `np.divide(·, Ψ_{11})` | $p=1$ ⇒ $\Psi_{11}$ is $[n,1,1]$ scalar | Exact; avoids unnecessary matrix solve for scalar denominator. |
+
+`ε` = $10^{-6}$ (Float32) or $10^{-12}$ (Float64).
+
+##### Known limitations
+
+- **State dimension**: Works for m ≤ ~6 (all polynomial, trigonometric seasonal, and AR models). Fails for fullSeasonal with seasonLength=12 (m=13) because the `tria()` fallback squares the condition number of the [2m × 2m] = [26 × 26] block matrix, causing `cholesky` to encounter non-positive-definite input.
+- **cpu backend**: Produces NaN in the forward composition for m > 1 (root cause under investigation). Tests run on **wasm/f64 only**.
+- **WebGPU backend**: Not tested — jax-js-nonconsuming has a [known `isnan()` bug on WebGPU](issues/jax-js-webgpu-nan-masking.md) that corrupts NaN masking.
+- **MLE**: The sqrt-assoc path is not yet wired into `dlmMLE` / `makeKalmanLoss`. Use `algorithm: 'scan'` or `'assoc'` for MLE.
+- **Would be resolved by upstream QR support**: If jax-js-nonconsuming adds `np.linalg.qr`, the `tria()` fallback can be replaced with the proper QR-based formula, lifting the m ≤ ~6 restriction and likely fixing the cpu NaN issue (since QR does not square the condition number).
 
 ### Backend performance
 
@@ -782,7 +796,7 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 ## TODO
 
 * Float32 backward-smoother stabilization — experimental `DlmStabilization` flags already implemented (`cEps` gives −29% max error); next steps: evaluate log-Cholesky / modified-Cholesky parameterizations, consider making `cEps` the f32 default, or collapse the 7-flag interface to a simpler enum before documenting
-* Square-root parallel smoother — replace full covariance matrices in the assoc 5-tuple with Cholesky factors, using QR-based composition instead of matrix inverse + symmetrize (see [square-root formulation](#square-root-parallel-smoother-formulation))
+* ~~Square-root parallel smoother~~ — **implemented** as `algorithm: 'sqrt-assoc'` (see [sqrt-assoc section](#square-root-parallel-smoother-sqrt-assoc)). Remaining: upstream QR support would lift the m ≤ ~6 limitation and fix cpu backend NaN.
 * Multivariate observations (p > 1) — biggest remaining gap; affects all matrix dimensions throughout the filter/smoother (dlm-js currently assumes scalar observations, p = 1)
 * Test the built library (in `dist/`)
 * MCMC parameter estimation — depends on Marko Laine's `mcmcrun` toolbox; would require porting or replacing the MCMC engine
@@ -796,7 +810,7 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 3. NumPyro contributors. [Example: Enumerate Hidden Markov Model](https://num.pyro.ai/en/latest/examples/hmm_enum.html). — Parallel-scan HMM inference using [1].
 4. Razavi, H., García-Fernández, Á. F. & Särkkä, S. (2025). Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation. *Preprint*. — Extends [1] to continuous-time MAP estimation with exact associative elements for irregular timesteps; see [irregular timestamps](#irregular-timestamps).
 5. Yaghoobi, F., Corenflos, A., Hassan, S. & Särkkä, S. (2021). [Parallel Iterated Extended and Sigma-Point Kalman Smoothers](https://arxiv.org/abs/2102.00514). *Proc. IEEE ICASSP*. [Code](https://github.com/EEA-sensors/parallel-non-linear-gaussian-smoothers) (JAX). — Extends [1] to nonlinear models via parallel EKF, CKF, and iterated variants. Uses the same 5-tuple / 3-tuple associative elements as dlm-js.
-6. Yaghoobi, F., Corenflos, A., Hassan, S. & Särkkä, S. (2022). [Parallel Square-Root Statistical Linear Regression for Inference in Nonlinear State Space Models](https://arxiv.org/abs/2207.00426). *Preprint*. [Code](https://github.com/EEA-sensors/sqrt-parallel-smoothers) (JAX). — Reformulates [5] in square-root (Cholesky factor) space: replaces covariance matrices $C$, $J$, $L$ in the associative elements with their Cholesky factors, using QR-based composition that inherently maintains positive semi-definiteness. Includes gradient computation through the parallel scan and implicit differentiation for iterated smoothers. See [square-root formulation](#square-root-parallel-smoother-formulation).
+6. Yaghoobi, F., Corenflos, A., Hassan, S. & Särkkä, S. (2022). [Parallel Square-Root Statistical Linear Regression for Inference in Nonlinear State Space Models](https://arxiv.org/abs/2207.00426). *Preprint*. [Code](https://github.com/EEA-sensors/sqrt-parallel-smoothers) (JAX). — Reformulates [5] in square-root (Cholesky factor) space: replaces covariance matrices $C$, $J$, $L$ in the associative elements with their Cholesky factors, using QR-based composition that inherently maintains positive semi-definiteness. Includes gradient computation through the parallel scan and implicit differentiation for iterated smoothers. See [square-root parallel smoother](#square-root-parallel-smoother-sqrt-assoc).
 
 ### Authors
 * Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
