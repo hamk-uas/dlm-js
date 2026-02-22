@@ -513,11 +513,11 @@ The Nile MLE demo estimates `obsStd` and `processStd` on the classic Nile datase
 
 ### How MLE works
 
-Noise parameters are optimized in log-space: $s = e^{\theta_s}$, $w_i = e^{\theta_{w,i}}$. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior). The optimizer is Adam with autodiff via `valueAndGrad()`.
+Noise parameters are optimized in log-space: $s = e^{\theta_s}$, $w_i = e^{\theta_{w,i}}$. AR coefficients are optimized directly (unconstrained, not log-transformed — matching MATLAB DLM behavior). Two optimizers are available: Adam (first-order, default) and natural gradient (second-order); see [Optimizers](#optimizers) for details.
 
-The entire optimization step is wrapped in a single `jit()` call: `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
+The entire optimization step is wrapped in a single `jit()` call. For Adam, this includes `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update; for natural gradient, the `jit(valueAndGrad(loss))` call is reused for both the gradient and finite-difference Hessian evaluations. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~122 iterations (~2.6 s) with the default Adam b2=0.9.
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~122 iterations (~2.6 s) with Adam (b2=0.9), or ~5 iterations (~1.5 s) with the natural gradient optimizer.
 
 **Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
@@ -573,6 +573,101 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
    This is the same objective as the sequential path — both minimize the Kalman filter prediction-error decomposition.
 
+### Optimizers
+
+`dlmMLE` supports two optimizers, selected via `optimizer: 'adam'` (default) or `optimizer: 'natural'`. Both operate on the same differentiable loss function — the Kalman filter prediction-error decomposition $\ell(\theta) = -2 \log L(\theta)$ — and both use `jit(valueAndGrad(lossFn))` for gradients.
+
+#### Steepest descent framework
+
+Both optimizers can be understood as instances of **steepest descent under a norm** (Bernstein & Newhouse 2024). Given a loss $\ell(\theta)$ with gradient $g = \nabla_\theta \ell$ and a norm $\|\cdot\|$ on the parameter space, the optimal update minimizing a quadratic model is:
+
+$$\Delta\theta^* = \argmin_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
+
+where $\|g\|^\dagger$ is the dual norm and $\mathcal{D}_{\|\cdot\|}$ is the *duality map* — it converts the gradient (a member of the dual space) into a primal-space update direction. The choice of norm determines the geometry:
+
+| Norm on $\Delta\theta$ | Duality map | Update rule | Method |
+|------------------------|-------------|-------------|--------|
+| Euclidean: $\|\Delta\theta\|_2$ | $\mathcal{D}\,g = g / \|g\|_2$ | $\Delta\theta = -\alpha\, g$ | Gradient descent |
+| Hessian: $\|\Delta\theta\|_H^2 = \Delta\theta^\top H \Delta\theta$ | $\mathcal{D}\,g = H^{-1} g$ | $\Delta\theta = -(H + \lambda I)^{-1} g$ | Newton / natural gradient |
+
+The Euclidean norm treats all parameter directions equally; the Hessian norm uses local curvature to rescale directions, yielding faster convergence on ill-conditioned objectives.
+
+#### Adam (first-order, default)
+
+Adam (Kingma & Ba 2015) maintains exponential moving averages of the gradient and squared gradient:
+
+$$m_t = \beta_1 m_{t-1} + (1 - \beta_1) g_t, \quad v_t = \beta_2 v_{t-1} + (1 - \beta_2) g_t^2$$
+$$\hat{m}_t = m_t / (1 - \beta_1^t), \quad \hat{v}_t = v_t / (1 - \beta_2^t)$$
+$$\theta_{t+1} = \theta_t - \alpha \, \hat{m}_t / (\sqrt{\hat{v}_t} + \epsilon)$$
+
+This is a diagonal approximation to natural gradient — $\hat{v}_t$ estimates per-parameter curvature, but ignores cross-parameter correlations.
+
+**dlm-js defaults:** `b1=0.9`, `b2=0.9`, `eps=1e-8`, `lr=0.05`, `maxIter=200`. The non-standard `b2=0.9` was selected empirically — it converges ~3× faster than the canonical 0.999 on DLM log-likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks). The entire Adam step (forward filter + AD backward pass + Adam state update) is wrapped in a single `jit()` call.
+
+```js
+const mle = await dlmMLE(y, {
+  order: 1,
+  optimizer: 'adam',      // default
+  maxIter: 300,
+  lr: 0.05,
+  dtype: 'f64',
+});
+```
+
+#### Natural gradient (second-order, `optimizer: 'natural'`)
+
+The natural gradient optimizer uses second-order curvature information to take Newton-type steps. In the steepest-descent framework above, the norm on $\Delta\theta$ is the quadratic form induced by the Hessian $H = \nabla^2_\theta \ell$, which gives the update:
+
+$$\Delta\theta = -\eta \cdot (H + \lambda I)^{-1} g$$
+
+where $g = \nabla_\theta \ell$ is the gradient, $H$ is the Hessian of the log-likelihood, and $\lambda > 0$ is a Levenberg-Marquardt damping parameter that interpolates between Newton ($\lambda \to 0$) and gradient descent ($\lambda \to \infty$).
+
+**Step-by-step algorithm:**
+
+1. **Gradient evaluation.** Compute $({\ell(\theta),\, g})$ via the JIT-compiled `valueAndGrad(lossFn)`.
+
+2. **Hessian approximation.** Two modes:
+   - `hessian: 'fd'` (default): central finite differences of the gradient. For each parameter $j = 1 \ldots p$:
+
+     $$H_{\cdot,j} \approx \frac{g(\theta + h\, e_j) - g(\theta - h\, e_j)}{2h}, \quad h = 10^{-5}$$
+
+     Cost: $2p$ gradient evaluations reusing the same JIT-compiled `gradFn` — no extra tracing. For $p \leq 7$ (typical DLM), this is ~200–700 ms on WASM. Result is symmetrized: $H \leftarrow (H + H^\top) / 2$.
+
+   - `hessian: 'exact'`: `jit(hessian(lossFn))` via AD. Exact but expensive — the first call incurs ~20 s of JIT tracing (jax-js v0.7.8); subsequent calls are fast.
+
+3. **Marquardt initialization** (first iteration only): $\lambda_0 = \tau \cdot \max_i |H_{ii}|$, with $\tau = 10^{-4}$ (default). This starts close to a lightly damped Newton step.
+
+4. **Linear solve.** Solve $(H + \lambda I)\,\delta = g$ via Gaussian elimination with partial pivoting. For $p \leq 10$, this is exact and trivially fast in plain JS.
+
+5. **Backtracking line search.** Try candidate $\theta' = \theta - \eta\, \delta$ (default $\eta = 1$, full Newton step):
+   - If $\ell(\theta') < \ell(\theta)$: accept, shrink damping $\lambda \leftarrow \lambda \cdot \rho_{\text{shrink}}$ (trust the quadratic model more).
+   - If $\ell(\theta') \geq \ell(\theta)$: reject, grow damping $\lambda \leftarrow \lambda \cdot \rho_{\text{grow}}$, re-solve, retry (up to 6 attempts).
+   - If all attempts fail: fall back to a small gradient-descent step.
+
+   Defaults: $\rho_{\text{shrink}} = 0.5$, $\rho_{\text{grow}} = 2$.
+
+6. **Convergence.** Stop when the relative change in $-2\log L$ falls below `tol` (default $10^{-6}$) or `maxIter` is reached (default 50).
+
+**Why this is effective for DLM MLE:** The log-likelihood $\ell(\theta) = -2 \log L(\theta)$ of a DLM is smooth and close to quadratic near the optimum (it is a sum-of-squares-like prediction-error decomposition). The Hessian captures cross-parameter curvature — e.g. the coupling between observation noise $s$ and state noise $w$ — that diagonal methods like Adam miss. Convergence is typically quadratic near the optimum: 3–15 iterations vs 100–300 for Adam.
+
+**Cost trade-off:** Each natural gradient iteration is more expensive ($1 + 2p$ gradient evaluations for FD Hessian) but far fewer iterations are needed. For $p \leq 5$ and $n \leq 200$, natural gradient is ~1.5–2× faster in wall-clock time; for larger $p$ the FD cost grows and Adam becomes competitive.
+
+```js
+const mle = await dlmMLE(y, {
+  order: 1,
+  optimizer: 'natural',
+  maxIter: 50,
+  naturalOpts: {
+    hessian: 'fd',         // 'fd' (default) or 'exact'
+    lambdaInit: 1e-4,      // τ for Marquardt init
+    lambdaShrink: 0.5,     // ρ_shrink: on success
+    lambdaGrow: 2,         // ρ_grow: on failure
+    fdStep: 1e-5,          // h for central differences
+  },
+  dtype: 'f64',
+});
+```
+
 ### Parameter estimation (maximum likelihood): MATLAB DLM vs dlm-js
 
 This comparison focuses on the univariate MLE workflow ($p=1$). For the original MATLAB DLM, see the [tutorial](https://mjlaine.github.io/dlm/dlmtut.html) and [source](https://github.com/mjlaine/dlm).
@@ -602,17 +697,13 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 
 | Aspect | dlm-js | MATLAB DLM |
 |--------|--------|-----------|
-| **Algorithm** | Adam (gradient-based, 1st-order momentum) | `fminsearch` (Nelder-Mead simplex) |
+| **Algorithm** | Adam (1st-order) or natural gradient (2nd-order, LM-damped Newton) — see [Optimizers](#optimizers) | `fminsearch` (Nelder-Mead simplex) |
 | **Gradient computation** | **Autodiff** via `valueAndGrad()` + reverse-mode AD through `lax.scan` | **None** — derivative-free |
-| **Convergence** | Adaptive first-order method with bias-corrected moments; practical convergence depends on learning rate and objective conditioning | Simplex shrinkage heuristic (no guaranteed rate for non-convex objectives) |
-| **Cost per optimizer step** | One `valueAndGrad` evaluation (forward + reverse AD through the loss) plus Adam state update | Multiple likelihood evaluations per simplex update (depends on dimension and simplex operations) |
-| **Typical run budget** | 200 optimizer iterations (`maxIter` default) | 400 function evaluations (`options.maxfuneval` default) |
-| **Compilation** | Optimization step is wrapped in a single `jit()`-traced function (forward filter + AD + Adam update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
-| **Jittability** | Fully jittable — optax Adam (as of v0.4.0, `count.item()` fix) | N/A |
-| **Adam defaults** | `b1=0.9, b2=0.9, eps=1e-8` — b2=0.9 converges ~3× faster than canonical 0.999 on DLM likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks) | N/A |
-| **WASM performance** | ~<!-- timing:ckpt:nile:false-s -->2.0 s<!-- /timing --> for 60 iterations (Nile, n=100, m=2, b2=0.9, `checkpoint: false`); see [checkpointing note](#gradient-checkpointing) | N/A |
+| **Typical run budget** | Adam: 200 iterations; natural: 50 iterations | 400 function evaluations (`options.maxfuneval`) |
+| **Compilation** | `jit()`-traced optimization step (forward filter + AD + parameter update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
+| **WASM performance** | Adam: ~<!-- timing:ckpt:nile:false-s -->2.0 s<!-- /timing --> for 60 iters (Nile, n=100, m=2, `checkpoint: false`); natural: ~1.5 s for 5 iters | N/A |
 
-**Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it simple to apply and often robust on noisy/non-smooth surfaces. But cost grows quickly with parameter dimension because simplex updates require repeated objective evaluations. Adam with autodiff has higher per-step compute cost, but uses gradient information and often needs fewer optimization steps on smooth likelihoods like DLM filtering objectives.
+**Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it robust on non-smooth surfaces but expensive as parameter dimension grows. Adam uses first-order gradients; natural gradient uses second-order curvature (Hessian) for faster convergence on smooth objectives like the DLM log-likelihood. See [Optimizers](#optimizers) for equations and algorithmic details.
 
 ##### MLE vs MCMC: different objectives
 
@@ -673,6 +764,7 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 |-----------|-----------------|-----------|
 | MLE point estimate | ✅ Adam + autodiff | ✅ `fminsearch` |
 | Gradient-based optimization | ✅ | ❌ |
+| Second-order optimizer | ✅ (`optimizer: 'natural'`; see [Optimizers](#optimizers)) | ❌ |
 | JIT compilation of optimizer | ✅ | ❌ |
 | Fit observation noise `obsStd` | ✅ (always) | ✅ (optional via `fitv`) |
 | Fit process noise `processStd` | ✅ | ✅ |
@@ -818,6 +910,7 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 4. Razavi, H., García-Fernández, Á. F. & Särkkä, S. (2025). Temporal Parallelisation of Continuous-Time MAP Trajectory Estimation. *Preprint*. — Extends [1] to continuous-time MAP estimation with exact associative elements for irregular timesteps; see [irregular timestamps](#irregular-timestamps).
 5. Yaghoobi, F., Corenflos, A., Hassan, S. & Särkkä, S. (2021). [Parallel Iterated Extended and Sigma-Point Kalman Smoothers](https://arxiv.org/abs/2102.00514). *Proc. IEEE ICASSP*. [Code](https://github.com/EEA-sensors/parallel-non-linear-gaussian-smoothers) (JAX). — Extends [1] to nonlinear models via parallel EKF, CKF, and iterated variants. Uses the same 5-tuple / 3-tuple associative elements as dlm-js.
 6. Yaghoobi, F., Corenflos, A., Hassan, S. & Särkkä, S. (2022). [Parallel Square-Root Statistical Linear Regression for Inference in Nonlinear State Space Models](https://arxiv.org/abs/2207.00426). *Preprint*. [Code](https://github.com/EEA-sensors/sqrt-parallel-smoothers) (JAX). — Reformulates [5] in square-root (Cholesky factor) space: replaces covariance matrices $C$, $J$, $L$ in the associative elements with their Cholesky factors, using QR-based composition that inherently maintains positive semi-definiteness. Includes gradient computation through the parallel scan and implicit differentiation for iterated smoothers. See [square-root parallel smoother](#square-root-parallel-smoother-sqrt-assoc).
+7. Bernstein, J. & Newhouse, L. (2024). [Modular Duality in Deep Learning](https://arxiv.org/abs/2410.21265). *arXiv:2410.21265*. — Unifying framework for optimizer design via steepest descent under a norm. The duality map $\mathcal{D}_{\|\cdot\|}$ converts gradients to primal-space updates; for the Euclidean norm this recovers gradient descent, for the operator norm it yields Shampoo/µP, and for the Hessian quadratic form it gives Newton's method. See [Optimizers](#optimizers).
 
 ### Authors
 * Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
