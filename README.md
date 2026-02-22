@@ -267,7 +267,7 @@ const mle = await dlmMLE(y, { order: 1, maxIter: 200, lr: 0.05 });
 
 ### Demos
 
-All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `webgpu` variants use an exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020) and match the sequential `scan` results to within numerical tolerance (validated by `assocscan.test.ts`). The `sqrt-assoc` variant implements the square-root form in Cholesky-factor space (Yaghoobi et al. 2022) — same O(log N) depth, validated by `sqrtassoc.test.ts` (wasm/f64 only; see limitations).
+All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `webgpu` variants use an exact O(log N) parallel filter+smoother (Särkkä & García-Fernández 2020) and match the sequential `scan` results to within numerical tolerance (validated by `assocscan.test.ts`). The `sqrt-assoc` variant implements the square-root form in Cholesky-factor space (Yaghoobi et al. 2022) — same O(log N) depth, validated by `sqrtassoc.test.ts` (wasm/f64+f32; see limitations — f32 smoke tests cover m≤5).
 
 #### Nile River Flow (Local Linear Trend)
 
@@ -276,7 +276,9 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <br/><br/>
   <img alt="Nile demo (associative scan)" src="assets/niledemo-assoc.svg" width="100%" />
   <br/><br/>
-  <img alt="Nile demo (sqrt-assoc)" src="assets/niledemo-sqrt-assoc.svg" width="100%" />
+  <img alt="Nile demo (sqrt-assoc, f64)" src="assets/niledemo-sqrt-assoc.svg" width="100%" />
+  <br/><br/>
+  <img alt="Nile demo (sqrt-assoc, f32)" src="assets/niledemo-sqrt-assoc-f32.svg" width="100%" />
 </p>
 
 *First smoothed state (level) `smoothed[0]` from dlm-js (solid blue) vs MATLAB/Octave dlm (dashed red), with ± 2σ bands from `smoothedStd[:,0]` (state uncertainty, not observation prediction intervals).*
@@ -360,7 +362,7 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 `algorithm: 'sqrt-assoc'` implements the square-root associative-scan smoother from Yaghoobi et al. [6], reformulating the parallel filter + smoother in **Cholesky-factor space**. The forward 5-tuple becomes $(A, b, U, \eta, Z)$ where $C = U U^\top$ and $J = Z Z^\top$; the backward 3-tuple becomes $(g, E, D)$ where $L = D D^\top$. Covariances are never formed explicitly during composition — they remain PSD by construction, eliminating the need for Joseph form, `(C+C')/2` symmetrization, and `cEps` regularization.
 
-Both passes use `lax.associativeScan` with ⌈log₂N⌉+1 rounds, same as the standard `assoc` path. Results are validated against the same Octave ground truth (`sqrtassoc.test.ts`; 11 tests on wasm/f64) with max relative error ~3e-5.
+Both passes use `lax.associativeScan` with ⌈log₂N⌉+1 rounds, same as the standard `assoc` path. Results are validated against the same Octave ground truth (`sqrtassoc.test.ts`; 21 tests on wasm — f64: precision comparison up to m=6, f32: all-outputs-finite smoke test for m≤5) with max relative error ~3e-5 (f64).
 
 ```ts
 const result = await dlmFit(y, {
@@ -387,7 +389,7 @@ The [6] reference implementation (JAX, [EEA-sensors/sqrt-parallel-smoothers](htt
 ##### Known limitations
 
 - **State dimension**: Works for m ≤ ~6 (all polynomial, trigonometric seasonal, and AR models). Fails for fullSeasonal with seasonLength=12 (m=13) because the `tria()` fallback squares the condition number of the [2m × 2m] = [26 × 26] block matrix, causing `cholesky` to encounter non-positive-definite input.
-- **cpu backend**: Produces NaN in the forward composition for m > 1 (root cause under investigation). Tests run on **wasm/f64 only**.
+- **cpu backend**: Produces NaN in the forward composition for m > 1 (root cause under investigation). Tests run on **wasm** (f64: precision comparison vs Octave; f32: smoke-only, all outputs finite).
 - **WebGPU backend**: Not tested — jax-js-nonconsuming has a [known `isnan()` bug on WebGPU](issues/jax-js-webgpu-nan-masking.md) that corrupts NaN masking.
 - **MLE**: The sqrt-assoc path is not yet wired into `dlmMLE` / `makeKalmanLoss`. Use `algorithm: 'scan'` or `'assoc'` for MLE.
 - **Would be resolved by upstream QR support**: If jax-js-nonconsuming adds `np.linalg.qr`, the `tria()` fallback can be replaced with the proper QR-based formula, lifting the m ≤ ~6 restriction and likely fixing the cpu NaN issue (since QR does not square the condition number).
@@ -415,11 +417,12 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 | | **f32** | **scan** | **joseph** | **17 ms** | **22 ms** | **23 ms** | **23 ms** | **22 ms** | **3.99e-2** | **9.66e-1** |
 | | | scan | joseph+triu | 19 ms | 24 ms | 25 ms | 26 ms | 25 ms | 1.30e-2 | 2.32 |
 | | | assoc | built-in | 27 ms | 24 ms | 32 ms | 41 ms | 24 ms | 1.21e-2 | 21.9 |
+| | | sqrt-assoc† | tria() | 57 ms | 50 ms | 59 ms | 74 ms | 44 ms | 4.51e+2 | 2.75e+3 |
 | **webgpu** | **f32** | **assoc** | **built-in** | **297 ms** | **331 ms** | **347 ms** | **343 ms** | **⚠️ NaN** | **⚠️ 92.2** | **⚠️ 62.8** |
 | | | scan | joseph | 293 ms | 341 ms | 341 ms | 342 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
 | | | scan | joseph+triu | 305 ms | 336 ms | 340 ms | 334 ms | ⚠️ NaN | ⚠️ 92.2 | ⚠️ 62.8 |
 
-⚠️ = WebGPU produces NaN outputs when the data contains missing (NaN) observations — both algorithms affected. † `sqrt-assoc` (wasm/f64 only): cpu backend produces NaN for m>1, f32 dtype not implemented, fullSeasonal (m=13) unsupported — see [Known limitations](#known-limitations) above. Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
+⚠️ = WebGPU produces NaN outputs when the data contains missing (NaN) observations — both algorithms affected. † `sqrt-assoc`: cpu backend produces NaN for m>1; fullSeasonal (m=13) unsupported. For wasm/f32/sqrt-assoc the large max|Δ| and max|Δ|% come from near-zero slope-state values (x[1] ≈ 0.07 at early timesteps); yhat/ystd absolute errors are <2% for all benchmark models. See [Known limitations](#known-limitations) above. Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` rows come from small smoothedStd values (not from yhat/ystd).
 
 **Key findings:**
 - **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.

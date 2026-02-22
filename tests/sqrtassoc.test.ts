@@ -336,3 +336,123 @@ describe('sqrt-assoc gapped data vs Octave', async () => {
     });
   }
 });
+
+// ── wasm/f32 smoke tests (all outputs finite) ─────────────────────────────
+//
+// Float32 sqrt-assoc is numerically functional but produces large percentage
+// errors for near-zero state values (e.g. slope state x[1] ≈ 0.07 at t=1
+// gives maxPct ~2750% even with absolute errors <17 on ~1100-range data).
+// These tests only verify that all outputs are finite — precision comparison
+// against Octave is not meaningful for f32 state means near zero.
+// yhat and ystd are well-behaved (<2% absolute error for all benchmark models).
+
+describe('sqrt-assoc wasm/f32 dlmFit (smoke: all outputs finite)', async () => {
+  const configs = await getTestConfigs();
+  // wasm/f32 only — f32 sqrt-assoc is not tested on cpu (NaN for m>1) or webgpu
+  const f32Configs = configs.filter(c => c.label.includes('wasm') && c.label.includes('f32'));
+
+  // Skip fullSeasonal (same reason as f64: tria() condition-number squaring).
+  // Also skip trig (harmonics=2, m=6): the 12×12 QR-free Cholesky block in f32
+  // (tria_eps=1e-6) produces NaN for m=6.  f32 is safe up to m≤5.
+  const filteredCases = modelCases.filter(mc => !mc.options.fullSeasonal && !(mc.options.harmonics && mc.options.harmonics > 1));
+
+  for (const config of f32Configs) {
+    describe(`sqrt-assoc-f32 / ${config.label}`, () => {
+      for (const mc of filteredCases) {
+        it(mc.name, async () => {
+          applyConfig(config);
+
+          const inputPath = path.join(__dirname, mc.inputFile);
+          if (!fs.existsSync(inputPath)) throw new Error(`Input not found: ${inputPath}`);
+          const input = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
+          const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
+
+          const result = await withLeakCheck(() =>
+            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'sqrt-assoc' })
+          );
+
+          const matlab = toMatlab(result);
+
+          const outputDir = path.join(__dirname, 'out');
+          if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+          fs.writeFileSync(
+            path.join(outputDir, mc.referenceFile.replace('-m.json', `-sqrt-assoc-f32-${config.label.replace('/', '-')}.json`)),
+            JSON.stringify(matlab, (_key, value) =>
+              ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
+            , 2)
+          );
+
+          // Smoke: all outputs must be finite
+          assertAllFinite(matlab);
+        });
+      }
+    });
+  }
+});
+
+describe('sqrt-assoc wasm/f32 niledemo (smoke: all outputs finite)', async () => {
+  const configs = await getTestConfigs();
+  const f32Configs = configs.filter(c => c.label.includes('wasm') && c.label.includes('f32'));
+
+  const inputFile = path.join(__dirname, 'niledemo-in.json');
+  if (!fs.existsSync(inputFile)) throw new Error(`Input not found — run: pnpm run test:octave`);
+  const nileInput = JSON.parse(fs.readFileSync(inputFile, 'utf-8'));
+
+  for (const config of f32Configs) {
+    it(`all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
+      applyConfig(config);
+
+      const result = await withLeakCheck(() =>
+        dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'sqrt-assoc' })
+      );
+
+      const matlab = toMatlab(result);
+      assertAllFinite(matlab);
+    });
+  }
+});
+
+describe('sqrt-assoc wasm/f32 gapped data (smoke: all outputs finite)', async () => {
+  const configs = await getTestConfigs();
+  const f32Configs = configs.filter(c => c.label.includes('wasm') && c.label.includes('f32'));
+
+  const inFileA = path.join(__dirname, 'gapped-in.json');
+  const inFileB = path.join(__dirname, 'gapped-order0-in.json');
+  if (!fs.existsSync(inFileA) || !fs.existsSync(inFileB)) {
+    throw new Error('Gapped data files not found — run: pnpm run test:octave');
+  }
+
+  const inpA = JSON.parse(fs.readFileSync(inFileA, 'utf-8'));
+  const inpB = JSON.parse(fs.readFileSync(inFileB, 'utf-8'));
+  const y_gapped = inpA['y'] as (number | null)[];
+  const s = inpA['s'] as number;
+  const w = inpA['w'] as number[];
+  const w_level = (inpB['w'] instanceof Array ? inpB['w'][0] : inpB['w']) as number;
+
+  for (const config of f32Configs) {
+    it(`order=1 (m=2) all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
+      applyConfig(config);
+      const result = await withLeakCheck(() =>
+        dlmFit(
+          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
+          { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
+        )
+      );
+      // Check only fields that are finite at missing timesteps (resid0/resid are NaN at NaN obs — expected)
+      const matlab = toMatlab(result);
+      assertAllFinite({ yhat: matlab.yhat, ystd: matlab.ystd, x: matlab.x, xstd: matlab.xstd, nobs: matlab.nobs });
+    });
+
+    it(`order=0 (m=1) all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
+      applyConfig(config);
+      const result = await withLeakCheck(() =>
+        dlmFit(
+          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
+          { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
+        )
+      );
+      const matlab = toMatlab(result);
+      assertAllFinite({ yhat: matlab.yhat, ystd: matlab.ystd, x: matlab.x, xstd: matlab.xstd, nobs: matlab.nobs });
+    });
+  }
+});

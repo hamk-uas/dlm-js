@@ -28,23 +28,31 @@ const y: number[] = input.y;        // observations
 const s: number = input.s;          // observation noise std
 const w: number[] = input.w;        // state noise stds
 
-const variant = process.argv[2] === 'assoc' ? 'assoc' : process.argv[2] === 'sqrt-assoc' ? 'sqrt-assoc' : 'scan';
+const variant = process.argv[2] === 'assoc' ? 'assoc'
+  : process.argv[2] === 'sqrt-assoc' ? 'sqrt-assoc'
+  : process.argv[2] === 'sqrt-assoc-f32' ? 'sqrt-assoc-f32'
+  : 'scan';
+const isF32 = variant === 'sqrt-assoc-f32';
+const dtype: 'f64' | 'f32' = isF32 ? 'f32' : 'f64';
 const algorithm: 'scan' | 'assoc' | 'sqrt-assoc' | undefined =
-  variant === 'assoc' ? 'assoc' : variant === 'sqrt-assoc' ? 'sqrt-assoc' : undefined;
+  variant === 'assoc' ? 'assoc'
+  : (variant === 'sqrt-assoc' || variant === 'sqrt-assoc-f32') ? 'sqrt-assoc'
+  : undefined;
 const scanLabel =
   variant === 'assoc' ? 'associativeScan/WASM/f64' :
   variant === 'sqrt-assoc' ? 'sqrt-assoc/WASM/f64' :
+  variant === 'sqrt-assoc-f32' ? 'sqrt-assoc/WASM/f32' :
   'scan/WASM/f64';
 
 // ── Run dlm-js ─────────────────────────────────────────────────────────────
 
 const timedFit = async () => {
   const t0 = performance.now();
-  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm }));
+  await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype, order: 1, algorithm }));
   const t1 = performance.now();
 
   const warmStart = performance.now();
-  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64', order: 1, algorithm }));
+  const result = await withLeakCheck(() => dlmFit(y, { obsStd: s, processStd: w, dtype, order: 1, algorithm }));
   const warmEnd = performance.now();
 
   return {
@@ -169,7 +177,10 @@ push(`</svg>`);
 
 const outPath = resolve(root, "assets", `niledemo-${variant}.svg`);
 writeSvg(lines, outPath);
-const sidecarKey = variant === 'assoc' ? 'gen-niledemo-svg-assoc' : variant === 'sqrt-assoc' ? 'gen-niledemo-svg-sqrt-assoc' : 'gen-niledemo-svg';
+const sidecarKey = variant === 'assoc' ? 'gen-niledemo-svg-assoc'
+  : variant === 'sqrt-assoc' ? 'gen-niledemo-svg-sqrt-assoc'
+  : variant === 'sqrt-assoc-f32' ? 'gen-niledemo-svg-sqrt-assoc-f32'
+  : 'gen-niledemo-svg';
 writeTimingsSidecar(sidecarKey, { firstRunMs: timed.firstRunMs, warmRunMs: timed.warmRunMs });
 console.log(
   `Timing (dlmFit with jitted core): first-run ${timed.firstRunMs.toFixed(2)} ms, warm-run ${timed.warmRunMs.toFixed(2)} ms`

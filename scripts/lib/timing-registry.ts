@@ -83,6 +83,20 @@ export const timingRegistry: Record<string, TimingSlot> = {
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Nile demo (sqrt-assoc)",
   },
+  "nile-demo:sqrt-assoc-f32:first": {
+    script:      "scripts/gen-niledemo-svg.ts",
+    sidecar:     "gen-niledemo-svg-sqrt-assoc-f32",
+    field:       "firstRunMs",
+    format:      "ms2",
+    description: "dlmFit first-run wall-clock — Nile demo (sqrt-assoc/f32)",
+  },
+  "nile-demo:sqrt-assoc-f32:warm": {
+    script:      "scripts/gen-niledemo-svg.ts",
+    sidecar:     "gen-niledemo-svg-sqrt-assoc-f32",
+    field:       "warmRunMs",
+    format:      "ms2",
+    description: "dlmFit warm-run wall-clock — Nile demo (sqrt-assoc/f32)",
+  },
 
   "kaisaniemi:first": {
     script:      "scripts/gen-kaisaniemi-svg.ts",
