@@ -1,11 +1,20 @@
 {
-  "nile_order1_elapsed": 2872.6744760000006,
+  "nile_order1_elapsed": 2885.5995249999996,
   "nile_order1_iterations": 190,
   "nile_order1_lik": 1104.9067267792145,
-  "nile_order0_elapsed": 1965.8643450000018,
+  "nile_order0_elapsed": 1961.8494420000025,
   "nile_order0_iterations": 110,
   "nile_order0_lik": 1095.783289364641,
-  "kaisaniemi_elapsed": 4526.829011000002,
+  "kaisaniemi_elapsed": 4504.161423999998,
   "kaisaniemi_iterations": 300,
-  "kaisaniemi_lik": 341.30632032553507
+  "kaisaniemi_lik": 341.30632032553507,
+  "nat_nile_order1_elapsed": 1474.209950999997,
+  "nat_nile_order1_iterations": 5,
+  "nat_nile_order1_lik": 1109.259079966722,
+  "nat_nile_order0_elapsed": 1132.6195109999971,
+  "nat_nile_order0_iterations": 5,
+  "nat_nile_order0_lik": 1095.78300830345,
+  "nat_kaisaniemi_elapsed": 4614.325017000003,
+  "nat_kaisaniemi_iterations": 22,
+  "nat_kaisaniemi_lik": 341.30565733302035
 }

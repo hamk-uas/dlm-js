@@ -417,6 +417,79 @@ export const timingRegistry: Record<string, TimingSlot> = {
     description: "dlmMLE final −2log L — Kaisaniemi trig model",
   },
 
+  // ── Natural gradient MLE benchmark ───────────────────────────────────────
+
+  "nat-mle-bench:nile-order1:elapsed": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_order1_elapsed",
+    format:      "ms0",
+    description: "dlmMLE natural — Nile order=1 (s+w), wall-clock",
+  },
+  "nat-mle-bench:nile-order1:iterations": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_order1_iterations",
+    format:      "int",
+    description: "dlmMLE natural — Nile order=1 (s+w), iteration count",
+  },
+  "nat-mle-bench:nile-order1:lik": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_order1_lik",
+    format:      "lik1",
+    description: "dlmMLE natural — Nile order=1 (s+w), −2log L",
+  },
+  "nat-mle-bench:nile-order0:elapsed": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_order0_elapsed",
+    format:      "ms0",
+    description: "dlmMLE natural — Nile order=0 (s+w), wall-clock",
+  },
+  "nat-mle-bench:nile-order0:iterations": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_order0_iterations",
+    format:      "int",
+    description: "dlmMLE natural — Nile order=0 (s+w), iteration count",
+  },
+  "nat-mle-bench:nile-order0:lik": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_order0_lik",
+    format:      "lik1",
+    description: "dlmMLE natural — Nile order=0 (s+w), −2log L",
+  },
+  "nat-mle-bench:kaisaniemi:elapsed": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_kaisaniemi_elapsed",
+    format:      "ms0",
+    description: "dlmMLE natural — Kaisaniemi trig model, wall-clock",
+  },
+  "nat-mle-bench:kaisaniemi:elapsed-s": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_kaisaniemi_elapsed",
+    format:      "s1",
+    description: "dlmMLE natural — Kaisaniemi (seconds, for prose)",
+  },
+  "nat-mle-bench:kaisaniemi:iterations": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_kaisaniemi_iterations",
+    format:      "int",
+    description: "dlmMLE natural — Kaisaniemi trig model, iteration count",
+  },
+  "nat-mle-bench:kaisaniemi:lik": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_kaisaniemi_lik",
+    format:      "lik1",
+    description: "dlmMLE natural — Kaisaniemi trig model, −2log L",
+  },
+
   // ── Cross-backend dlmFit benchmark (bench-backends.ts) ───────────────────
 
   "bb:nile-o0:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__cpu_f32__warm",       format: "ms0", description: "dlmFit warm — Nile order=0, cpu/f32" },

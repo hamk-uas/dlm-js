@@ -81,6 +81,50 @@ console.log(["Kaisaniemi trig (s+w)", "117", "4",
 
 console.log("\nDone.");
 
+// ── Natural gradient benchmarks ───────────────────────────────────────────
+
+console.log("\n=== MLE benchmark — natural gradient (wasm, Float64) ===");
+console.log(`maxIter=50  warmup=${WARMUP}  runs=${RUNS}  taking median\n`);
+
+const natHeader = ["Model", "n", "m", "median ms", "iters", "-2logL"].map(s => s.padEnd(28)).join(" ");
+console.log(natHeader);
+console.log("─".repeat(natHeader.length));
+
+async function timedMleNatural(
+  y: number[],
+  options: Record<string, unknown>,
+): Promise<{ elapsed: number; iterations: number; lik: number }> {
+  // warm-up
+  await dlmMLE(y, { ...options, maxIter: 50, tol: 1e-6, dtype: 'f64' as const, optimizer: 'natural' as const });
+
+  const times: number[] = [];
+  let last = { elapsed: 0, iterations: 0, lik: 0 };
+  for (let i = 0; i < RUNS; i++) {
+    const r = await dlmMLE(y, { ...options, maxIter: 50, tol: 1e-6, dtype: 'f64' as const, optimizer: 'natural' as const });
+    times.push(r.elapsed);
+    last = { elapsed: r.elapsed, iterations: r.iterations, lik: r.deviance };
+  }
+  times.sort((a, b) => a - b);
+  return { elapsed: times[Math.floor(RUNS / 2)], iterations: last.iterations, lik: last.lik };
+}
+
+const natNileOrder1 = await timedMleNatural(nileIn.y, { order: 1 });
+console.log(["Nile order=1 (s+w)", "100", "2",
+  `${Math.round(natNileOrder1.elapsed)} ms`, String(natNileOrder1.iterations), natNileOrder1.lik.toFixed(1)]
+  .map(s => s.padEnd(28)).join(" "));
+
+const natNileOrder0 = await timedMleNatural(nileIn.y, { order: 0 });
+console.log(["Nile order=0 (s+w)", "100", "1",
+  `${Math.round(natNileOrder0.elapsed)} ms`, String(natNileOrder0.iterations), natNileOrder0.lik.toFixed(1)]
+  .map(s => s.padEnd(28)).join(" "));
+
+const natKaisaniemi = await timedMleNatural(kaisaniemiIn.y, { order: 1, harmonics: 1, seasonLength: 12 });
+console.log(["Kaisaniemi trig (s+w)", "117", "4",
+  `${Math.round(natKaisaniemi.elapsed)} ms`, String(natKaisaniemi.iterations), natKaisaniemi.lik.toFixed(1)]
+  .map(s => s.padEnd(28)).join(" "));
+
+console.log("\nDone.");
+
 // ── Write sidecar ─────────────────────────────────────────────────────────
 
 writeTimingsSidecar("collect-mle-benchmark", {
@@ -93,5 +137,15 @@ writeTimingsSidecar("collect-mle-benchmark", {
   kaisaniemi_elapsed:      kaisaniemi.elapsed,
   kaisaniemi_iterations:   kaisaniemi.iterations,
   kaisaniemi_lik:          kaisaniemi.lik,
+  // Natural gradient optimizer
+  nat_nile_order1_elapsed:     natNileOrder1.elapsed,
+  nat_nile_order1_iterations:  natNileOrder1.iterations,
+  nat_nile_order1_lik:         natNileOrder1.lik,
+  nat_nile_order0_elapsed:     natNileOrder0.elapsed,
+  nat_nile_order0_iterations:  natNileOrder0.iterations,
+  nat_nile_order0_lik:         natNileOrder0.lik,
+  nat_kaisaniemi_elapsed:      natKaisaniemi.elapsed,
+  nat_kaisaniemi_iterations:   natKaisaniemi.iterations,
+  nat_kaisaniemi_lik:          natKaisaniemi.lik,
 });
 stampMachineInfo();
