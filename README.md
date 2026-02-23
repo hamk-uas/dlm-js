@@ -770,7 +770,7 @@ Pure MLE minimises $-2 \log L$ without any prior on $W$. On real data such as sa
 | Ozone $-2\log L$ at MLE optimum | 203.8 | — |
 | Ozone trend shape | Same global trend, but seasonal W values degenerate | Smooth, symmetric seasonal noise |
 
-If MCMC-like regularisation is needed, the recommended approach is MAP estimation: add a log-normal penalty on $W$ entries to the loss before differentiating. dlm-js `makeKalmanLoss` is a plain differentiable function and the penalty can be added outside of it before wrapping in `jit(valueAndGrad(...))`.
+If MCMC-like regularisation is needed, use MAP estimation via the `loss` option — either `dlmPrior({ obsVar: ..., processVar: ... })` for MATLAB DLM-style Inverse-Gamma priors, or a custom callback for arbitrary penalties. See [MAP estimation](#map-estimation-custom-loss--priors).
 
 #### Benchmark: same machine, same data
 
@@ -825,7 +825,7 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 | Fit process noise `processStd` | ✅ | ✅ |
 | Fit AR coefficients `arCoefficients` | ✅ (`fitAr: true`) | ✅ |
 | Tie W parameters (`winds`) | ❌ (each W entry independent) | ✅ |
-| Custom cost function | ❌ | ✅ (`options.fitfun`) |
+| Custom cost function | ✅ (`loss` option: custom callback or `dlmPrior` factory) | ✅ (`options.fitfun`) |
 | MCMC posterior sampling | ❌ | ✅ (Adaptive Metropolis via `mcmcrun`) |
 | State sampling for Gibbs | ❌ | ✅ (disturbance smoother) |
 | Posterior uncertainty | ❌ (point estimate only) | ✅ (full chain) |
@@ -846,8 +846,7 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 
 1. **MCMC posterior sampling** — full Bayesian uncertainty quantification with priors.
 2. **Parameter tying** (`winds`) — reduces optimization dimension for structured models.
-3. **Custom fit functions** (`options.fitfun`) — user-supplied cost functions.
-4. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
+3. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
 
 ## Project structure
 
