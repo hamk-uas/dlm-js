@@ -107,10 +107,9 @@ describe('sqrt-assoc dlmFit vs Octave', async () => {
   // tria() fallback adds ~1e-5 error, still within f64 tolerance.
   const f64Configs = configs.filter(c => c.label.includes('wasm') && c.label.includes('f64'));
 
-  // Skip fullSeasonal (m=13): QR-free tria() fallback squares the condition number
-  // of the [2m×2m] block matrix; cholesky fails for m>~8.  Trig seasonal (m=4) covers
-  // the same seasonality and passes.
-  const filteredCases = modelCases.filter(mc => !mc.options.fullSeasonal);
+  // All models now supported: QR-based tria() (np.linalg.qr) doesn't square the
+  // condition number, so fullSeasonal (m=13) and all trig models work.
+  const filteredCases = modelCases;
 
   for (const config of f64Configs) {
     describe(`sqrt-assoc / ${config.label}`, () => {
@@ -351,10 +350,9 @@ describe('sqrt-assoc wasm/f32 dlmFit (smoke: all outputs finite)', async () => {
   // wasm/f32 only — f32 sqrt-assoc is not tested on cpu (NaN for m>1) or webgpu
   const f32Configs = configs.filter(c => c.label.includes('wasm') && c.label.includes('f32'));
 
-  // Skip fullSeasonal (same reason as f64: tria() condition-number squaring).
-  // Also skip trig (harmonics=2, m=6): the 12×12 QR-free Cholesky block in f32
-  // (tria_eps=1e-6) produces NaN for m=6.  f32 is safe up to m≤5.
-  const filteredCases = modelCases.filter(mc => !mc.options.fullSeasonal && !(mc.options.harmonics && mc.options.harmonics > 1));
+  // All models now supported: QR-based tria() works for all state dimensions
+  // including fullSeasonal (m=13) and trig (harmonics=2, m=6) in f32.
+  const filteredCases = modelCases;
 
   for (const config of f32Configs) {
     describe(`sqrt-assoc-f32 / ${config.label}`, () => {

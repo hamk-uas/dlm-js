@@ -1,7 +1,8 @@
 # WebGPU: `np.isnan` returns wrong results for batched tensors — NaN not detected in `[n,1]` shape
 
-**Status**: open  
-**Affects**: jax-js-nonconsuming v0.7.8, WebGPU backend, Float32  
+**Status**: ✅ resolved  
+**Fixed in**: jax-js-nonconsuming `ultimate-architecture-plan` branch, commit `b5c563abf93bb0d949465e5cc613e96e75870de1` (installed in dlm-js as of 2026-02-23)  
+**Was Affects**: jax-js-nonconsuming v0.7.8, WebGPU backend, Float32  
 **Impact**: `dlmFit` with missing (NaN) observations produces all-NaN output on WebGPU  
 
 ---

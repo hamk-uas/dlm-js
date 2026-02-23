@@ -516,7 +516,9 @@ const dlmSmo = async (
       // Cholesky factors U, Z, D.  Composition via block tria() ensures PSD by
       // construction — no Joseph form, symmetrize, or ε·I needed.
       //
-      // tria(A) = cholesky(A·A' + ε·I) — fallback for QR-free backend.
+      // tria(A) = R' where [Q, R] = qr(A') — proper QR-based triangular factor.
+      // This avoids squaring the condition number (unlike the old cholesky(A·A'+ε·I)
+      // fallback), enabling larger state dimensions (m > 6, e.g. fullSeasonal m=13).
       // Reference: EEA-sensors/sqrt-parallel-smoothers (JAX).
       type SqrtForwardElem = { A: np.Array; b: np.Array; U: np.Array; eta: np.Array; Z: np.Array };
       type SqrtBackwardElem = { g: np.Array; E: np.Array; D: np.Array };
@@ -568,12 +570,12 @@ const dlmSmo = async (
       using psi_bot = np.concatenate([cholW, zeroCol], -1);        // [n, m, m+1]
       using Psi = np.concatenate([psi_top, psi_bot], -2);          // [n, 1+m, m+1]
 
-      // tria(Psi) = cholesky(Psi·Psi' + ε·I_{1+m})
-      using PsiPsiT = np.einsum('nij,nkj->nik', Psi, Psi);        // [n, 1+m, 1+m]
-      using I_big = np.eye(1 + stateSize, undefined, { dtype });
-      using I_big_exp = np.tile(np.reshape(I_big, [1, 1 + stateSize, 1 + stateSize]), [n, 1, 1]);
-      using PsiPsiT_reg = np.add(PsiPsiT, np.multiply(tria_eps_arr, I_big_exp));
-      using triaPsi = np.linalg.cholesky(PsiPsiT_reg);            // [n, 1+m, 1+m]
+      // tria(Psi) via QR: [Q, R] = qr(Psi'), triaPsi = R'
+      using PsiT = np.einsum('nij->nji', Psi);                    // [n, m+1, 1+m]
+      const [Q_psi, R_psi] = np.linalg.qr(PsiT);
+      Q_psi.dispose();
+      using triaPsi = np.einsum('nij->nji', R_psi);               // [n, 1+m, 1+m]
+      R_psi.dispose();
 
       // Extract sub-blocks via split
       // Split along axis -2 at index 1: top [n,1,1+m], bottom [n,m,1+m]
@@ -661,10 +663,12 @@ const dlmSmo = async (
       using psi0_bot = np.concatenate([cholC0_1, zeroCol_1], -1);  // [1, m, m+1]
       using Psi0 = np.concatenate([psi0_top, psi0_bot], -2);       // [1, 1+m, m+1]
 
-      using Psi0Psi0T = np.einsum('nij,nkj->nik', Psi0, Psi0);
-      using I_big_1 = np.tile(np.reshape(I_big, [1, 1 + stateSize, 1 + stateSize]), [1, 1, 1]);
-      using Psi0_reg = np.add(Psi0Psi0T, np.multiply(tria_eps_arr, I_big_1));
-      using triaPsi0 = np.linalg.cholesky(Psi0_reg);              // [1, 1+m, 1+m]
+      // tria(Psi0) via QR
+      using Psi0T = np.einsum('nij->nji', Psi0);                  // [1, m+1, 1+m]
+      const [Q_psi0, R_psi0] = np.linalg.qr(Psi0T);
+      Q_psi0.dispose();
+      using triaPsi0 = np.einsum('nij->nji', R_psi0);             // [1, 1+m, 1+m]
+      R_psi0.dispose();
 
       const row0Parts = np.split(triaPsi0, [1], -2);
       using triaPsi0_top = row0Parts[0];
@@ -722,13 +726,12 @@ const dlmSmo = async (
         // Xi: [n, 2m, 2m]
         using Xi = np.concatenate([xi_top, xi_bot], -2);
 
-        // tria(Xi) = cholesky(Xi·Xi' + ε·I_{2m})
-        using XiXiT = np.einsum('nij,nkj->nik', Xi, Xi);
-        using regI_2m = np.multiply(
-          np.array(tria_eps, { dtype }),
-          np.reshape(np.eye(2 * m, undefined, { dtype }), [1, 2 * m, 2 * m])
-        );
-        using tria_xi = np.linalg.cholesky(np.add(XiXiT, regI_2m)); // [n, 2m, 2m]
+        // tria(Xi) via QR: [Q, R] = qr(Xi'), tria_xi = R'
+        using XiT = np.einsum('nij->nji', Xi);                     // [n, 2m, 2m]
+        const [Q_xi, R_xi] = np.linalg.qr(XiT);
+        Q_xi.dispose();
+        using tria_xi = np.einsum('nij->nji', R_xi);               // [n, 2m, 2m]
+        R_xi.dispose();
 
         // Extract Xi11 [n,m,m], Xi21 [n,m,m], Xi22 [n,m,m]
         const xiRowParts = np.split(tria_xi, [m], -2);
@@ -741,11 +744,10 @@ const dlmSmo = async (
         using Xi21 = xiBotCols[0];                                    // [n, m, m]
         using Xi22 = xiBotCols[1];                                    // [n, m, m]
 
-        // solve_tri(Xi11, X) → np.linalg.solve(Xi11, X)
-        // S1 = solve(Xi11, U1'·A2') = Xi11⁻¹ · U1'·A2'  [n, m, m]
+        // S1 = triangularSolve(Xi11, U1'·A2')  [n, m, m]  (Xi11 is lower triangular from tria)
         using A2t = np.einsum('nij->nji', b_elem.A);
         using U1tA2t = np.einsum('nij,njk->nik', U1t, A2t);
-        using S1 = np.linalg.solve(Xi11, U1tA2t);                   // [n, m, m]
+        using S1 = lax.linalg.triangularSolve(Xi11, U1tA2t, { leftSide: true, lower: true });
         using S1t = np.einsum('nij->nji', S1);                       // [n, m, m]
 
         // A_comp = A2·A1 - S1'·Xi21'·A1
@@ -755,8 +757,8 @@ const dlmSmo = async (
         const A_comp = np.subtract(A2A1, S1tXi21tA1);
 
         // For b_comp: A2·(I - R'·Xi21')·(b1 + U1·U1'·eta2) + b2
-        // where R = solve(Xi11, U1')  (NOTE: different from S1 which uses U1'·A2')
-        using R_b = np.linalg.solve(Xi11, U1t);                      // Xi11⁻¹·U1'
+        // where R = triangularSolve(Xi11, U1')  (NOTE: different from S1 which uses U1'·A2')
+        using R_b = lax.linalg.triangularSolve(Xi11, U1t, { leftSide: true, lower: true });
         using R_bt = np.einsum('nij->nji', R_b);                     // U1·Xi11⁻ᵀ
         using RbtXi21t = np.einsum('nij,njk->nik', R_bt, Xi21t);    // [n, m, m]
         using ImRX = np.subtract(I_batch, RbtXi21t);                 // [n, m, m]
@@ -767,18 +769,17 @@ const dlmSmo = async (
         using A2ImRX_b1 = np.einsum('nij,njk->nik', A2ImRX, b1_plus);
         const b_comp = np.add(A2ImRX_b1, b_elem.b);
 
-        // U_comp = tria([S1', U2])
+        // U_comp = tria([S1', U2]) via QR
         using U_wide = np.concatenate([S1t, b_elem.U], -1);         // [n, m, 2m]
-        using U_UUt = np.einsum('nij,nkj->nik', U_wide, U_wide);
-        using regI_m1 = np.multiply(np.array(tria_eps, { dtype }), I1);
-        using U_reg = np.add(U_UUt, regI_m1);
-        const U_comp = np.linalg.cholesky(U_reg);                   // [n, m, m]
+        using U_wideT = np.einsum('nij->nji', U_wide);               // [n, 2m, m]
+        const [Q_u, R_u] = np.linalg.qr(U_wideT);
+        Q_u.dispose();
+        const U_comp = np.einsum('nij->nji', R_u);                   // [n, m, m]
+        R_u.dispose();
 
-        // eta_comp = A1'·(I - solve(Xi11, Xi21', trans=True)'·U1')·(eta2 - Z2·Z2'·b1) + eta1
-        // solve(Xi11, Xi21', trans=True) = solve(Xi11', Xi21') — transpose solve
-        // For symmetric-ish Xi11, use: Xi11⁻ᵀ·Xi21' = solve(Xi11', Xi21')
-        using Xi11t = np.einsum('nij->nji', Xi11);
-        using R1 = np.linalg.solve(Xi11t, Xi21t);                   // [n, m, m]
+        // eta_comp = A1'·(I - triangularSolve(Xi11, Xi21', trans=True)'·U1')·(eta2 - Z2·Z2'·b1) + eta1
+        // triangularSolve with transposeA=true: Xi11' \ Xi21'
+        using R1 = lax.linalg.triangularSolve(Xi11, Xi21t, { leftSide: true, lower: true, transposeA: true });
         using R1t = np.einsum('nij->nji', R1);                       // [n, m, m]
         using R1tU1t = np.einsum('nij,njk->nik', R1t, U1t);         // [n, m, m]
         using ImRU = np.subtract(I_batch, R1tU1t);                 // [n, m, m]
@@ -790,13 +791,14 @@ const dlmSmo = async (
         using A1t_ImRU_eta = np.einsum('nij,njk->nik', A1t, ImRU_eta);
         const eta_comp = np.add(A1t_ImRU_eta, a.eta);
 
-        // Z_comp = tria([A1'·Xi22, Z1])
+        // Z_comp = tria([A1'·Xi22, Z1]) via QR
         using A1tXi22 = np.einsum('nij,njk->nik', A1t, Xi22);      // [n, m, m]
         using Z_wide = np.concatenate([A1tXi22, a.Z], -1);          // [n, m, 2m]
-        using Z_ZZt = np.einsum('nij,nkj->nik', Z_wide, Z_wide);
-        using regI_m2 = np.multiply(np.array(tria_eps, { dtype }), I1);
-        using Z_reg = np.add(Z_ZZt, regI_m2);
-        const Z_comp = np.linalg.cholesky(Z_reg);                   // [n, m, m]
+        using Z_wideT = np.einsum('nij->nji', Z_wide);               // [n, 2m, m]
+        const [Q_z, R_z] = np.linalg.qr(Z_wideT);
+        Q_z.dispose();
+        const Z_comp = np.einsum('nij->nji', R_z);                   // [n, m, m]
+        R_z.dispose();
 
         return { A: A_comp, b: b_comp, U: U_comp, eta: eta_comp, Z: Z_comp };
       };
@@ -885,12 +887,12 @@ const dlmSmo = async (
         using phi_bot = np.concatenate([cholC_filt, zero_bwd], -1);   // [n, m, 2m]
         using Phi = np.concatenate([phi_top, phi_bot], -2);           // [n, 2m, 2m]
 
-        // tria(Phi) = cholesky(Phi·Phi' + ε·I_{2m})
-        using PhiPhiT = np.einsum('nij,nkj->nik', Phi, Phi);
-        using I_2m = np.eye(2 * stateSize, undefined, { dtype });
-        using I_2m_exp = np.tile(np.reshape(I_2m, [1, 2 * stateSize, 2 * stateSize]), [n, 1, 1]);
-        using PhiPhiT_reg = np.add(PhiPhiT, np.multiply(tria_eps_arr, I_2m_exp));
-        using triaPhi = np.linalg.cholesky(PhiPhiT_reg);            // [n, 2m, 2m]
+        // tria(Phi) via QR: [Q, R] = qr(Phi'), triaPhi = R'
+        using PhiT = np.einsum('nij->nji', Phi);                   // [n, 2m, 2m]
+        const [Q_phi, R_phi] = np.linalg.qr(PhiT);
+        Q_phi.dispose();
+        using triaPhi = np.einsum('nij->nji', R_phi);               // [n, 2m, 2m]
+        R_phi.dispose();
 
         // Extract Phi11, Phi21, D
         const phiRowParts = np.split(triaPhi, [stateSize], -2);
@@ -904,10 +906,9 @@ const dlmSmo = async (
         // jax-js-lint: allow-non-using — D_raw disposed after terminal masking
         const D_raw = phiBotCols[1];                                  // [n, m, m]
 
-        // E = solve(Phi11', Phi21')'  [n, m, m]
-        using Phi11t = np.einsum('nij->nji', Phi11);
+        // E = triangularSolve(Phi11, Phi21', transposeA=true)'  [n, m, m]
         using Phi21t = np.einsum('nij->nji', Phi21);
-        using E_solve = np.linalg.solve(Phi11t, Phi21t);            // [n, m, m]
+        using E_solve = lax.linalg.triangularSolve(Phi11, Phi21t, { leftSide: true, lower: true, transposeA: true });
         using E_raw = np.einsum('nij->nji', E_solve);                // [n, m, m]
 
         // g = x_filt - E·(G·x_filt + b)  = (I - E·G)·x_filt  (b=0 for DLM)
@@ -946,16 +947,14 @@ const dlmSmo = async (
           const g_comp = np.add(E2g1, b_elem.g);
           // E = E2·E1
           const E_comp = np.einsum('nij,njk->nik', b_elem.E, a.E);
-          // D = tria([E2·D1, D2])
+          // D = tria([E2·D1, D2]) via QR
           using E2D1 = np.einsum('nij,njk->nik', b_elem.E, a.D);
           using D_wide = np.concatenate([E2D1, b_elem.D], -1);     // [n, m, 2m]
-          using D_DDt = np.einsum('nij,nkj->nik', D_wide, D_wide);
-          const m = stateSize;
-          using D_regI = np.multiply(
-            np.array(tria_eps, { dtype }),
-            np.reshape(np.eye(m, undefined, { dtype }), [1, m, m])
-          );
-          const D_comp = np.linalg.cholesky(np.add(D_DDt, D_regI)); // [n, m, m]
+          using D_wideT = np.einsum('nij->nji', D_wide);             // [n, 2m, m]
+          const [Q_d, R_d] = np.linalg.qr(D_wideT);
+          Q_d.dispose();
+          const D_comp = np.einsum('nij->nji', R_d);                 // [n, m, m]
+          R_d.dispose();
           return { g: g_comp, E: E_comp, D: D_comp };
         };
 

@@ -118,7 +118,7 @@ const combos: Combo[] = [];
 
 for (const backend of ['cpu', 'wasm'] as const) {
   for (const dlmDtype of ['f64', 'f32'] as const) {
-    for (const algorithm of ['scan', 'assoc'] as const) {
+    for (const algorithm of ['scan', 'assoc', 'sqrt-assoc'] as const) {
       // Default row (uses library defaults for this dtype)
       combos.push({ backend, dlmDtype, algorithm });
       // f64/scan: include old no-sym baseline as explicit comparison row

@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@hamk-uas/jax-js-nonconsuming':
         specifier: github:hamk-uas/jax-js-nonconsuming#ultimate-architecture-plan
-        version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/b5c563abf93bb0d949465e5cc613e96e75870de1
+        version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/a1037b448c2a04d9a28f3021b506594b2c8f7e2e
     devDependencies:
       '@types/node':
         specifier: ^25.0.10
@@ -409,8 +409,8 @@ packages:
   '@gerrit0/mini-shiki@3.22.0':
     resolution: {integrity: sha512-jMpciqEVUBKE1QwU64S4saNMzpsSza6diNCk4MWAeCxO2+LFi2FIFmL2S0VDLzEJCxuvCbU783xi8Hp/gkM5CQ==}
 
-  '@hamk-uas/jax-js-nonconsuming@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/b5c563abf93bb0d949465e5cc613e96e75870de1':
-    resolution: {tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/b5c563abf93bb0d949465e5cc613e96e75870de1}
+  '@hamk-uas/jax-js-nonconsuming@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/a1037b448c2a04d9a28f3021b506594b2c8f7e2e':
+    resolution: {tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/a1037b448c2a04d9a28f3021b506594b2c8f7e2e}
     version: 0.7.8
     engines: {pnpm: '>=10.0.0'}
 
@@ -1859,7 +1859,7 @@ snapshots:
       '@shikijs/types': 3.22.0
       '@shikijs/vscode-textmate': 10.0.2
 
-  '@hamk-uas/jax-js-nonconsuming@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/b5c563abf93bb0d949465e5cc613e96e75870de1':
+  '@hamk-uas/jax-js-nonconsuming@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/a1037b448c2a04d9a28f3021b506594b2c8f7e2e':
     optionalDependencies:
       '@bufbuild/protobuf': 2.11.0
       onnx-buf: 1.20.0-1
