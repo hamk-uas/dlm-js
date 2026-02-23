@@ -501,10 +501,10 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 | Model | $n$ | $m$ | wasm / f64 / scan | webgpu / f32 / assoc |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->20 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->301 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->299 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->307 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->300 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->22 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->298 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->28 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->300 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->299 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->29 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->294 ms<!-- /timing --> |
 
 **WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
 
@@ -576,7 +576,7 @@ The entire optimization step is wrapped in a single `jit()` call. For Adam, this
 
 **Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
-- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->300<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->5.6 s<!-- /timing --> on WASM).
+- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->300<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.5 s<!-- /timing --> on WASM).
 - **WebGPU + Float32:** `makeKalmanLossAssoc` — `lax.associativeScan` forward filter (O(log n) depth per iteration). Details below.
 
 Both paths are wrapped in `jit(valueAndGrad(lossFn))` with optax Adam. The final refit after convergence calls `dlmFit` (which itself uses the parallel path on WebGPU).
@@ -756,7 +756,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Gradient computation** | **Autodiff** via `valueAndGrad()` + reverse-mode AD through `lax.scan` | **None** — derivative-free |
 | **Typical run budget** | Adam: 200 iterations; natural: 50 iterations | 400 function evaluations (`options.maxfuneval`) |
 | **Compilation** | `jit()`-traced optimization step (forward filter + AD + parameter update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
-| **WASM performance** | Adam: ~<!-- timing:ckpt:nile:false-s -->2.0 s<!-- /timing --> for 60 iters (Nile, n=100, m=2, `checkpoint: false`); natural: ~1.5 s for 5 iters | N/A |
+| **WASM performance** | Adam: ~<!-- timing:ckpt:nile:false-s -->2.4 s<!-- /timing --> for 60 iters (Nile, n=100, m=2, `checkpoint: false`); natural: ~1.5 s for 5 iters | N/A |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it robust on non-smooth surfaces but expensive as parameter dimension grows. Adam uses first-order gradients; natural gradient uses second-order curvature (Hessian) for faster convergence on smooth objectives like the DLM log-likelihood. See [Optimizers](#optimizers) for equations and algorithmic details.
 
@@ -778,11 +778,11 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 
 | Model | $n$ | $m$ | params | dlm-js Adam (wasm) | dlm-js natural (wasm) | Octave `fminsearch` | $-2\log L$ (Adam) | $-2\log L$ (natural) | $-2\log L$ (Octave) |
 |-------|---|---|--------|--------------------|-----------------------|---------------------|-------------------|----------------------|---------------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->3239 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->1474 ms<!-- /timing --> | 2827 ms | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1109.3<!-- /timing --> | 1104.6 |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->3619 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->1712 ms<!-- /timing --> | 2827 ms | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1109.3<!-- /timing --> | 1104.6 |
 | Nile, order=1, fit w only | 100 | 2 | 2 | — | — | 1623 ms | — | — | 1104.7 |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->1962 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->1133 ms<!-- /timing --> | 610 ms | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | 1095.8 |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->4504 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->4614 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->5597 ms<!-- /timing --> | — | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — | — |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->2324 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->1290 ms<!-- /timing --> | 610 ms | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | 1095.8 |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->5081 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->5436 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->6485 ms<!-- /timing --> | — | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — | — |
 
 Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
 
@@ -790,7 +790,7 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 - **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower" -->faster<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
 - **Likelihood values:** All three optimizers converge to very similar $-2\log L$ values on Nile (Adam vs Octave difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
 - **Natural gradient:** Uses second-order curvature (FD Hessian + Levenberg-Marquardt damping) and converges in fewer iterations (≤50 vs 300 for Adam), but each iteration is more expensive due to per-parameter finite-difference Hessian evaluations.
-- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->4.5 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->22<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->4.6 s<!-- /timing -->).
+- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.1 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->22<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->5.4 s<!-- /timing -->).
 - **Joint $s+w$ fitting:** dlm-js always fits both $s$ and $w$; MATLAB DLM can fit $w$ only (`fitv=0`).
 
 ##### Gradient checkpointing
@@ -801,8 +801,8 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 | Dataset | n | m | `checkpoint: false` ($n$) | `checkpoint: true` ($\sqrt{n}$) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->1996 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->1982 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->-1%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2455 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2405 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-2%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->2404 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->2403 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->0%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->3003 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2939 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-2%<!-- /timing --> |
 
 
 #### MCMC (MATLAB DLM only)

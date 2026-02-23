@@ -23,7 +23,8 @@ export { StateMatrix, CovMatrix } from "./types";
 export type { DlmOptions, DlmSystem, DlmSystemTV } from "./dlmgensys";
 export { dlmGenSys, dlmGenSysTV, findArInds } from "./dlmgensys";
 export { dlmMLE, toMatlabMle } from "./mle";
-export type { DlmMleResult, DlmMleResultMatlab, DlmMleOptions } from "./mle";
+export type { DlmMleResult, DlmMleResultMatlab } from "./mle";
+export type { DlmMleOptions } from "./types";
 export { dlmPrior } from "./priors";
 export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
 
@@ -1597,7 +1598,7 @@ export const dlmFit = async (
   let G_scan: np.Array;
   let W_scan: np.Array;
   if (timestamps) {
-    const tv = dlmGenSysTV(genSysOpts, timestamps, w, spline);
+    const tv = dlmGenSysTV(genSysOpts, timestamps, w);
     // tv.G and tv.W are [n, m_base, m_base] as JS arrays.
     // Extend for covariates if q > 0.
     let G_tv_data: number[][][];
