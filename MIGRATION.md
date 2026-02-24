@@ -173,3 +173,22 @@ fullseas:      →  fullSeasonal:
 .jitMs         →  .compilationMs
 .arphi         →  .arCoefficients
 ```
+
+---
+
+## jax-js v0.7.9 upgrade (commit `65cb449`)
+
+### Automatic improvements (no dlm-js API changes)
+
+- **Analytical `inv` for m≤4**: Cramer's rule replaces LU+triSolve, fusing into a single JIT kernel. 3–5× speedup on inv-heavy paths (e.g., `composeForward`).
+- **Einsum fast path**: All 22 unique einsum patterns fast-pathed to direct `np.matmul`/`np.swapaxes` calls. 2–3× per einsum call.
+- **Auto checkpoint**: `grad(scan)` automatically stores all carries when total < 4 MB (typical DLM workloads). 25–30% speedup on backward pass.
+- **qr vmap rule**: `np.linalg.qr` now has a vmap rule — sqrt-assoc path works under `associativeScan`.
+- **Constant shape under vmap**: `[1,m,m]` closure-captured constants now broadcast correctly under vmap.
+- **JIT CodeGenerator**: Fixed `out.push(...inp)` stack overflow on large assoc MLE traces (>10k ops).
+
+### dlm-js internal changes (no API impact)
+
+- `buildDiagW` loop → vectorized `np.diag(np.square(maskMat · expTheta))` (6m → 4 dispatches)
+- Dead `JjCi` computation removed from `composeForward` in `src/index.ts` and `src/mle.ts` (saves 1 matmul per compose)
+- **Constant hoisting**: `I1`/`inv_eps`/`regI` hoisted outside `composeForward` bodies in `src/index.ts` and `src/mle.ts` — saves O(N log N) allocations per `associativeScan`. Previously blocked by vmap constant-shape bug.

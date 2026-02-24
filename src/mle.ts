@@ -90,26 +90,19 @@ const buildDiagW = (
   /** Index in theta where the w entries start (0 when s is fixed, 1 otherwise). */
   wOffset: number = 1,
 ): np.Array => {
-  let W = np.zeros([m, m], { dtype });
-  for (let i = 0; i < m; i++) {
-    const maskData = new Array(nTheta).fill(0);
-    maskData[wOffset + i] = 1;
-    using mask = np.array(maskData, { dtype });
-    using wi = np.dot(expTheta, mask);
-    using wi2 = np.square(wi);
-
-    const eiData = Array.from({ length: m }, (_, j) => j === i ? [1] : [0]);
-    using ei = np.array(eiData, { dtype });
-    using eit = np.transpose(ei);
-    using outer = np.matmul(ei, eit);
-    using scaled = np.multiply(np.reshape(wi2, [1, 1]), outer);
-    // Accumulator pattern: transfer ownership from old W to new W
-    // jax-js-lint: allow-non-using
-    const W_new = np.add(W, scaled);
-    W.dispose();
-    W = W_new;
-  }
-  return W;
+  // Vectorized: [m, nTheta] mask matrix extracts w entries via matmul, then np.diag(w²)
+  using wEntries = np.array(
+    Array.from({ length: m }, (_, i) => {
+      const mask = new Array(nTheta).fill(0);
+      mask[wOffset + i] = 1;
+      return mask;
+    }),
+    { dtype },
+  );  // [m, nTheta]
+  using wVec = np.matmul(wEntries, np.reshape(expTheta, [-1, 1]));  // [m, 1]
+  using wFlat = np.squeeze(wVec, [-1]);  // [m]
+  using w2 = np.square(wFlat);
+  return np.diag(w2);
 };
 
 /**
@@ -339,46 +332,47 @@ const makeKalmanLossAssoc = (
 
   type ForwardElem = { A: np.Array; b: np.Array; C: np.Array; eta: np.Array; J: np.Array };
 
-  const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
+  return (theta: np.Array): np.Array => {
+    // Hoist constants outside compose — vmap broadcasts [1,m,m] correctly (jax-js ≥65cb449)
+    // Created per-call (once per optimizer iteration) instead of O(N log N) times in compose.
     using I1 = np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]);
     using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
     using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
-    using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
-    using X_reg = np.add(np.add(I1, CiJj), regI);
-using M = np.linalg.inv(X_reg);
 
-    using AjM = np.einsum('nij,njk->nik', b_elem.A, M);
-    const A_comp = np.einsum('nij,njk->nik', AjM, a.A);
+    const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
+      using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
+      using X_reg = np.add(np.add(I1, CiJj), regI);
+      using M = np.linalg.inv(X_reg);
 
-    using CiEtaj = np.einsum('nij,njk->nik', a.C, b_elem.eta);
-    using bi_plus = np.add(a.b, CiEtaj);
-    using AjM_b = np.einsum('nij,njk->nik', AjM, bi_plus);
-    const b_comp = np.add(AjM_b, b_elem.b);
+      using AjM = np.einsum('nij,njk->nik', b_elem.A, M);
+      const A_comp = np.einsum('nij,njk->nik', AjM, a.A);
 
-    using AjMCi = np.einsum('nij,njk->nik', AjM, a.C);
-    using C_tmp = np.einsum('nij,njk->nik', AjMCi, np.einsum('nij->nji', b_elem.A));
-    const C_comp = np.add(C_tmp, b_elem.C);
+      using CiEtaj = np.einsum('nij,njk->nik', a.C, b_elem.eta);
+      using bi_plus = np.add(a.b, CiEtaj);
+      using AjM_b = np.einsum('nij,njk->nik', AjM, bi_plus);
+      const b_comp = np.add(AjM_b, b_elem.b);
 
-    using JjCi = np.einsum('nij,njk->nik', b_elem.J, a.C);
-    JjCi.dispose();
-    using MCi = np.einsum('nij,njk->nik', M, a.C);
-    using JjMCi = np.einsum('nij,njk->nik', b_elem.J, MCi);
-    using N = np.subtract(I1, JjMCi);
-    using Jjbi = np.einsum('nij,njk->nik', b_elem.J, a.b);
-    using eta_diff = np.subtract(b_elem.eta, Jjbi);
-    using N_eta = np.einsum('nij,njk->nik', N, eta_diff);
-    using AtNeta = np.einsum('nji,njk->nik', a.A, N_eta);
-    const eta_comp = np.add(AtNeta, a.eta);
+      using AjMCi = np.einsum('nij,njk->nik', AjM, a.C);
+      using C_tmp = np.einsum('nij,njk->nik', AjMCi, np.einsum('nij->nji', b_elem.A));
+      const C_comp = np.add(C_tmp, b_elem.C);
 
-    using NJ = np.einsum('nij,njk->nik', N, b_elem.J);
-    using NJAi = np.einsum('nij,njk->nik', NJ, a.A);
-    using AtNJAi = np.einsum('nji,njk->nik', a.A, NJAi);
-    const J_comp = np.add(AtNJAi, a.J);
+      using MCi = np.einsum('nij,njk->nik', M, a.C);
+      using JjMCi = np.einsum('nij,njk->nik', b_elem.J, MCi);
+      using N = np.subtract(I1, JjMCi);
+      using Jjbi = np.einsum('nij,njk->nik', b_elem.J, a.b);
+      using eta_diff = np.subtract(b_elem.eta, Jjbi);
+      using N_eta = np.einsum('nij,njk->nik', N, eta_diff);
+      using AtNeta = np.einsum('nji,njk->nik', a.A, N_eta);
+      const eta_comp = np.add(AtNeta, a.eta);
 
-    return { A: A_comp, b: b_comp, C: C_comp, eta: eta_comp, J: J_comp };
-  };
+      using NJ = np.einsum('nij,njk->nik', N, b_elem.J);
+      using NJAi = np.einsum('nij,njk->nik', NJ, a.A);
+      using AtNJAi = np.einsum('nji,njk->nik', a.A, NJAi);
+      const J_comp = np.add(AtNJAi, a.J);
 
-  return (theta: np.Array): np.Array => {
+      return { A: A_comp, b: b_comp, C: C_comp, eta: eta_comp, J: J_comp };
+    };
+
     // ─── Parameter extraction (traced) ───
     using expTheta = np.exp(theta);
 

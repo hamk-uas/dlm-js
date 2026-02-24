@@ -708,6 +708,9 @@ const dlmSmo = async (
       Z_parts[0].dispose(); Z_parts[1].dispose();
 
       // ─── Square-root forward composition operator ───
+      // Hoist I1 outside compose — vmap broadcasts [1,m,m] correctly (jax-js ≥65cb449)
+      using I1_sqrt = np.reshape(np.eye(stateSize, undefined, { dtype }), [1, stateSize, stateSize]);
+
       const composeSqrtForward = (a: SqrtForwardElem, b_elem: SqrtForwardElem): SqrtForwardElem => {
         const m = stateSize;
 
@@ -716,8 +719,7 @@ const dlmSmo = async (
         //    [Z2,         0]]
         using U1t = np.einsum('nij->nji', a.U);                     // [n, m, m]
         using U1tZ2 = np.einsum('nij,njk->nik', U1t, b_elem.Z);    // [n, m, m]
-        using I1 = np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]);
-        using I_batch = np.add(np.zerosLike(a.U), I1);              // [n, m, m] via broadcast
+        using I_batch = np.add(np.zerosLike(a.U), I1_sqrt);         // [n, m, m] via broadcast
         using zero_mm = np.zerosLike(a.U);                          // [n, m, m]
         // Xi top: [U1'Z2, I] → [n, m, 2m]
         using xi_top = np.concatenate([U1tZ2, I_batch], -1);
@@ -1112,12 +1114,14 @@ const dlmSmo = async (
       J_parts[0].dispose();
       J_parts[1].dispose();
 
+      // Hoist constants outside compose — vmap broadcasts [1,m,m] correctly (jax-js ≥65cb449)
+      using I1 = np.reshape(np.eye(stateSize, undefined, { dtype }), [1, stateSize, stateSize]);
+      using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
+      using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
+
       const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
         // Compose later (j=b_elem) after earlier (i=a)
         // M = (I + C_i J_j)^-1
-        using I1 = np.reshape(np.eye(stateSize, undefined, { dtype }), [1, stateSize, stateSize]);
-        using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
-        using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
         using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
         using X_reg = np.add(np.add(I1, CiJj), regI);
         using M = np.linalg.inv(X_reg);
@@ -1140,8 +1144,6 @@ const dlmSmo = async (
         // eta_ij = A_i' (I + J_j C_i)^-1 (eta_j - J_j b_i) + eta_i
         // Derive (I + J_j C_i)^-1 via push-through identity:
         // N = I - J_j (I + C_i J_j)^-1 C_i = I - J_j M C_i
-        using JjCi = np.einsum('nij,njk->nik', b_elem.J, a.C);
-        JjCi.dispose();
         using MCi = np.einsum('nij,njk->nik', M, a.C);
         using JjMCi = np.einsum('nij,njk->nik', b_elem.J, MCi);
         using N = np.subtract(I1, JjMCi);

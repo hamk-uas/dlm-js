@@ -29,15 +29,17 @@ const sidecarDir = resolve(root, "assets/timings");
 // ── Config ─────────────────────────────────────────────────────────────────
 
 /** All N values measured for WASM/f64.
- *  N=819200 was removed due to OOM after ~33 prior calls (WASM bump allocator
- *  not reclaiming memory). Fixed upstream in commit 089b0e5 — can be re-added.
- *  TODO: re-add N=819200 and verify with updated allocator. */
-const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600];
+ *  N=819200 re-added after allocator fix in upstream commit 089b0e5.
+ *  N=3276800 OOMs even with the 2 GB limit (297f93a) — WASM allocator
+ *  overflows its signed 32-bit page-count calculation when a single
+ *  intermediate allocation exceeds 2^31 bytes. See
+ *  issues/jax-js-wasm-allocator-size-overflow.md. */
+const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200, 1_638_400];
 
 /** N values also measured for WebGPU/f32.
  *  Both forward and backward passes use associativeScan (O(log n) depth),
- *  so scaling should be sub-linear. Measured at all N values. */
-const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600];
+ *  so scaling should be sub-linear. Measured at the same N values as WASM. */
+const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200, 1_638_400];
 
 const WARMUP = 2;
 const RUNS   = 4;

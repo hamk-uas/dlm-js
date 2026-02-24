@@ -1,8 +1,8 @@
 # Feature request: `np.where` with AD support
 
-**Status**: 🟡 Partially resolved — matmul broadcasting fixed in commit `c99db9a` (installed 2026-02-24 via `09ddadb`)
+**Status**: 🟡 Partially resolved — matmul broadcasting fixed in commit `c99db9a`; einsum fast path + analytical inv + auto checkpoint in `70dea65`
 
-**Package**: `@hamk-uas/jax-js-nonconsuming` v0.7.8  
+**Package**: `@hamk-uas/jax-js-nonconsuming` v0.7.9  
 **Filed**: 2026-02-24  
 **Severity**: Enhancement — significant ergonomic and performance improvements  
 **Context**: Kalman filter / state-space model library ([dlm-js](https://github.com/hamk-uas/dlm-js)) using jax-js for autodiff + GPU
