@@ -3,6 +3,28 @@
 Purpose
 - Help coding agents become productive immediately: what the project *is*, how it's built/tested, important conventions, and where to look for authoritative behavior.
 
+Agentic Evolution Protocol (AEP) 🧬
+- **Core mandate: asymptotic velocity & debt collection.** Your success is measured by the **net reduction in total system complexity**. Refactor broadly to achieve a cleaner architecture rather than patching edges.
+
+- **Provider mode (writing for the downstream agent):** When you modify our public API (`dlmFit`, `dlmMLE`, `dlmForecast`, `dlmGenSys`, `dlmPrior`, types in `src/types.ts`), provide a Migration Bundle:
+  1. **Deterministic mapping:** Raw structural diffs (e.g., `dlmMLE(y, { loss: fn })` → `dlmMLE(y, { prior: spec })`).
+  2. **Workaround signatures (the "debt collector"):** Explicitly identify patterns consumers likely used to bypass old limitations. *Example:* "If the consumer wraps `dlmFit` in a retry loop because Float32 covariance diverged, that's fixed by Joseph form — delete the retry."
+  3. Update `MIGRATION.md` with the bundle. Keep it machine-parseable (code blocks, not prose).
+
+- **Consumer mode (the upgrade & optimization loop):** When `@hamk-uas/jax-js-nonconsuming` evolves:
+  1. **Contract-first verification:** Update test fixtures and mocks to the new upstream API *before* touching `src/`.
+  2. **The workaround hunt:** Scan `src/` and `issues/` for workarounds that the new version renders obsolete. Prioritize **deleting** internal helpers, wrappers, and polyfills in favor of the native API. Check `issues/jax-js-missing-jax-primitives.md` for the current workaround inventory.
+  3. **Viral propagation:** Follow the change through the entire call stack. If a new primitive changes a pattern in `mle.ts`, verify it doesn't need updating in `index.ts` and `priors.ts` too. Do not hide new capabilities behind old wrappers.
+
+- **Continuous knowledge capture (decentralized):**
+  - Document the "Why" behind large restructurings in `tmp/copilot-task-notes.md` and, if durable, in this file. Don't keep stale information — prune old decisions when they're superseded.
+  - Track upstream workaround status in `issues/` — mark resolved issues as resolved, delete them when the fix is installed and verified.
+
+- **Methodology for large tasks:**
+  1. **The plan:** Generate a refactor plan. List the workaround signatures you intend to hunt.
+  2. **The ground truth:** Run `pnpm vitest run`. **Test integrity is absolute** — 200 tests across 11 suites, both algorithms, all device × dtype configs.
+  3. **The cleanup:** Remove all deprecated code paths, dead variables, and legacy comments. If you find a TODO that the new API fixes, resolve it.
+
 Agent Protocol (do this EVERY task, even after context summarization) 🚦
 - **Start of task** — before any work, run these three commands in order:
   1. `cat tmp/copilot-task-notes.md` — read orientation notes left by your past self.
@@ -106,7 +128,7 @@ Files & places to inspect first 📁
 - SVG generators: `scripts/gen-niledemo-svg.ts` (accepts variant: scan/assoc/sqrt-assoc/sqrt-assoc-f32; title font-size=12), `scripts/gen-kaisaniemi-svg.ts`, `scripts/gen-trigar-svg.ts`, `scripts/gen-nile-mle-anim-svg.ts` (accepts variant: scan/assoc/webgpu; + `scripts/collect-nile-mle-frames.ts` runs scan + assocScan variants, `scripts/collect-nile-mle-frames-webgpu.ts` runs webgpu), `scripts/gen-energy-mle-anim-svg.ts` (accepts variant: scan/assoc/webgpu; + `scripts/collect-energy-mle-frames.ts` runs scan + assocScan variants, `scripts/collect-energy-mle-frames-webgpu.ts` runs webgpu), `scripts/gen-ozone-svg.ts`, `scripts/gen-gapped-svg.ts` (gapped-data demo with NaN interpolation and ystd widening).
 - Cross-backend benchmark: `scripts/bench-backends.ts` (cpu/wasm × f32/f64 `dlmFit` timing → `assets/timings/bench-backends.json`).
 - MLE comparison: `README.md` (dlm-js MLE vs MATLAB DLM parameter estimation, with benchmark timings).
-- Upstream issues: `issues/` (open issues filed to jax-js-nonconsuming). Key open issues: `jax-js-wasm-allocator-cross-shape-oom.md` (🔴 open: WASM bump allocator accumulates memory across jit() calls with varying input shapes, eventually exhausting 4 GB; N=819200 works in isolation but fails after ascending-N benchmark sequence), `jax-js-wasm-memory-growth.md` (WASM allocator/JIT cache memory grows unboundedly), `jax-js-webgpu-laxscan-sequential-dispatch.md` (architectural: O(n) backward RTS smoother on WebGPU), `jax-js-dts-generation-flaky.md` (DTS generation flaky on git install), `jax-js-missing-jax-primitives.md` (feature request: `lax.dynamic_slice`, `matmul` broadcasting, `np.where` with AD).
+- Upstream issues: `issues/` (open issues filed to jax-js-nonconsuming). Key open issues: `jax-js-wasm-allocator-cross-shape-oom.md` (🔴 open: WASM bump allocator accumulates memory across jit() calls with varying input shapes, eventually exhausting 4 GB; N=819200 works in isolation but fails after ascending-N benchmark sequence), `jax-js-wasm-memory-growth.md` (WASM allocator/JIT cache memory grows unboundedly), `jax-js-webgpu-laxscan-sequential-dispatch.md` (architectural: O(n) backward RTS smoother on WebGPU), `jax-js-dts-generation-flaky.md` (DTS generation flaky on git install), `jax-js-missing-jax-primitives.md` (feature request: `matmul` broadcasting, `np.where` with AD).
 - Build / CI hooks: `package.json`, `vite.config.ts`, `.husky/pre-commit` (runs `pnpm run preflight` on every commit).
 - Artifact freshness: `scripts/lib/artifact-graph.ts` (central dependency declarations: which sources produce which outputs), `scripts/check-freshness.ts` (mtime-based staleness detection + algorithm coverage validation). Run `pnpm run check:freshness` to see what's stale.
 - Self-tuning tooling: `scripts/log-mistake.ts`, `scripts/mistakes-report.ts`, `scripts/preflight.ts`, `scripts/lib/mistakes.ts` (shared types/IO for the telemetry system). Ledger: `tmp/copilot-mistakes.json`. Task notes: `tmp/copilot-task-notes.md`.
