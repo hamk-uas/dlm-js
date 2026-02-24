@@ -621,10 +621,10 @@ const dlmSmo = async (
       // NaN: A = G_arriving, b = 0, U = cholW, Z = 0, eta = 0
       using nan_mm = np.tile(is_nan, [1, stateSize, stateSize]);
       using A_all = np.where(nan_mm, G_arriving, A_obs);
-      using b_all = np.multiply(mask_arr, b_obs);
+      using b_all = np.where(is_nan, np.zerosLike(b_obs), b_obs);
       using U_all = np.where(nan_mm, cholW, U_obs);
       using zero_nmm = np.zerosLike(Z_obs);
-      using eta_all = np.multiply(mask_arr, eta_obs);
+      using eta_all = np.where(is_nan, np.zerosLike(eta_obs), eta_obs);
       using Z_all_raw = np.where(nan_mm, zero_nmm, Z_obs);
       Z_obs.dispose();
 
@@ -917,27 +917,18 @@ const dlmSmo = async (
         using g_raw = np.einsum('nij,njk->nik', ImEG, x_filt);      // [n, m, 1]
 
         // Terminal element: E[n-1]=0, g[n-1]=x_filt[n-1], D[n-1]=cholC_filt[n-1]
-        using term_mask = np.array(
-          Array.from({ length: n }, (_, t) => [[t < n - 1 ? 1.0 : 0.0]]),
-          { dtype }
-        );  // [n, 1, 1]
+        using term_bool = np.array(
+          Array.from({ length: n }, (_, t) => [[t < n - 1]]),
+        );  // [n, 1, 1] bool
+        using term_bool_mm = np.tile(term_bool, [1, stateSize, stateSize]); // [n, m, m] bool
         // jax-js-lint: allow-non-using — E_all, g_all, D_all disposed after scan
-        const E_all = np.multiply(E_raw, term_mask);
+        const E_all = np.where(term_bool, E_raw, np.zerosLike(E_raw));
         // For g at terminal: g[n-1] = x_filt[n-1] (not (I-E·G)·x_filt which would be same since E=0)
         // Since E[n-1] gets zeroed, g[n-1] = (I - 0)·x_filt[n-1] = x_filt[n-1]. Correct.
-        const g_all = np.add(
-          np.multiply(term_mask, g_raw),
-          np.multiply(np.subtract(np.onesLike(term_mask), term_mask),
-                      np.einsum('nij,njk->nik', I_exp, x_filt))   // x_filt for terminal
-        );
+        const g_all = np.where(term_bool, g_raw, x_filt);
         // D[n-1] = cholC_filt[n-1], D[k] = D_raw[k] for k < n-1
         // Terminal D: cholC_filt at last timestep
-        using term_mask_mm = np.tile(term_mask, [1, stateSize, stateSize]);
-        using anti_mask_mm = np.subtract(np.onesLike(term_mask_mm), term_mask_mm);
-        const D_all = np.add(
-          np.multiply(term_mask_mm, D_raw),
-          np.multiply(anti_mask_mm, cholC_filt)
-        );
+        const D_all = np.where(term_bool_mm, D_raw, cholC_filt);
         D_raw.dispose();
 
         // ─── Square-root backward composition operator ───
@@ -1049,10 +1040,10 @@ const dlmSmo = async (
 
       // NaN handling for k>=2 elements: pure prediction for gapped y
       using A_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), G_arriving, A_obs);
-      using b_all = np.multiply(mask_arr, b_obs);
+      using b_all = np.where(is_nan, np.zerosLike(b_obs), b_obs);
       using C_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_arriving, C_obs);
       using zero_nmm = np.zerosLike(J_obs);
-      using eta_all = np.multiply(mask_arr, eta_obs);
+      using eta_all = np.where(is_nan, np.zerosLike(eta_obs), eta_obs);
       using J_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), zero_nmm, J_obs);
 
       // First element (k=1): exact initialization from prior (A1=0, b1/C1 from x0/C0)
@@ -1292,12 +1283,11 @@ const dlmSmo = async (
         using E_raw = np.einsum('nij,njk->nik', CGt, S_inv);
 
         // Terminal masking: E[n-1] = 0
-        using term_mask = np.array(
-          Array.from({ length: n }, (_, t) => [[t < n - 1 ? 1.0 : 0.0]]),
-          { dtype }
-        );  // [n, 1, 1]
+        using term_bool = np.array(
+          Array.from({ length: n }, (_, t) => [[t < n - 1]]),
+        );  // [n, 1, 1] bool
         // jax-js-lint: allow-non-using — E_all disposed after scan
-        const E_all = np.multiply(E_raw, term_mask);  // [n, m, m]
+        const E_all = np.where(term_bool, E_raw, np.zerosLike(E_raw));  // [n, m, m]
 
         // ImEG = I - E_k · G[k]  [n, m, m]
         using EG = np.einsum('nij,njk->nik', E_all, G_scan);

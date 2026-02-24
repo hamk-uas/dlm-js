@@ -404,9 +404,9 @@ const makeKalmanLossAssoc = (
     const ownsV2ps = !fixS;
 
     using y_flat = np.squeeze(y_arr, [2]);                     // [n,1]
-    using mask_mm = np.tile(mask_n, [1, m, m]);               // [n,m,m]
-    using one_mm = np.onesLike(mask_mm);
-    using inv_mask_mm = np.subtract(one_mm, mask_mm);
+    // Boolean NaN mask for np.where blending (observed vs missing-step elements)
+    using is_nan_n = np.equal(mask_n, np.zeros([1, 1, 1], { dtype }));  // [n,1,1] bool
+    using is_nan_mm = np.tile(is_nan_n, [1, m, m]);                     // [n,m,m] bool
 
     using G_exp = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
     using W_exp = np.tile(np.reshape(W, [1, m, m]), [n, 1, 1]);
@@ -422,7 +422,7 @@ const makeKalmanLossAssoc = (
 
     using WFt = np.einsum('nij,njk->nik', W_exp, Ft_exp);      // [n,m,1]
     using K_obs_raw = np.divide(WFt, S_obs);                   // [n,m,1]
-    using K_obs = np.multiply(mask_n, K_obs_raw);              // [n,m,1]
+    using K_obs = np.where(is_nan_n, np.zerosLike(K_obs_raw), K_obs_raw); // [n,m,1]
 
     using KF = np.einsum('nij,njk->nik', K_obs, F_exp);        // [n,m,m]
     using ImKF = np.subtract(I_exp, KF);
@@ -438,25 +438,18 @@ const makeKalmanLossAssoc = (
     using FGt = np.einsum('nij->nji', FG);                     // [n,m,1]
     using eta_num = np.multiply(FGt, y_col);                   // [n,m,1]
     using eta_obs_raw = np.divide(eta_num, S_obs);             // [n,m,1]
-    using eta_obs = np.multiply(mask_n, eta_obs_raw);          // [n,m,1]
+    using eta_obs = np.where(is_nan_n, np.zerosLike(eta_obs_raw), eta_obs_raw); // [n,m,1]
 
     using J_num = np.einsum('nij,njk->nik', FGt, FG);          // [n,m,m]
     using J_obs_raw = np.divide(J_num, S_obs);                 // [n,m,m]
-    using J_obs = np.multiply(mask_mm, J_obs_raw);             // [n,m,m]
+    using J_obs = np.where(is_nan_mm, np.zerosLike(J_obs_raw), J_obs_raw); // [n,m,m]
 
-    // Missing-step blend: A=G, b=0, C=W, eta=0, J=0
-    using A_obs_mask = np.multiply(mask_mm, A_obs);
-    using A_nan = np.multiply(inv_mask_mm, G_exp);
-    using A_all = np.add(A_obs_mask, A_nan);
-
-    using b_all = np.multiply(mask_n, b_obs);
-
-    using C_obs_mask = np.multiply(mask_mm, C_obs);
-    using C_nan = np.multiply(inv_mask_mm, W_exp);
-    using C_all = np.add(C_obs_mask, C_nan);
-
-    using eta_all = np.multiply(mask_n, eta_obs);
-    using J_all = np.multiply(mask_mm, J_obs);
+    // Missing-step blend: A=G when NaN, A_obs when observed; etc.
+    using A_all = np.where(is_nan_mm, G_exp, A_obs);           // [n,m,m]
+    using b_all = np.where(is_nan_n, np.zerosLike(b_obs), b_obs); // [n,m,1]
+    using C_all = np.where(is_nan_mm, W_exp, C_obs);           // [n,m,m]
+    using eta_all = np.where(is_nan_n, np.zerosLike(eta_obs), eta_obs); // [n,m,1]
+    using J_all = np.where(is_nan_mm, np.zerosLike(J_obs), J_obs); // [n,m,m]
 
     // First element (k=1): exact initialization from prior
     const F_parts = np.split(F_exp, [1], 0);

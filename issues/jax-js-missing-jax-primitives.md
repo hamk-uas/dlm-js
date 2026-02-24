@@ -1,6 +1,6 @@
 # Feature request: `np.where` with AD support
 
-**Status**: 🟡 Partially resolved — matmul broadcasting fixed in commit `c99db9a`; einsum fast path + analytical inv + auto checkpoint in `70dea65`
+**Status**: ✅ Resolved — `np.where` AD support fixed in `297f93a`; matmul broadcasting in `c99db9a`; einsum fast path + analytical inv + auto checkpoint in `70dea65`
 
 **Package**: `@hamk-uas/jax-js-nonconsuming` v0.7.9  
 **Filed**: 2026-02-24  
@@ -9,9 +9,9 @@
 
 ## Summary
 
-One remaining JAX feature that would significantly improve code quality:
+All requested features are now resolved:
 
-1. **`np.where(condition, x, y)` with JVP/VJP** — replace float-mask multiply pattern
+1. ~~**`np.where(condition, x, y)` with JVP/VJP** — replace float-mask multiply pattern~~ ✅ Resolved: `np.where` now has full JVP/VJP support (commit `297f93a`). Replaced all high-value blend patterns (5 ops → 1 op) in `src/mle.ts` (makeKalmanLossAssoc) and `src/index.ts` (assoc backward terminal blend, forward NaN handling). Remaining `multiply(mask, x)` sites are 1-for-1 substitutions with no op-count savings.
 2. ~~**Broadcasting in `matmul` / `einsum`** — eliminate manual `np.tile`~~ ✅ Resolved: `np.matmul` now supports NumPy-style batch broadcasting (commit `c99db9a`). Workaround `np.tile` calls reduced from 27 to 20 in `src/`; remaining tiles are for non-matmul patterns (mask tiling, NaN handling, element construction).
 
 ### Note on array slicing
@@ -20,35 +20,18 @@ One remaining JAX feature that would significantly improve code quality:
 
 The bigger architectural friction (flat parameter vectors instead of pytrees) comes from the scalar extraction pattern in `buildDiagW` / `buildG`, where extracting `theta[i]` inside `grad()` requires building a one-hot mask per element. With a scalar-returning slice primitive, these 50+ lines of loop code collapse to `theta[i]`. But this is a convenience issue — the code works correctly today.
 
-## 1. `np.where(condition, x, y)` with AD support
+## 1. ~~`np.where(condition, x, y)` with AD support~~ ✅ RESOLVED
 
-### Current workaround
+**Fixed in**: commit `297f93a` — `np.where(condition, x, y)` now has full JVP/VJP support. Condition must be boolean dtype (float masks throw "Wrong dtype in where: expected bool, got float32").
 
-To conditionally blend two traced arrays (e.g., for NaN masking in Kalman filters), we use float-mask multiplication:
+**Workaround cleanup performed**: Replaced blend patterns (5 ops → 1 op) in `src/mle.ts` (makeKalmanLossAssoc: A_all, C_all, K_obs, eta_obs, J_obs, b_all, eta_all, J_all) and `src/index.ts` (sqrt-assoc backward terminal: E_all, g_all, D_all; standard assoc backward terminal: E_all; forward NaN handling in both assoc variants: b_all, eta_all). All 200 tests pass.
 
-```typescript
-// mask is [n, 1, 1]: 1.0 for observed, 0.0 for NaN
-using inv_mask = np.subtract(np.ones_like(mask), mask);
-using result = np.add(
-  np.multiply(mask, observed_value),
-  np.multiply(inv_mask, default_value),
-);
-// 5 ops (sub, ones, mul, mul, add), 4 intermediate arrays
-```
+### Remaining `multiply(mask, x)` sites (not converted)
 
-### What JAX provides
-
-```python
-result = jnp.where(mask, observed_value, default_value)
-# 1 op, 0 intermediate arrays
-```
-
-JAX's `jnp.where` has full JVP/VJP: the gradient flows through the selected branch only. This is both cleaner and generates fewer intermediate tensors.
-
-### Impact
-
-- **dlm-js**: The NaN-masking pattern appears throughout the assocScan forward filter (`makeKalmanLossAssoc`), the smoother (`dlmSmo`), and the forecast function — about 10+ sites with ~20 individual float-blend operations
-- **General**: Any model with missing data, masking, or conditional computation benefits. This is fundamental to time series, NLP (attention masks), and scientific computing.
+These are 1-for-1 substitutions (`multiply(float_mask, x)` → `np.where(bool_mask, x, zeros)`) with no op-count savings:
+- **Diagnostic reductions** (5 sites): `np.multiply(mask_flat, expr)` before `np.sum()` — standard zeroing-before-reduction idiom
+- **Per-element v_arr/K_arr masking** (4 sites): `multiply(mask_arr, v_raw/K_raw)` in assoc forward paths
+- **First-element K0/K1 masking** (2 sites): `multiply(mask1, K_obs)` — single-element masks
 
 ## 2. ~~Broadcasting in `matmul` / `einsum`~~ ✅ RESOLVED
 
@@ -66,7 +49,7 @@ The remaining `np.tile` calls are for non-matmul patterns that don't benefit fro
 
 ## Priority
 
-1. **`np.where` with AD** — the only remaining item; highest impact, universally useful, eliminates the most boilerplate and intermediate tensors
+All items resolved. This issue file is kept for reference — remaining `np.tile` and `multiply(mask, x)` sites are documented above but are not worth converting (marginal benefit).
 
 ## References
 
