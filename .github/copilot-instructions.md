@@ -11,14 +11,25 @@ Agentic Evolution Protocol (AEP) 🧬
   2. **Workaround signatures (the "debt collector"):** Explicitly identify patterns consumers likely used to bypass old limitations. *Example:* "If the consumer wraps `dlmFit` in a retry loop because Float32 covariance diverged, that's fixed by Joseph form — delete the retry."
   3. Update `MIGRATION.md` with the bundle. Keep it machine-parseable (code blocks, not prose).
 
-- **Consumer mode (the upgrade & optimization loop):** When `@hamk-uas/jax-js-nonconsuming` evolves:
-  1. **Contract-first verification:** Update test fixtures and mocks to the new upstream API *before* touching `src/`.
-  2. **The workaround hunt:** Scan `src/` and `issues/` for workarounds that the new version renders obsolete. Prioritize **deleting** internal helpers, wrappers, and polyfills in favor of the native API. Check `issues/jax-js-missing-jax-primitives.md` for the current workaround inventory.
-  3. **Viral propagation:** Follow the change through the entire call stack. If a new primitive changes a pattern in `mle.ts`, verify it doesn't need updating in `index.ts` and `priors.ts` too. Do not hide new capabilities behind old wrappers.
+- **Issue-filing mode (feeding the upstream agent):** When you hit an upstream limitation, bug, or missing primitive in `@hamk-uas/jax-js-nonconsuming`:
+  1. **Write a structured issue file** in `issues/jax-js-<topic>.md`. Include: Status line (🔴 Open), Summary, Affected version (commit hash), Root cause hypothesis, Reproduction (inline code + standalone repro script in `issues/repro-*.ts`), Impact on dlm-js, Suggested fix (concrete, actionable). The file should be self-contained enough for the upstream agent to act on without further context.
+  2. **Feature requests** (missing primitives, broadcasting, etc.) go in `issues/jax-js-missing-jax-primitives.md` — append sections rather than creating separate files. Include: current workaround code, what JAX/NumPy provides, impact (number of affected sites in `src/`).
+  3. **Track workaround locations** in the issue file — list specific files and line counts where the workaround pattern appears, so the upstream agent knows the blast radius and the consumer-mode hunt (below) can find them quickly.
+  4. **Inform the user** that new issues are ready for relay to the upstream repo. The user passes them on; the agent does not push to upstream directly.
+
+- **Consumer mode (the upgrade & integration loop):** When the user reports a new upstream push to `@hamk-uas/jax-js-nonconsuming`:
+  1. **Fetch the upstream commit list** and read commit messages. Cross-reference each commit against open `issues/` files — commit messages often cite our issue file names directly.
+  2. **Update the dependency**: `pnpm update @hamk-uas/jax-js-nonconsuming`, verify the lockfile resolves to the expected commit.
+  3. **Run the full test suite**: `pnpm vitest run` — all 200 tests must pass before any issue resolution.
+  4. **The workaround hunt:** Scan `src/`, `scripts/`, and `issues/` for workarounds that the new version renders obsolete. Prioritize **deleting** internal helpers, wrappers, and polyfills in favor of the native API. Check `issues/jax-js-missing-jax-primitives.md` for the current workaround inventory.
+  5. **Resolve confirmed-fixed issues:** Delete the issue file and its repro script. Update `copilot-instructions.md` issue references. For partially-fixed issues, update the status line (🟡 Mitigated) and add a description of what changed.
+  6. **Viral propagation:** Follow the change through the entire call stack. If a new primitive changes a pattern in `mle.ts`, verify it doesn't need updating in `index.ts` and `priors.ts` too. Do not hide new capabilities behind old wrappers.
+  7. **Update task notes**: record which issues were resolved/mitigated in `/memories/repo/task-notes.md` upstream bug status section.
 
 - **Continuous knowledge capture (decentralized):**
   - Document the "Why" behind large restructurings in `/memories/repo/task-notes.md` (via the memory tool) and, if durable, in this file. Don't keep stale information — prune old decisions when they're superseded.
   - Track upstream workaround status in `issues/` — mark resolved issues as resolved, delete them when the fix is installed and verified.
+  - Maintain the upstream bug status section in `/memories/repo/task-notes.md` as the single source of truth for which issues are open/resolved/mitigated.
 
 - **Methodology for large tasks:**
   1. **The plan:** Generate a refactor plan. List the workaround signatures you intend to hunt.
