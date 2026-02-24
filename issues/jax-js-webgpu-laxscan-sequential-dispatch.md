@@ -1,5 +1,11 @@
 # jax-js: lax.scan backward (RTS smoother) is O(n) on WebGPU — intra-step buffer deps trigger executeScanFallback
 
+## Status: 🟡 Mitigated (commit `26c6a48`)
+
+Commit `26c6a48` ("WebGPU scan fallback batching") wraps the fallback scan loop in `beginBatch`/`endBatch` with periodic flush every 256 iterations, reducing O(2N) `queue.submit()` calls to O(N/256). `copyBufferToBuffer` is now batch-aware (reuses `#batchEncoder` when active). Nested `flushPending` calls become no-ops via depth tracking.
+
+The O(N) dispatch architecture remains (WebGPU lacks cross-workgroup sync), but the constant-factor overhead is significantly reduced.
+
 ## Summary
 
 `lax.scan` on WebGPU dispatches O(n) GPU kernels even under `jit()` when the

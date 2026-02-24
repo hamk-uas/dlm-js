@@ -29,9 +29,9 @@ const sidecarDir = resolve(root, "assets/timings");
 // ── Config ─────────────────────────────────────────────────────────────────
 
 /** All N values measured for WASM/f64.
- *  N=819200 removed: works in isolation but OOM after ~33 prior calls due to
- *  WASM bump allocator not reclaiming memory across jit() invocations.
- *  See issues/jax-js-wasm-allocator-cross-shape-oom.md */
+ *  N=819200 was removed due to OOM after ~33 prior calls (WASM bump allocator
+ *  not reclaiming memory). Fixed upstream in commit 089b0e5 — can be re-added.
+ *  TODO: re-add N=819200 and verify with updated allocator. */
 const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600];
 
 /** N values also measured for WebGPU/f32.
