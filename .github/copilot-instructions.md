@@ -17,7 +17,7 @@ Agentic Evolution Protocol (AEP) 🧬
   3. **Viral propagation:** Follow the change through the entire call stack. If a new primitive changes a pattern in `mle.ts`, verify it doesn't need updating in `index.ts` and `priors.ts` too. Do not hide new capabilities behind old wrappers.
 
 - **Continuous knowledge capture (decentralized):**
-  - Document the "Why" behind large restructurings in `tmp/copilot-task-notes.md` and, if durable, in this file. Don't keep stale information — prune old decisions when they're superseded.
+  - Document the "Why" behind large restructurings in `/memories/repo/task-notes.md` (via the memory tool) and, if durable, in this file. Don't keep stale information — prune old decisions when they're superseded.
   - Track upstream workaround status in `issues/` — mark resolved issues as resolved, delete them when the fix is installed and verified.
 
 - **Methodology for large tasks:**
@@ -26,17 +26,17 @@ Agentic Evolution Protocol (AEP) 🧬
   3. **The cleanup:** Remove all deprecated code paths, dead variables, and legacy comments. If you find a TODO that the new API fixes, resolve it.
 
 Agent Protocol (do this EVERY task, even after context summarization) 🚦
-- **Start of task** — before any work, run these three commands in order:
-  1. `cat tmp/copilot-task-notes.md` — read orientation notes left by your past self.
-  2. `pnpm run mistakes:report` — check if any mistake patterns need attention.
+- **Start of task** — before any work, do these three things in order:
+  1. Read `/memories/repo/task-notes.md` (via the memory tool) — orientation notes left by your past self.
+  2. Read `/memories/repo/mistakes.md` (via the memory tool) — check if any mistake patterns need attention (count ≥ 2 = promote to this file).
   3. `pnpm run preflight -- --dry` — see which checks apply to the current repo state.
 - **Before every commit** — the husky pre-commit hook runs `pnpm run preflight` automatically. This is the primary safety net: even if you forget the Agent Protocol, preflight still runs at commit time.
-- **End of task** — spend 30-60 seconds on the fast loop (see "Fast loop at task end" below): log friction in `tmp/copilot-mistakes.json`, promote rules if threshold met, update task notes, run `pnpm run preflight`.
-- **Why this section is here**: context summarization erases short-term memory. This file is the *only* thing guaranteed to survive. If you skip this protocol, you lose the self-tuning system entirely.
+- **End of task** — spend 30-60 seconds on the fast loop (see "Fast loop at task end" below): log friction in `/memories/repo/mistakes.md`, promote rules if threshold met, update task notes, run `pnpm run preflight`.
+- **Why this section is here**: context summarization erases short-term memory. This file and `/memories/repo/` are the *only* things guaranteed to survive. If you skip this protocol, you lose the self-tuning system entirely.
 
 Autonomous instruction maintenance loop (self-tuning) 🔁
 - Goal: reduce repeated friction across tasks by updating this file when patterns recur.
-- **Budget**: allocate ~5% of each task's effort to self-tuning work. This includes logging mistakes/successes, checking `mistakes:report`, improving preflight policies, pruning stale rules, and evolving tooling. Do this throughout the task — not only at the end — so improvements compound across tasks. If a task is trivial (< 2 min), skip self-tuning; if a task is large (> 30 min), the 5% budget is worth spending.
+- **Budget**: allocate ~5% of each task's effort to self-tuning work. This includes logging mistakes/successes, checking `/memories/repo/mistakes.md`, improving preflight policies, pruning stale rules, and evolving tooling. Do this throughout the task — not only at the end — so improvements compound across tasks. If a task is trivial (< 2 min), skip self-tuning; if a task is large (> 30 min), the 5% budget is worth spending.
 - Treat updates as **high-signal only**: avoid one-off noise and personal style churn.
 
 When to update this file
@@ -46,17 +46,17 @@ When to update this file
   3. A project behavior changed (API, script, workflow, benchmark path) and old guidance is now wrong.
 
 How to log mistakes (lightweight telemetry)
-- Maintain `tmp/copilot-mistakes.json` as an append/update ledger (gitignored, local only).
-- Preferred command: `pnpm run mistakes:log -- --key <id>` (increments existing count by 1).
-- For new keys, include metadata once: `pnpm run mistakes:log -- --key <id> --category <cat> --symptom "..." --prevention "..."`.
-- Prioritize rules with `pnpm run mistakes:report` (ranks entries by count, category weight, and recency; highlights promotion candidates).
-- Schema per key:
-  - `count`: number of occurrences
-  - `lastSeen`: ISO timestamp
-  - `category`: one of `state-drift | wrong-assumption | missed-check | tooling | docs-stale | perf`
-  - `symptom`: short observable failure mode
-  - `prevention`: one-line rule/check that would have prevented it
-- Example keys: `timing-registry-orphan`, `forgot-check-timings`, `assumed-linear-task-state`.
+- Maintain `/memories/repo/mistakes.md` as the mistake ledger (via the memory tool).
+- To log a new mistake or increment an existing one, use the memory tool's `str_replace` command to update the count, or `insert` to add a new entry.
+- Each entry follows this format:
+  ```
+  ### <key>
+  - Count: <n> | Last seen: <date> | Category: <category>
+  - Symptom: <short observable failure mode>
+  - Prevention: <one-line rule/check that would have prevented it>
+  ```
+- Categories: `state-drift | wrong-assumption | missed-check | tooling | docs-stale | perf`
+- Promotion policy: when count ≥ 2, promote the prevention rule into this file.
 
 Promotion policy (ledger → instructions)
 - Promote a new rule into this file only if:
@@ -79,10 +79,10 @@ Quarterly cleanup rule for this file
 
 Fast loop at task end (30-60 seconds)
 1. Ask: "What slowed me down most?"
-2. If preventable, update `tmp/copilot-mistakes.json` (`count += 1`).
+2. If preventable, update `/memories/repo/mistakes.md` (increment count via str_replace).
 3. If promotion criteria met, patch this file in the smallest possible edit.
 4. Prefer adding a validation command to scripts/CI over adding prose-only warnings.
-5. Update `tmp/copilot-task-notes.md`: record decisions made, confusion traps hit, any in-progress work. Keep it concise — this is for your future self after context summarization.
+5. Update `/memories/repo/task-notes.md`: record decisions made, confusion traps hit, any in-progress work. Keep it concise — this is for your future self after context summarization.
 6. Before handoff, run `pnpm run preflight` (or `pnpm run preflight -- --strict`) so high-value checks are selected from context automatically.
 
 Contact & follow-ups
@@ -112,11 +112,10 @@ Quick start — commands you will need (copy/paste) ▶️
 - Validate timing markers: `pnpm run check:timings` (fails with exit 1 if any `<!-- timing:KEY -->` markers are out of sync with their sidecars).
 - Check artifact freshness: `pnpm run check:freshness` (detects stale SVGs/sidecars/benchmarks by comparing source mtimes vs output mtimes; also validates algorithm coverage in bench-full.ts). Use `--status` for CI exit code, `--json` for machine-readable output.
 - Context-aware preflight: `pnpm run preflight` (auto-selects checks from git changes; includes advisory freshness check when `src/` or bench scripts change; `--strict` adds tests; `--dry` previews).
-- Log a mistake: `pnpm run mistakes:log -- --key <id>` (see self-tuning section below).
-- Review promotion candidates: `pnpm run mistakes:report`.
+- Log a mistake: use the memory tool to update `/memories/repo/mistakes.md` (see self-tuning section below).
 
 Files & places to inspect first 📁
-- **Read first**: `tmp/copilot-task-notes.md` (orientation notes from previous tasks — read this first!).
+- **Read first**: `/memories/repo/task-notes.md` (orientation notes from previous tasks — read via memory tool!).
 - Implementation: `src/index.ts` (Kalman filter + RTS smoother, `dlmForecast` h-step-ahead forecast, memory/dispose patterns, options-bag API signatures, `toMatlab()` MATLAB compat bridge).
 - MLE parameter estimation: `src/mle.ts` (`dlmMLE`: autodiff-based MLE via `jit(valueAndGrad + optax Adam)`, AD-safe `buildDiagW`, `buildG` for AR coefficient estimation). Two optimizer paths: `optimizer:'adam'` (default, first-order via optax Adam) and `optimizer:'natural'` (second-order Newton / Fisher scoring with FD Hessian + Levenberg-Marquardt damping). Two loss paths: `makeKalmanLoss` (sequential `lax.scan`, CPU/WASM) and `makeKalmanLossAssoc` (`lax.associativeScan`, WebGPU+Float32; uses exact 5-tuple forward filter from [1, Lemmas 1–2] with per-timestep Kalman gains, regularized inverse + push-through identity in compose). Float-mask blending for NaN (not boolean np.where). `np.concatenate` has working VJP since jax-js v0.7.8, used for prediction assembly and natural-scale param construction. Supports `fitAr: true` for AR coefficient estimation.
 - State space generator: `src/dlmgensys.ts` (polynomial, seasonal, AR component assembly, `findArInds` for AR state indexing). `dlmGenSysTV` supports AR components when all Δt are positive integers: companion matrix raised to d-th power via binary exponentiation (`matPow`), noise accumulated as `W_AR(d) = Σ C^k·W₁·(C^k)'` (`arNoiseAccum`).
@@ -131,7 +130,7 @@ Files & places to inspect first 📁
 - Upstream issues: `issues/` (open issues filed to jax-js-nonconsuming). Key open issues: `jax-js-wasm-allocator-cross-shape-oom.md` (🔴 open: WASM bump allocator accumulates memory across jit() calls with varying input shapes, eventually exhausting 4 GB; N=819200 works in isolation but fails after ascending-N benchmark sequence), `jax-js-wasm-memory-growth.md` (WASM allocator/JIT cache memory grows unboundedly), `jax-js-webgpu-laxscan-sequential-dispatch.md` (architectural: O(n) backward RTS smoother on WebGPU), `jax-js-dts-generation-flaky.md` (DTS generation flaky on git install), `jax-js-missing-jax-primitives.md` (feature request: `matmul` broadcasting, `np.where` with AD).
 - Build / CI hooks: `package.json`, `vite.config.ts`, `.husky/pre-commit` (runs `pnpm run preflight` on every commit).
 - Artifact freshness: `scripts/lib/artifact-graph.ts` (central dependency declarations: which sources produce which outputs), `scripts/check-freshness.ts` (mtime-based staleness detection + algorithm coverage validation). Run `pnpm run check:freshness` to see what's stale.
-- Self-tuning tooling: `scripts/log-mistake.ts`, `scripts/mistakes-report.ts`, `scripts/preflight.ts`, `scripts/lib/mistakes.ts` (shared types/IO for the telemetry system). Ledger: `tmp/copilot-mistakes.json`. Task notes: `tmp/copilot-task-notes.md`.
+- Self-tuning tooling: `scripts/preflight.ts` (context-aware pre-commit checks). Mistake ledger and task notes live in `/memories/repo/` (accessed via the memory tool).
 
 Project-specific conventions & gotchas ⚠️
 - Algorithm selection: `algorithm: 'scan'` (sequential, default for CPU/WASM) or `algorithm: 'assoc'` (parallel associative scan, default for WebGPU) or `algorithm: 'sqrt-assoc'` (square-root parallel smoother in Cholesky-factor space, Yaghoobi et al. 2022). Tests exercise both algorithms across device × dtype configs — any numeric change must pass all combinations.
@@ -207,17 +206,17 @@ Do not attempt to change (without explicit human approval) 🚫
 
 
 Cloning the self-tuning protocol to another repo 🔄
-- This project includes a **self-tuning agent protocol**: mistake ledger, priority reporter, context-aware preflight checklist, and a pre-commit hook that enforces it. Other agents can adopt the same system. Below is everything needed to replicate it.
+- This project includes a **self-tuning agent protocol**: mistake ledger (in `/memories/repo/`), context-aware preflight checklist, and a pre-commit hook that enforces it. Other agents can adopt the same system. Below is everything needed to replicate it.
 
 ### What the protocol does
 1. **Preflight** (`scripts/preflight.ts`): before each commit, auto-detects which parts of the repo changed (src, tests, docs, config, …) and runs only the relevant checks (lint, tests, timing validation, …). Runs automatically via a husky pre-commit hook.
-2. **Mistake ledger** (`tmp/copilot-mistakes.json`, gitignored): agents log repeated friction patterns with `pnpm run mistakes:log`. Each entry has a count, category, symptom description, and a prevention rule.
-3. **Priority reporter** (`scripts/mistakes-report.ts`): ranks ledger entries by `score = count × categoryWeight × recencyFactor`. When `count ≥ 2`, the entry is flagged for **promotion** into `copilot-instructions.md` as a permanent rule.
+2. **Mistake ledger** (`/memories/repo/mistakes.md`): agents log repeated friction patterns via the memory tool. Each entry has a count, category, symptom description, and a prevention rule. When `count ≥ 2`, the entry is promoted into `copilot-instructions.md` as a permanent rule.
+3. **Task notes** (`/memories/repo/task-notes.md`): orientation notes for the agent's future self after context summarization. Updated at end of task via the memory tool.
 4. **Pre-commit hook** (`.husky/pre-commit`): runs `pnpm run preflight` on every `git commit`. Blocks the commit if any check fails. Bypass: `git commit --no-verify`.
 
 ### Step-by-step setup
 
-> **⚠️ CRITICAL**: The most important step is **step 8** — editing your `copilot-instructions.md`. Without it, the scripts are dead code: no future agent will know they exist after context summarization. Copying scripts without updating instructions is the #1 failure mode observed in practice.
+> **⚠️ CRITICAL**: The most important step is **step 4** — editing your `copilot-instructions.md`. Without it, no future agent will know the protocol exists after context summarization.
 
 #### 1. Install dependencies
 ```bash
@@ -225,119 +224,58 @@ pnpm add -D husky tsx   # or npm/yarn equivalents
 npx husky init           # creates .husky/ dir and adds "prepare": "husky" to package.json
 ```
 
-#### 2. Create the shared types module
-Copy `scripts/lib/mistakes.ts` to your repo at the same relative path. It provides:
-- `MistakeCategory` type (customize the categories for your domain)
-- `MistakeEntry`, `MistakeLedger` types
-- `VALID_CATEGORIES`, `LEDGER_PATH` constants
-- `parseArgs()`, `readLedger()`, `writeLedger()`, `isMistakeEntry()` utilities
-
-Adjust `LEDGER_PATH` if your scratch directory isn't `tmp/`. Ensure it's gitignored.
-
-#### 3. Create the mistake logger
-Copy `scripts/log-mistake.ts` to your repo. No changes needed if you kept the same directory structure.
-
-Add to `package.json`:
-```json
-"mistakes:log": "npx tsx scripts/log-mistake.ts",
-```
-
-Usage:
-```bash
-# New entry (all metadata required first time):
-pnpm run mistakes:log -- --key <id> --category <cat> --symptom "..." --prevention "..."
-
-# Increment existing entry:
-pnpm run mistakes:log -- --key <id>
-```
-
-#### 4. Create the priority reporter
-Copy `scripts/mistakes-report.ts` to your repo. Adjust `CATEGORY_WEIGHT` map if you changed categories.
-
-Add to `package.json`:
-```json
-"mistakes:report": "npx tsx scripts/mistakes-report.ts",
-```
-
-#### 5. Create the preflight script
+#### 2. Create the preflight script
 Copy `scripts/preflight.ts` to your repo. **This is the file you must customize.** Edit:
 - `Context` type — define contexts relevant to your project (e.g., `"src" | "tests" | "docs" | "ci"`)
 - `inferContexts()` — map file paths to contexts (e.g., `file.startsWith("lib/") → "src"`)
 - `buildChecks()` — map contexts to validation commands (e.g., `src → lint`, `tests → test`, `docs → spellcheck`)
-- Remove dlm-js-specific contexts (e.g., `timings`, `bench`) and checks (e.g., `check:timings`) that don't apply to your project. Watch for directory naming differences — dlm-js uses `tests/` but your project may use `test/`.
 
 Add to `package.json`:
 ```json
 "preflight": "npx tsx scripts/preflight.ts",
 ```
 
-#### 6. Wire the pre-commit hook
+#### 3. Wire the pre-commit hook
 Write `.husky/pre-commit`:
 ```
 pnpm run preflight
 ```
-That's it. Husky makes this portable — any `pnpm install` activates the hook.
 
-#### 7. Seed the ledger (optional but recommended)
-Pre-seed patterns you expect to be common. Example:
-```bash
-pnpm run mistakes:log -- --key forgot-task-protocol --category missed-check \
-  --symptom "Skipped orientation steps after context summarization" \
-  --prevention "Follow task protocol in copilot-instructions.md at start of every task"
-```
-Pre-seeding at count=1 means the first real occurrence triggers promotion (count≥2).
-
-#### 8. Add the protocol to your copilot-instructions.md — ⚠️ THIS IS THE MOST IMPORTANT STEP
-Without this, the scripts you copied in steps 2–6 are invisible to future agents. **This step is what makes the protocol survive context summarization.**
+#### 4. Add the protocol to your copilot-instructions.md — ⚠️ THIS IS THE MOST IMPORTANT STEP
+Without this, the protocol is invisible to future agents after context summarization.
 
 Add these sections **near the top** of your `copilot-instructions.md` (adapt to your project):
 
 ```markdown
-Task protocol (do this EVERY task, even after context summarization) 🚦
-- **Start of task** — before any task work:
-  1. `cat tmp/copilot-task-notes.md` — read notes left by your past self.
-  2. `pnpm run mistakes:report` — check for mistake patterns needing attention.
-  3. `pnpm run preflight -- --dry` — preview which checks apply.
+Agent Protocol (do this EVERY task, even after context summarization) 🚦
+- **Start of task** — before any work, do these three things in order:
+  1. Read `/memories/repo/task-notes.md` (via the memory tool) — orientation notes left by your past self.
+  2. Read `/memories/repo/mistakes.md` (via the memory tool) — check if any mistake patterns need attention (count ≥ 2 = promote to this file).
+  3. `pnpm run preflight -- --dry` — see which checks apply to the current repo state.
 - **Before every commit** — the husky pre-commit hook runs `pnpm run preflight` automatically.
-- **End of task** — spend 30–60 seconds:
+- **End of task** — spend 30-60 seconds on the fast loop:
   1. Ask: "What slowed me down most?"
-  2. If preventable: `pnpm run mistakes:log -- --key <id>` (with metadata if new).
+  2. If preventable, update `/memories/repo/mistakes.md` (increment count via str_replace).
   3. If count ≥ 2 and rule is short/testable: promote into copilot-instructions.md.
-  4. Update `tmp/copilot-task-notes.md` with decisions, traps, in-progress work.
+  4. Update `/memories/repo/task-notes.md`: record decisions, confusion traps, in-progress work.
 ```
 
 **AND ALSO:** Copy these two entire sections from this file to the new repo's `copilot-instructions.md`:
-1. The "Autonomous instruction maintenance loop (self-tuning) 🔁" section (contains the rules for logging and promoting mistakes). **Place this immediately below the Task protocol.**
-2. The "Cloning the self-tuning protocol to another repo 🔄" section (so it can spread further). **Place this at the very bottom of the file.**
-
-#### 9. Create task notes
-Create `tmp/copilot-task-notes.md` (gitignored). This is free-form — agents update it at end of task for their future self. Minimal template:
-```markdown
-# Task notes
-Last updated: <date>
-## Recent decisions (don't re-debate)
-## Confusion traps
-## In progress
-(Nothing currently in progress.)
-```
+1. The "Autonomous instruction maintenance loop (self-tuning) 🔁" section. **Place immediately below the Agent Protocol.**
+2. The "Cloning the self-tuning protocol to another repo 🔄" section (so it can spread further). **Place at the very bottom.**
 
 ### Customization checklist
-- [ ] **`copilot-instructions.md` updated with task protocol near the top** (this is the single most important item — without it, nothing else matters after summarization)
-- [ ] **Maintenance loop copied** to the new repo's instructions so agents know how to log and promote mistakes
-- [ ] **Cloning guide copied** to the bottom of the new repo's instructions so it can spread further
-- [ ] Categories in `scripts/lib/mistakes.ts` match your project's failure modes
+- [ ] **`copilot-instructions.md` updated with Agent Protocol near the top**
+- [ ] **Maintenance loop copied** to the new repo's instructions
+- [ ] **Cloning guide copied** to the bottom of the new repo's instructions
 - [ ] `inferContexts()` in `scripts/preflight.ts` maps your file tree correctly
 - [ ] `buildChecks()` in `scripts/preflight.ts` runs your project's linter/tests/validators
-- [ ] `tmp/` (or your scratch dir) is in `.gitignore`
 - [ ] Pre-commit hook tested: `git commit --allow-empty -m "test hook"` then `git reset HEAD~1`
 
 ### Files inventory (copy from dlm-js)
 | File | Purpose | Must customize? |
 |------|---------|----------------|
-| `scripts/lib/mistakes.ts` | Shared types, ledger I/O, arg parser | Categories only |
-| `scripts/log-mistake.ts` | CLI: append/increment ledger entries | No |
-| `scripts/mistakes-report.ts` | CLI: priority-ranked report with promotion flags | Category weights only |
 | `scripts/preflight.ts` | Context-aware check runner | **Yes** — contexts, file mapping, checks |
 | `.husky/pre-commit` | Git hook: runs preflight on commit | No |
-| `tmp/copilot-mistakes.json` | Gitignored mistake ledger | Created automatically |
-| `tmp/copilot-task-notes.md` | Gitignored task notes | Create manually once |
+| `/memories/repo/mistakes.md` | Mistake ledger (via memory tool) | Seed with your patterns |
+| `/memories/repo/task-notes.md` | Task notes (via memory tool) | Create once |
