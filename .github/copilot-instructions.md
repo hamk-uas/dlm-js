@@ -87,8 +87,9 @@ Quick start — commands you will need (copy/paste) ▶️
 - Remeasure **all WASM timings** in one shot: `pnpm run bench:wasm` (runs gen:svg:fit + nile/energy MLE frame collection scan+assoc + MLE anim SVGs + bench:backends + bench:mle + bench:checkpoint + update:timings; leaves WebGPU sidecars untouched).
 - Build for distribution: `pnpm run build`.
 - Full CI-local check: `pnpm run test` (runs lint + Octave reference + Node tests).
-- Validate timing markers: `pnpm run check:timings` (bidirectional consistency: registry ↔ .md markers ↔ sidecars).
-- Context-aware preflight: `pnpm run preflight` (auto-selects checks from git changes; `--strict` adds tests; `--dry` previews).
+- Validate timing markers: `pnpm run check:timings` (fails with exit 1 if any `<!-- timing:KEY -->` markers are out of sync with their sidecars).
+- Check artifact freshness: `pnpm run check:freshness` (detects stale SVGs/sidecars/benchmarks by comparing source mtimes vs output mtimes; also validates algorithm coverage in bench-full.ts). Use `--status` for CI exit code, `--json` for machine-readable output.
+- Context-aware preflight: `pnpm run preflight` (auto-selects checks from git changes; includes advisory freshness check when `src/` or bench scripts change; `--strict` adds tests; `--dry` previews).
 - Log a mistake: `pnpm run mistakes:log -- --key <id>` (see self-tuning section below).
 - Review promotion candidates: `pnpm run mistakes:report`.
 
@@ -107,6 +108,7 @@ Files & places to inspect first 📁
 - MLE comparison: `README.md` (dlm-js MLE vs MATLAB DLM parameter estimation, with benchmark timings).
 - Upstream issues: `issues/` (precision analysis, WebGPU JIT einsum bug filed to jax-js-nonconsuming). Key resolved/open issues: `jax-js-webgpu-mle-backward-buffer-limit.md` (✅ resolved), `jax-js-webgpu-laxscan-sequential-dispatch.md` (O(n) backward RTS smoother, architectural), `jax-js-linalg-inv-vjp.md` (✅ resolved in v0.7.8: `np.linalg.inv` VJP is now correct; `adSafeInv` workaround removed), `jax-js-webgpu-nan-masking.md` (✅ resolved in `ultimate-architecture-plan` commit `b5c563ab`: `np.isnan` now correctly detects NaN in batched `[n,1]` tensors on WebGPU; gapped-data NaN corruption on WebGPU is fixed; confirmed by `bench:full` re-run).
 - Build / CI hooks: `package.json`, `vite.config.ts`, `.husky/pre-commit` (runs `pnpm run preflight` on every commit).
+- Artifact freshness: `scripts/lib/artifact-graph.ts` (central dependency declarations: which sources produce which outputs), `scripts/check-freshness.ts` (mtime-based staleness detection + algorithm coverage validation). Run `pnpm run check:freshness` to see what's stale.
 - Self-tuning tooling: `scripts/log-mistake.ts`, `scripts/mistakes-report.ts`, `scripts/preflight.ts`, `scripts/lib/mistakes.ts` (shared types/IO for the telemetry system). Ledger: `tmp/copilot-mistakes.json`. Task notes: `tmp/copilot-task-notes.md`.
 
 Project-specific conventions & gotchas ⚠️
@@ -151,6 +153,8 @@ PR checklist (what an AI should do before opening a PR) 📋
 6. Run: `pnpm install && pnpm vitest run && pnpm run test:octave` (if applicable).
 7. If public API changes, update `README.md` and TypeScript types in `src/types.ts`.
 8. If MLE runtime, convergence, or −2logL values change: run `pnpm run bench:mle && pnpm run bench:checkpoint` (both auto-patch .md timing/computed markers). If the machine changed, also manually update `assets/timings/static-references.json` with fresh Octave measurements and bump `_measured`.
+9. If adding a new algorithm variant to `DlmAlgorithm`: add it to `scripts/bench-full.ts` combo loop and corresponding test files, then run `pnpm run check:freshness` to verify coverage.
+10. Run `pnpm run check:freshness` and regenerate any stale artifacts before merging.
 
 Example prompts for agents (use these exact templates) ✍️
 - "Add a `warm: true` option to `dlmFit` that skips the first (cold-start) run; add unit tests exercising the new option and ensure existing scan/assoc tests still pass. Update README and add entries to `tests/niledemo-keys.json` if output keys change."  

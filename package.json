@@ -54,6 +54,7 @@
     "update:timings:dry": "npx tsx scripts/update-timings.ts -- --dry",
     "update:timings:list": "npx tsx scripts/update-timings.ts -- --list",
     "check:timings": "npx tsx scripts/update-timings.ts -- --check",
+    "check:freshness": "npx tsx scripts/check-freshness.ts",
     "preflight": "npx tsx scripts/preflight.ts",
     "mistakes:log": "npx tsx scripts/log-mistake.ts",
     "mistakes:report": "npx tsx scripts/mistakes-report.ts",

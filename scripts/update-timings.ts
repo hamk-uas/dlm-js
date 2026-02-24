@@ -40,8 +40,9 @@ import { readTimingsSidecar } from "./lib/timing-sidecar.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const args = process.argv.slice(2);
-const DRY  = args.includes("--dry");
-const LIST = args.includes("--list");
+const DRY   = args.includes("--dry");
+const LIST  = args.includes("--list");
+const CHECK = args.includes("--check");
 
 // ── --list ──────────────────────────────────────────────────────────────────
 
@@ -194,8 +195,8 @@ for (const filePath of mdFiles) {
   if (updated !== original) {
     totalPatched += filePatched;
     const rel = relative(root, filePath);
-    if (DRY) {
-      console.log(`[dry] would update ${filePatched} marker(s) in ${rel}`);
+    if (DRY || CHECK) {
+      console.log(`[${CHECK ? "check" : "dry"}] would update ${filePatched} marker(s) in ${rel}`);
     } else {
       writeFileSync(filePath, updated, "utf8");
       console.log(`updated ${filePatched} marker(s) in ${rel}`);
@@ -203,6 +204,17 @@ for (const filePath of mdFiles) {
   }
 }
 
-if (totalPatched === 0 && !DRY) {
+if (totalPatched === 0 && !DRY && !CHECK) {
+  console.log("[update-timings] Nothing to update (all markers already current or no sidecars).");
+}
+
+if (CHECK && totalPatched > 0) {
+  console.error(
+    `[update-timings] --check failed: ${totalPatched} marker(s) are out of sync with sidecars.\n` +
+    `  Run \`pnpm run update:timings\` to patch, or regenerate sidecars first.`
+  );
+  process.exit(1);
+}
+if (CHECK && totalPatched === 0) {
   console.log("[update-timings] Nothing to update (all markers already current or no sidecars).");
 }

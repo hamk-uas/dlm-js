@@ -14,6 +14,8 @@ type Check = {
   id: string;
   command: string;
   reason: string;
+  /** If true, failure is reported but does not block the commit. */
+  advisory?: boolean;
 };
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
@@ -110,9 +112,9 @@ function parseContexts(raw: string | undefined): Set<Context> {
 
 function buildChecks(contexts: Set<Context>, strict: boolean): Check[] {
   const checks: Check[] = [];
-  const add = (id: string, command: string, reason: string): void => {
+  const add = (id: string, command: string, reason: string, advisory = false): void => {
     if (checks.some(item => item.id === id)) return;
-    checks.push({ id, command, reason });
+    checks.push({ id, command, reason, advisory });
   };
 
   if (contexts.has("timings") || contexts.has("docs") || contexts.has("bench")) {
@@ -133,6 +135,11 @@ function buildChecks(contexts: Set<Context>, strict: boolean): Check[] {
   }
   if (strict) {
     add("check-timings", "pnpm run check:timings", "Validate timing markers (strict always checks)");
+  }
+  // Freshness check: detect stale artifacts and algorithm coverage gaps.
+  // Advisory (non-blocking) — runs after blocking checks.
+  if (contexts.has("src") || contexts.has("bench") || strict) {
+    add("check-freshness", "pnpm run check:freshness", "Detect stale artifacts and algorithm coverage gaps (advisory)", true);
   }
 
   if (checks.length === 0) {
@@ -189,8 +196,12 @@ for (const check of checks) {
     stdio: "inherit",
   });
   if (result.status !== 0) {
-    console.error(`[preflight] failed: ${check.command}`);
-    process.exit(result.status ?? 1);
+    if (check.advisory) {
+      console.warn(`[preflight] advisory check noted issues (non-blocking): ${check.command}`);
+    } else {
+      console.error(`[preflight] failed: ${check.command}`);
+      process.exit(result.status ?? 1);
+    }
   }
 }
 
