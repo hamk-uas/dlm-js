@@ -527,7 +527,7 @@ Three findings:
 
 2. **WebGPU scales sub-linearly (O(log n))** — both forward and backward passes use `lax.associativeScan`, so each dispatches ⌈log₂N⌉+1 Kogge-Stone rounds. A 1024× increase from N=100 to N=102400 less than doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->309 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->556 ms<!-- /timing -->). The fixed per-dispatch overhead of WebGPU command submission is ~300 ms, so the constant factor dominates at practical series lengths.
 
-3. **The WASM-to-WebGPU ratio converges as N grows**: ~10× at N=100, ~4× at N=102400, ~2× at N=409600. WASM is faster at all measured N. However, WebGPU's per-doubling growth factor (~1.4×) is smaller than WASM's (~1.9×), so the gap continues to narrow. No crossover was observed up to N=409600; based on the measured trend, a crossover would require N well above 1M on this hardware. (N=819200 exceeds the WASM 4 GB memory limit.)
+3. **The WASM-to-WebGPU ratio converges as N grows**: ~10× at N=100, ~4× at N=102400, ~2× at N=409600. WASM is faster at all measured N. However, WebGPU's per-doubling growth factor (~1.4×) is smaller than WASM's (~1.9×), so the gap continues to narrow. No crossover was observed up to N=409600; based on the measured trend, a crossover would require N well above 1M on this hardware. (N=819200 works in isolation but the WASM bump allocator accumulates memory across calls with different shapes, hitting the 4 GB limit after the ascending-N sequence — see `issues/jax-js-wasm-allocator-cross-shape-oom.md`.)
 
 
 ## MLE
