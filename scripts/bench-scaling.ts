@@ -28,13 +28,14 @@ const sidecarDir = resolve(root, "assets/timings");
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
-/** All N values measured for WASM/f64. */
-const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200];
+/** All N values measured for WASM/f64.
+ *  N=819200 removed: exceeds WASM 4 GB memory limit at m=2 with JIT workspace. */
+const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600];
 
 /** N values also measured for WebGPU/f32.
  *  Both forward and backward passes use associativeScan (O(log n) depth),
  *  so scaling should be sub-linear. Measured at all N values. */
-const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200];
+const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600];
 
 const WARMUP = 2;
 const RUNS   = 4;
@@ -108,32 +109,38 @@ console.log("─".repeat(hdr.length));
 const sidecar: Record<string, number> = {};
 
 for (const n of N_ALL) {
-  // ── WASM / f64 ──────────────────────────────────────────────────────────
-  defaultDevice("wasm");
-  const wasmMs = await timedMedian(n, 'f64');
-  sidecar[`wasm_f64_n${n}`] = wasmMs;
+  try {
+    // ── WASM / f64 ──────────────────────────────────────────────────────────
+    defaultDevice("wasm");
+    const wasmMs = await timedMedian(n, 'f64');
+    sidecar[`wasm_f64_n${n}`] = wasmMs;
 
-  const usPerStep = (wasmMs / n) * 1000;
+    const usPerStep = (wasmMs / n) * 1000;
 
-  // ── WebGPU / f32 (small N only) ─────────────────────────────────────────
-  let gpuMs: number | null = null;
-  if (N_GPU.includes(n)) {
-    defaultDevice("webgpu");
-    gpuMs = await timedMedian(n, 'f32');
-    sidecar[`webgpu_f32_n${n}`] = gpuMs;
+    // ── WebGPU / f32 (small N only) ─────────────────────────────────────────
+    let gpuMs: number | null = null;
+    if (N_GPU.includes(n)) {
+      defaultDevice("webgpu");
+      gpuMs = await timedMedian(n, 'f32');
+      sidecar[`webgpu_f32_n${n}`] = gpuMs;
+    }
+
+    // ── Print row ────────────────────────────────────────────────────────────
+    const gpuCell   = gpuMs !== null ? gpuMs.toFixed(1)                        : "—";
+    const ratioCell = gpuMs !== null ? (gpuMs / wasmMs).toFixed(1) + "×"      : "—";
+    const cells = [
+      n.toLocaleString("en-US").padStart(colW[0]),
+      wasmMs.toFixed(1).padStart(colW[1]),
+      usPerStep.toFixed(n >= 3_200 ? 1 : 0).padStart(colW[2]),
+      gpuCell.padStart(colW[3]),
+      ratioCell.padStart(colW[4]),
+    ];
+    console.log(cells.join("  "));
+  } catch (e) {
+    console.error(`\n⚠ N=${n.toLocaleString("en-US")} failed: ${(e as Error).message?.split("\n")[0] ?? e}`);
+    console.log("  Stopping benchmark at this N — writing partial results.\n");
+    break;
   }
-
-  // ── Print row ────────────────────────────────────────────────────────────
-  const gpuCell   = gpuMs !== null ? gpuMs.toFixed(1)                        : "—";
-  const ratioCell = gpuMs !== null ? (gpuMs / wasmMs).toFixed(1) + "×"      : "—";
-  const cells = [
-    n.toLocaleString("en-US").padStart(colW[0]),
-    wasmMs.toFixed(1).padStart(colW[1]),
-    usPerStep.toFixed(n >= 3_200 ? 1 : 0).padStart(colW[2]),
-    gpuCell.padStart(colW[3]),
-    ratioCell.padStart(colW[4]),
-  ];
-  console.log(cells.join("  "));
 }
 
 console.log("\nDone.");
