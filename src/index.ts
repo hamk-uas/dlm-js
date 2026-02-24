@@ -809,13 +809,11 @@ const dlmSmo = async (
       ) as SqrtForwardElem;
 
       // Recover filtered state: x_filt = A·x0 + b
-      using x0_exp = np.tile(np.reshape(x0, [1, stateSize, 1]), [n, 1, 1]);
-      using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
+      using Ax0 = np.matmul(scanned.A, np.reshape(x0, [stateSize, 1]));  // [n,m,m]×[m,1] → [n,m,1]
       const x_filt = np.add(Ax0, scanned.b);                        // [n, m, 1]
 
       // Recover filtered covariance: C_filt = A·C0·A' + U·U'   (where C = U U')
-      using C0_exp = np.tile(np.reshape(C0, [1, stateSize, stateSize]), [n, 1, 1]);
-      using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
+      using AC0At = np.einsum('nij,jk,nlk->nil', scanned.A, C0, scanned.A);  // broadcast C0 [m,m]
       using UUt = np.einsum('nij,nkj->nik', scanned.U, scanned.U);
       const C_filt = np.add(AC0At, UUt);                            // [n, m, m]
 
@@ -1167,12 +1165,10 @@ const dlmSmo = async (
         { A: A_arr, b: b_arr, C: C_arr, eta: eta_arr, J: J_arr },
       ) as ForwardElem;
 
-      using x0_exp = np.tile(np.reshape(x0, [1, stateSize, 1]), [n, 1, 1]);
-      using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
+      using Ax0 = np.matmul(scanned.A, np.reshape(x0, [stateSize, 1]));  // [n,m,m]×[m,1] → [n,m,1]
       const x_filt = np.add(Ax0, scanned.b);             // [n, m, 1]
 
-      using C0_exp = np.tile(np.reshape(C0, [1, stateSize, stateSize]), [n, 1, 1]);
-      using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
+      using AC0At = np.einsum('nij,jk,nlk->nil', scanned.A, C0, scanned.A);  // broadcast C0 [m,m]
       using C_filt_raw = np.add(AC0At, scanned.C);
 
       using C_filt_t = np.einsum('nij->nji', C_filt_raw);

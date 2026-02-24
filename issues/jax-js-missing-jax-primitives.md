@@ -1,4 +1,6 @@
-# Feature request: broadcasting and `where` with AD support
+# Feature request: `np.where` with AD support
+
+**Status**: 🟡 Partially resolved — matmul broadcasting fixed in commit `c99db9a` (installed 2026-02-24 via `09ddadb`)
 
 **Package**: `@hamk-uas/jax-js-nonconsuming` v0.7.8  
 **Filed**: 2026-02-24  
@@ -7,12 +9,10 @@
 
 ## Summary
 
-Two JAX features that would significantly improve code quality and on-device memory efficiency for any project doing traced array computation (not just ours):
+One remaining JAX feature that would significantly improve code quality:
 
 1. **`np.where(condition, x, y)` with JVP/VJP** — replace float-mask multiply pattern
-2. **Broadcasting in `matmul` / `einsum`** — eliminate manual `np.tile`
-
-Each of these would reduce the number of intermediate arrays, improve code readability, and keep data on-device better by avoiding materialisation of expanded/tiled tensors.
+2. ~~**Broadcasting in `matmul` / `einsum`** — eliminate manual `np.tile`~~ ✅ Resolved: `np.matmul` now supports NumPy-style batch broadcasting (commit `c99db9a`). Workaround `np.tile` calls reduced from 27 to 20 in `src/`; remaining tiles are for non-matmul patterns (mask tiling, NaN handling, element construction).
 
 ### Note on array slicing
 
@@ -50,41 +50,23 @@ JAX's `jnp.where` has full JVP/VJP: the gradient flows through the selected bran
 - **dlm-js**: The NaN-masking pattern appears throughout the assocScan forward filter (`makeKalmanLossAssoc`), the smoother (`dlmSmo`), and the forecast function — about 10+ sites with ~20 individual float-blend operations
 - **General**: Any model with missing data, masking, or conditional computation benefits. This is fundamental to time series, NLP (attention masks), and scientific computing.
 
-## 2. Broadcasting in `matmul` / `einsum`
+## 2. ~~Broadcasting in `matmul` / `einsum`~~ ✅ RESOLVED
 
-### Current workaround
+**Fixed in**: commit `c99db9a` — `np.matmul` now supports NumPy-style batch dimension broadcasting with `broadcastShapes` + `broadcastTo`. 1D vector support added.
 
-To multiply a constant `[m, m]` matrix by a batch of `[n, m, 1]` vectors, we must first tile the matrix:
+**Workaround cleanup performed**: Replaced 7 `np.tile` + `einsum` sites in `src/mle.ts` and `src/index.ts` with `np.matmul` (batch broadcast) and broadcasting `einsum` patterns. All 200 tests pass.
 
-```typescript
-using G_exp = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);  // [n, m, m]
-using result = np.einsum('nij,njk->nik', G_exp, x_batch);     // [n, m, 1]
-```
+### Remaining `np.tile` sites (20)
 
-This creates an intermediate `[n, m, m]` tensor that is a pure waste of memory — every slice is identical.
+The remaining `np.tile` calls are for non-matmul patterns that don't benefit from matmul broadcasting:
+- **Mask tiling** (5 sites): `np.tile(is_nan, [1, m, m])` for `np.where` NaN handling
+- **Identity expansion** (4 sites): `np.tile(I_eye, [n, 1, 1])` for element-wise `subtract(I_exp, KF)`
+- **Element construction** (7 sites): G_exp, W_exp, F_exp, Ft_exp in `makeKalmanLossAssoc` — tiled for multiple subsequent `einsum` calls (changing all would require rewriting the entire forward-element construction; einsum 2-op broadcasting already works but 6+ consumers each would need individual changes)
+- **Broadcast scalars/additions** (4 sites): V2 scalar, FF_scan, G_scan/W_scan for time-varying state-space matrices
 
-### What JAX provides
+## Priority
 
-JAX's `jnp.matmul` and `jnp.einsum` support NumPy-style broadcasting:
-
-```python
-# G is [m, m], x_batch is [n, m, 1]
-result = jnp.matmul(G, x_batch)  # broadcasts G to [n, m, m] without materializing
-# or
-result = jnp.einsum('ij,njk->nik', G, x_batch)  # implicit broadcast
-```
-
-The `einsum` form `'ij,njk->nik'` (contraction of a 2D matrix with a 3D batch) is a standard NumPy broadcasting pattern. Currently jax-js-nonconsuming already supports this specific einsum pattern — but `np.matmul` doesn't broadcast, and explicit `np.tile` is needed for some `einsum` patterns with more than 2 operands.
-
-### Impact
-
-- **dlm-js**: 17 `np.tile` calls across `src/` broadcast a constant `[m, m]` or `[1, m]` matrix to `[n, ...]`
-- **General**: Any batched linear algebra (Kalman filters, RNNs, attention layers, batched MLPs) would benefit. Broadcasting avoids O(n·m²) memory for what is logically a O(m²) constant.
-
-## Priority suggestion
-
-1. **`np.where` with AD** — highest impact, universally useful, eliminates the most boilerplate and intermediate tensors
-2. **`matmul` broadcasting** — nice-to-have; the `einsum` broadcast path already works for 2-operand cases
+1. **`np.where` with AD** — the only remaining item; highest impact, universally useful, eliminates the most boilerplate and intermediate tensors
 
 ## References
 

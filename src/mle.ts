@@ -536,13 +536,11 @@ using M = np.linalg.inv(X_reg);
     // x_filt[t] = scanned.A[t] · x0 + scanned.b[t]  [n, m, 1]
     // Note: np.add creates NEW arrays — x_filt and C_filt are independent of
     // scanned.b / scanned.S, so tree.dispose(scanned) below is safe.
-    using x0_exp = np.tile(np.reshape(x0, [1, m, 1]), [n, 1, 1]);
-    using Ax0 = np.einsum('nij,njk->nik', scanned.A, x0_exp);
+    using Ax0 = np.matmul(scanned.A, np.reshape(x0, [m, 1]));    // [n,m,m]×[m,1] → [n,m,1] (batch broadcast)
     using x_filt = np.add(Ax0, scanned.b);
 
     // C_filt[t] = scanned.A[t]·C0·scanned.A[t]' + scanned.S[t]  [n, m, m]
-    using C0_exp = np.tile(np.reshape(C0, [1, m, m]), [n, 1, 1]);
-    using AC0At = np.einsum('nij,njk,nlk->nil', scanned.A, C0_exp, scanned.A);
+    using AC0At = np.einsum('nij,jk,nlk->nil', scanned.A, C0, scanned.A);  // broadcast C0 [m,m]
     using C_filt_raw = np.add(AC0At, scanned.C);
     using C_filt_t = np.einsum('nij->nji', C_filt_raw);
     using C_filt_sum = np.add(C_filt_raw, C_filt_t);
@@ -582,8 +580,7 @@ using M = np.linalg.inv(X_reg);
     using x_pred = np.concatenate([x0_batch, x_pred_rest], 0);     // [n, m, 1]
 
     using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt_head, G);   // [n-1, m, m]
-    using W_tiled = np.tile(np.reshape(W, [1, m, m]), [n - 1, 1, 1]);
-    using C_pred_rest = np.add(GCGt, W_tiled);                     // [n-1, m, m]
+    using C_pred_rest = np.add(GCGt, np.reshape(W, [1, m, m]));    // broadcast [1,m,m] → [n-1,m,m]
     using C0_batch = np.reshape(C0, [1, m, m]);
     using C_pred = np.concatenate([C0_batch, C_pred_rest], 0);     // [n, m, m]
 

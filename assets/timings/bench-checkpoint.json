@@ -1,8 +1,8 @@
 {
-  "nile_false_ms": 2358.20838375,
-  "nile_true_ms": 2364.1433715,
-  "nile_speedup_pct": 0.2516735921599178,
-  "energy_false_ms": 2974.4398405,
-  "energy_true_ms": 2927.1245932499987,
-  "energy_speedup_pct": -1.5907279954281317
+  "nile_false_ms": 2324.3230345,
+  "nile_true_ms": 2310.598736000001,
+  "nile_speedup_pct": -0.5904643328956016,
+  "energy_false_ms": 2879.5165567500007,
+  "energy_true_ms": 2912.99128525,
+  "energy_speedup_pct": 1.1625121036908048
 }

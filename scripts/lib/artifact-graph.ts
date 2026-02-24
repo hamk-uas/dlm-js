@@ -142,7 +142,7 @@ export const artifactGroups: ArtifactGroup[] = [
       "assets/timings/collect-nile-mle-frames-webgpu.json",
       "assets/timings/collect-energy-mle-frames-webgpu.json",
     ],
-    command: "pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle  # (WebGPU parts require Deno)",
+    command: "pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle  # (WebGPU parts use Deno; deno must be in PATH)",
     heavy: true,
   },
 
@@ -211,7 +211,7 @@ export const artifactGroups: ArtifactGroup[] = [
     outputs: [
       "assets/timings/bench-full.json",
     ],
-    command: "pnpm run bench:full   # (requires Deno with --unstable-webgpu)",
+    command: "pnpm run bench:full   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
     heavy: true,
   },
 ];
