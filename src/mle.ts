@@ -527,8 +527,6 @@ using M = np.linalg.inv(X_reg);
     J_parts[0].dispose();
     J_parts[1].dispose();
 
-    if (ownsV2ps) V2_per_step.dispose();
-
     // ─── Associative prefix scan ───
     const scanned = lax.associativeScan(
       composeForward,
@@ -567,88 +565,48 @@ using M = np.linalg.inv(X_reg);
     eta_arr.dispose();
     J_arr.dispose();
 
-    // ─── Compute -2·logL from filtered outputs (split, no concatenate) ───
-    // np.concatenate lacks VJP in jax-js, so we compute the likelihood in
-    // two parts: step 0 (uses x0, C0) and steps 1..n-1 (uses shifted
-    // x_filt, C_filt).  Only np.split (which has working VJP) is used.
-
-    // ── Split observations and mask ──
-    const ySplit = np.split(y_arr, [1], 0);
-    using y0 = ySplit[0];               // [1, 1, 1]
-    const y_rest = ySplit[1];            // [n-1, 1, 1]  — disposed after use
-
-    const maskSplit = mask_arr !== undefined
-      ? np.split(mask_n, [1], 0) : undefined;
-    using mask0 = maskSplit ? maskSplit[0] : np.ones([1, 1, 1], { dtype });
-    const mask_rest = maskSplit
-      ? maskSplit[1]
-      : (mask_arr === undefined ? np.ones([n - 1, 1, 1], { dtype }) : undefined);
-
-    // ── V² for each part ──
-    let V2_0: np.Array;    // [1, 1] for step 0
-    let V2_rest: np.Array; // [n-1, 1, 1] for steps 1..n-1
-    if (fixS) {
-      const v2Split = np.split(fixedV2_arr!, [1], 0);
-      V2_0 = np.reshape(v2Split[0], [1, 1]);
-      v2Split[0].dispose();
-      V2_rest = v2Split[1];
-    } else {
-      V2_0 = np.reshape(V2!, [1, 1]);
-      V2_rest = np.tile(np.reshape(V2!, [1, 1, 1]), [n - 1, 1, 1]);
-    }
-
-    // ── Step 0: v₀ = y₀ − F·x₀,  Cp₀ = F·C₀·F' + V² ──
-    using Fx0 = np.matmul(F, x0);                          // [1, 1]
-    using y0_11 = np.reshape(y0, [1, 1]);
-    using v0 = np.subtract(y0_11, Fx0);                    // [1, 1]
-    using FC0Ft = np.einsum('ij,jk,lk->il', F, C0, F);    // [1, 1]
-    using Cp0 = np.add(FC0Ft, V2_0);                       // [1, 1]
-    if (!fixS) { /* V2_0 aliases V2 via reshape — don't dispose */ } else V2_0.dispose();
-
-    using v0_sq = np.square(v0);
-    using v0_over_Cp = np.divide(v0_sq, Cp0);
-    using log_Cp0 = np.log(Cp0);
-    using lik0_raw = np.add(v0_over_Cp, log_Cp0);
-    using mask0_11 = np.reshape(mask0, [1, 1]);
-    using lik0_val = np.multiply(mask0_11, lik0_raw);
-    using lik0 = np.sum(lik0_val);                          // scalar
-
-    // ── Steps 1..n-1: x_pred = G·x_filt[0..n-2],  C_pred = G·C_filt·G'+W ──
+    // ─── Compute -2·logL from filtered outputs ───
+    // Build one-step-ahead predictions for all n timesteps:
+    //   x_pred[0] = x0,  x_pred[t] = G·x_filt[t-1]   for t=1..n-1
+    //   C_pred[0] = C0,  C_pred[t] = G·C_filt[t-1]·G' + W
     const xfSplit = np.split(x_filt, [n - 1], 0);
     xfSplit[1].dispose();
-    using x_filt_head = xfSplit[0];                         // [n-1, m, 1]
+    using x_filt_head = xfSplit[0];                                 // [n-1, m, 1]
 
     const cfSplit = np.split(C_filt, [n - 1], 0);
     cfSplit[1].dispose();
-    using C_filt_head = cfSplit[0];                         // [n-1, m, m]
+    using C_filt_head = cfSplit[0];                                 // [n-1, m, m]
 
-    using x_pred_r = np.einsum('ij,njk->nik', G, x_filt_head);     // [n-1, m, 1]
-    using GCGt_r = np.einsum('ij,njk,lk->nil', G, C_filt_head, G); // [n-1, m, m]
+    using x_pred_rest = np.einsum('ij,njk->nik', G, x_filt_head);  // [n-1, m, 1]
+    using x0_batch = np.reshape(x0, [1, m, 1]);
+    using x_pred = np.concatenate([x0_batch, x_pred_rest], 0);     // [n, m, 1]
+
+    using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt_head, G);   // [n-1, m, m]
     using W_tiled = np.tile(np.reshape(W, [1, m, m]), [n - 1, 1, 1]);
-    using C_pred_r = np.add(GCGt_r, W_tiled);                      // [n-1, m, m]
+    using C_pred_rest = np.add(GCGt, W_tiled);                     // [n-1, m, m]
+    using C0_batch = np.reshape(C0, [1, m, m]);
+    using C_pred = np.concatenate([C0_batch, C_pred_rest], 0);     // [n, m, m]
 
-    using Fx_r = np.einsum('ij,njk->nik', F, x_pred_r);            // [n-1, 1, 1]
-    using v_rest_raw = np.subtract(y_rest, Fx_r);                   // [n-1, 1, 1]
-    y_rest.dispose();
+    // Innovations and prediction covariance (batched over all n timesteps)
+    using Fx_pred = np.einsum('ij,njk->nik', F, x_pred);           // [n, 1, 1]
+    using v = np.subtract(y_arr, Fx_pred);                          // [n, 1, 1]
+    using FCFt = np.einsum('ij,njk,lk->nil', F, C_pred, F);        // [n, 1, 1]
+    using Cp = np.add(FCFt, V2_per_step);                           // [n, 1, 1]
 
-    using FCFt_r = np.einsum('ij,njk,lk->nil', F, C_pred_r, F);   // [n-1, 1, 1]
-    using Cp_rest = np.add(FCFt_r, V2_rest);                       // [n-1, 1, 1]
-    V2_rest.dispose();
-
-    using vr_sq = np.square(v_rest_raw);
-    using vr_over_Cp = np.divide(vr_sq, Cp_rest);
-    using log_Cp_r = np.log(Cp_rest);
-    using lik_r_raw = np.add(vr_over_Cp, log_Cp_r);
-    using lik_r_masked = np.multiply(mask_rest!, lik_r_raw);
-    using lik_rest = np.sum(lik_r_masked);                          // scalar
-    mask_rest!.dispose();
+    // -2·logL = Σ mask_t · (v²/Cp + log(Cp))
+    using v_sq = np.square(v);
+    using v_over_Cp = np.divide(v_sq, Cp);
+    using log_Cp = np.log(Cp);
+    using lik_raw = np.add(v_over_Cp, log_Cp);
+    using lik_masked = np.multiply(mask_n, lik_raw);
 
     if (ownsMask) mask_n.dispose();
+    if (ownsV2ps) V2_per_step.dispose();
     if (!fixS) V2!.dispose();
     W.dispose();
     if (nar > 0) G.dispose();
 
-    return np.add(lik0, lik_rest);
+    return np.sum(lik_masked);
   };
 };
 
@@ -920,35 +878,27 @@ export const dlmMLE = async (
   // When a DlmLossFn is provided, it wraps the Kalman −2·logL so that
   //   objectiveFn(θ) = userLoss(deviance(θ), naturalParams(θ), meta)
   // Natural-scale params: exp(θ) for variance slots, raw θ for AR slots.
-  // Because np.concatenate lacks VJP in jax-js, we use a float-mask blend:
-  //   params = exp(θ) ⊙ varMask + θ ⊙ arMask
-  // The entire chain JITs together — no extra dispatch overhead.
   const hasCustomLoss = typeof lossOption === 'function';
   const wOffset = fixS ? 0 : 1;
   const nSwParams = wOffset + m; // number of variance params (s? + w's)
-  let varMask: np.Array | undefined;
-  let arMask: np.Array | undefined;
   let paramMeta: import('./types').DlmParamMeta | undefined;
   if (hasCustomLoss) {
-    const nTheta = theta_init.length;
     paramMeta = { nObs: fixS ? 0 : 1, nProcess: m, nAr: nar };
-    if (nar > 0) {
-      // Build complementary masks: varMask selects variance slots, arMask selects AR slots
-      const vm = new Array(nTheta).fill(0);
-      const am = new Array(nTheta).fill(0);
-      for (let i = 0; i < nSwParams; i++) vm[i] = 1;
-      for (let i = nSwParams; i < nTheta; i++) am[i] = 1;
-      varMask = np.array(vm, { dtype });
-      arMask = np.array(am, { dtype });
-    }
   }
   const lossFn = hasCustomLoss
     ? (theta: np.Array): np.Array => {
         using kl = kalmanLoss(theta);
         // Compute natural-scale params: exp for variances, raw for AR
-        const params = nar > 0
-          ? np.add(np.multiply(np.exp(theta), varMask!), np.multiply(theta, arMask!))
-          : np.exp(theta);
+        let params: np.Array;
+        if (nar > 0) {
+          const parts = np.split(theta, [nSwParams], 0);
+          using varPart = np.exp(parts[0]);
+          parts[0].dispose();
+          params = np.concatenate([varPart, parts[1]], 0);
+          parts[1].dispose();
+        } else {
+          params = np.exp(theta);
+        }
         return (lossOption as import('./types').DlmLossFn)(kl, params, paramMeta!);
       }
     : kalmanLoss;
@@ -1102,8 +1052,6 @@ export const dlmMLE = async (
     theta.dispose();
     fixedV2_arr?.dispose();
     mleMaskArr?.dispose();
-    varMask?.dispose();
-    arMask?.dispose();
 
     const wOff = fixS ? 0 : 1;
     const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
@@ -1255,8 +1203,6 @@ export const dlmMLE = async (
   theta.dispose(); tree.dispose(optState); lastLik.dispose();
   fixedV2_arr?.dispose();
   mleMaskArr?.dispose();
-  varMask?.dispose();
-  arMask?.dispose();
 
   const wOff = fixS ? 0 : 1;
   const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
