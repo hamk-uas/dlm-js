@@ -13,7 +13,7 @@ import { DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { dlmFit, dlmForecast } from '../src/index';
 import { getTestConfigs, applyConfig, getDlmDtype, assertAllFinite, type TestConfig } from './test-matrix';
-import { withLeakCheck } from './utils';
+
 
 // ─── Deterministic PRNG ───────────────────────────────────────────────────────
 
@@ -74,11 +74,8 @@ describe('dlmForecast', () => {
     for (let t = 0; t < n; t++) { mu += qW * randn(); obs[t] = mu + s * randn(); }
 
     const h = 20;
-    const { fc } = await withLeakCheck(async () => {
-      const fit = await dlmFit(obs, { obsStd: s, processStd: [qW * qW], dtype: 'f64', order: 0 });
-      const fc = await dlmForecast(fit, s, h);
-      return { fc };
-    });
+    const fit = await dlmFit(obs, { obsStd: s, processStd: [qW * qW], dtype: 'f64', order: 0 });
+    const fc = await dlmForecast(fit, s, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -104,11 +101,8 @@ describe('dlmForecast', () => {
     }
 
     const h = 15;
-    const { fc } = await withLeakCheck(async () => {
-      const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01, 0.0025], dtype: 'f64', order: 1 });
-      const fc = await dlmForecast(fit, s, h);
-      return { fc };
-    });
+    const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01, 0.0025], dtype: 'f64', order: 1 });
+    const fc = await dlmForecast(fit, s, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -132,11 +126,8 @@ describe('dlmForecast', () => {
       obs[t] = 3 * Math.sin(2 * Math.PI * t / ns) + s * randn();
 
     const h = ns * 2;
-    const { fc } = await withLeakCheck(async () => {
-      const fit = await dlmFit(obs, { obsStd: s, processStd: new Array(nW).fill(0.01), dtype: 'f64', order: 0, harmonics: nHarmonics, seasonLength: ns });
-      const fc = await dlmForecast(fit, s, h);
-      return { fc };
-    });
+    const fit = await dlmFit(obs, { obsStd: s, processStd: new Array(nW).fill(0.01), dtype: 'f64', order: 0, harmonics: nHarmonics, seasonLength: ns });
+    const fc = await dlmForecast(fit, s, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -163,11 +154,8 @@ describe('dlmForecast', () => {
     }
 
     const h = 20;
-    const { fc } = await withLeakCheck(async () => {
-      const fit = await dlmFit(obs, { obsStd: s, processStd: [0.09, 0], dtype: 'f64', order: 0, arCoefficients: phi });
-      const fc = await dlmForecast(fit, s, h);
-      return { fc };
-    });
+    const fit = await dlmFit(obs, { obsStd: s, processStd: [0.09, 0], dtype: 'f64', order: 0, arCoefficients: phi });
+    const fc = await dlmForecast(fit, s, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -192,12 +180,9 @@ describe('dlmForecast', () => {
     const h = 10;
     const X_low  = Array.from({ length: h }, () => [-1.0] as ArrayLike<number>);
     const X_high = Array.from({ length: h }, () => [+1.0] as ArrayLike<number>);
-    const { fc_low, fc_high } = await withLeakCheck(async () => {
-      const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01], dtype: 'f64', order: 0, X: X_train });
-      const fc_low  = await dlmForecast(fit, s, h, { X: X_low });
-      const fc_high = await dlmForecast(fit, s, h, { X: X_high });
-      return { fc_low, fc_high };
-    });
+    const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01], dtype: 'f64', order: 0, X: X_train });
+    const fc_low  = await dlmForecast(fit, s, h, { X: X_low });
+    const fc_high = await dlmForecast(fit, s, h, { X: X_high });
 
     assertAllFinite(fc_low.yhat);
     assertAllFinite(fc_high.yhat);
@@ -219,11 +204,8 @@ describe('dlmForecast', () => {
 
     for (const cfg of configs) {
       applyConfig(cfg);
-      const { fit, fc } = await withLeakCheck(async () => {
-        const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01], dtype: getDlmDtype(cfg), order: 0 });
-        const fc  = await dlmForecast(fit, s, h, { dtype: getDlmDtype(cfg) });
-        return { fit, fc };
-      });
+      const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01], dtype: getDlmDtype(cfg), order: 0 });
+      const fc  = await dlmForecast(fit, s, h, { dtype: getDlmDtype(cfg) });
 
       expect(fc.h, `${cfg.label}: h`).toBe(h);
       expect(fc.m, `${cfg.label}: m`).toBe(1);

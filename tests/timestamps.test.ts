@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { DType } from '@hamk-uas/jax-js-nonconsuming';
 import { dlmFit, toMatlab, dlmGenSys, dlmGenSysTV } from '../src/index';
-import { withLeakCheck, deepAlmostEqual } from './utils';
+import { deepAlmostEqual } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, getModelTolerances, assertAllFinite } from './test-matrix';
 import type { TestConfig } from './test-matrix';
 
@@ -252,17 +252,17 @@ describe('timestamps', () => {
       const timestamps = Array.from({ length: n }, (_, i) => i);
 
       // Fit without timestamps
-      const ref = await withLeakCheck(() => dlmFit(LEVEL_DATA, {
+      const ref = await dlmFit(LEVEL_DATA, {
         obsStd: 1.0, processStd: [0.5],
         order, dtype: dlmDtype,
-      }));
+      });
       const refM = toMatlab(ref);
 
       // Fit with timestamps (uniform Δt=1)
-      const res = await withLeakCheck(() => dlmFit(LEVEL_DATA, {
+      const res = await dlmFit(LEVEL_DATA, {
         obsStd: 1.0, processStd: [0.5],
         order, timestamps, dtype: dlmDtype,
-      }));
+      });
       const resM = toMatlab(res);
 
       // Compare key fields
@@ -286,10 +286,10 @@ describe('timestamps', () => {
       const dlmDtype = getDlmDtype(config);
 
       // Timestamps model (15 observations with Δt=5 gap between index 9 and 10)
-      const tsFit = await withLeakCheck(() => dlmFit(GAP_OBS, {
+      const tsFit = await dlmFit(GAP_OBS, {
         obsStd: 1.0, processStd: [0.5],
         order: 0, timestamps: GAP_TIMESTAMPS, dtype: dlmDtype,
-      }));
+      });
       const tsM = toMatlab(tsFit);
 
       assertAllFinite(tsM.yhat);
@@ -323,16 +323,16 @@ describe('timestamps', () => {
       const uniformTs = Array.from({ length: n }, (_, i) => i);
 
       // Without timestamps
-      const ref = await withLeakCheck(() => dlmFit(GAP_OBS, {
+      const ref = await dlmFit(GAP_OBS, {
         obsStd: 1.0, processStd: [0.5],
         order: 0, dtype: dlmDtype,
-      }));
+      });
 
       // With uniform timestamps (should be identical)
-      const res = await withLeakCheck(() => dlmFit(GAP_OBS, {
+      const res = await dlmFit(GAP_OBS, {
         obsStd: 1.0, processStd: [0.5],
         order: 0, timestamps: uniformTs, dtype: dlmDtype,
-      }));
+      });
 
       expect(toMatlab(res).lik).toBeCloseTo(toMatlab(ref).lik as number, 10);
     });
@@ -377,17 +377,13 @@ describe('timestamps', () => {
       }
 
       // NaN-padded fit
-      const nanResult = await withLeakCheck(() =>
-        dlmFit(y, { obsStd: s, processStd: w, dtype: dlmDtype, ...opts }),
-      );
+      const nanResult = await dlmFit(y, { obsStd: s, processStd: w, dtype: dlmDtype, ...opts });
       const nanM = toMatlab(nanResult);
       const nanLevel = nanM.x[0] as Float64Array;
       const nanXstd = (nanM.xstd as number[][]).map((r: number[]) => r[0]);
 
       // Timestamps fit
-      const tsResult = await withLeakCheck(() =>
-        dlmFit(yObs, { obsStd: s, processStd: w, dtype: dlmDtype, ...opts, timestamps: tsObs }),
-      );
+      const tsResult = await dlmFit(yObs, { obsStd: s, processStd: w, dtype: dlmDtype, ...opts, timestamps: tsObs });
       const tsM = toMatlab(tsResult);
       const tsLevel = tsM.x[0] as Float64Array;
       const tsXstd = (tsM.xstd as number[][]).map((r: number[]) => r[0]);
@@ -433,10 +429,10 @@ describe('timestamps', () => {
         return 22 + (i - 14);            // t=23,24,...,38
       });
 
-      const res = await withLeakCheck(() => dlmFit(TREND_DATA, {
+      const res = await dlmFit(TREND_DATA, {
         obsStd: 2.0, processStd: [0.5, 0.1],
         order: 1, timestamps, dtype: dlmDtype, algorithm,
-      }));
+      });
       const m = toMatlab(res);
 
       // Basic shape checks — m.x is [stateSize][n], yhat is [n]
@@ -494,11 +490,11 @@ describe('timestamps', () => {
         return 12 + (i - 12) * 2; // irregular spacing in second half
       });
 
-      const res = await withLeakCheck(() => dlmFit(y, {
+      const res = await dlmFit(y, {
         obsStd: 1.0, processStd: [0.5, 0.3, 0.3, 0.3, 0.3],
         order: 0, harmonics: 2, seasonLength: 12,
         timestamps, dtype: dlmDtype,
-      }));
+      });
       const m = toMatlab(res);
 
       assertAllFinite(m.x);
@@ -521,10 +517,10 @@ describe('timestamps', () => {
       const timestamps = [0, 1, 2, 2.5, 3, 4, 4.5, 5, 6, 6.5, 7, 8, 9, 9.5, 10];
       const y: number[] = [10, 10.5, 11, NaN, 11.5, 12, NaN, 12.5, 13, NaN, 13.5, 14, 14.5, NaN, 15];
 
-      const res = await withLeakCheck(() => dlmFit(y, {
+      const res = await dlmFit(y, {
         obsStd: 1.0, processStd: [0.5],
         order: 0, timestamps, dtype: dlmDtype,
-      }));
+      });
       const m = toMatlab(res);
 
       // All 15 outputs should be finite (including NaN-query points)
@@ -555,17 +551,17 @@ describe('timestamps', () => {
       const timestamps = Array.from({ length: n }, (_, i) => i);
 
       // Without timestamps
-      const ref = await withLeakCheck(() => dlmFit(LEVEL_DATA, {
+      const ref = await dlmFit(LEVEL_DATA, {
         obsStd: 1.0, processStd: [0.5, 0.3],
         order: 0, arCoefficients: [0.7], dtype: dlmDtype,
-      }));
+      });
       const refM = toMatlab(ref);
 
       // With uniform integer timestamps
-      const res = await withLeakCheck(() => dlmFit(LEVEL_DATA, {
+      const res = await dlmFit(LEVEL_DATA, {
         obsStd: 1.0, processStd: [0.5, 0.3],
         order: 0, arCoefficients: [0.7], timestamps, dtype: dlmDtype,
-      }));
+      });
       const resM = toMatlab(res);
 
       const cmp = deepAlmostEqual(
@@ -584,11 +580,11 @@ describe('timestamps', () => {
       const dlmDtype = getDlmDtype(config);
 
       // Observations with a gap: t=0..9, then t=15..19
-      const res = await withLeakCheck(() => dlmFit(GAP_OBS, {
+      const res = await dlmFit(GAP_OBS, {
         obsStd: 1.0, processStd: [0.5, 0.3],
         order: 0, arCoefficients: [0.7],
         timestamps: GAP_TIMESTAMPS, dtype: dlmDtype,
-      }));
+      });
       const m = toMatlab(res);
 
       assertAllFinite(m.yhat);
@@ -613,11 +609,11 @@ describe('timestamps', () => {
       // Integer gaps: 0,1,2,...,9, then 12,13,14,15,16
       const ts = [0,1,2,3,4,5,6,7,8,9, 12,13,14,15,16];
 
-      const res = await withLeakCheck(() => dlmFit(y, {
+      const res = await dlmFit(y, {
         obsStd: 2.0, processStd: [0.5, 0.1, 0.2],
         order: 1, arCoefficients: [0.5],
         timestamps: ts, dtype: dlmDtype,
-      }));
+      });
       const m = toMatlab(res);
 
       assertAllFinite(m.yhat);

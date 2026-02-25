@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys, toMatlab } from '../src/index';
-import { deepAlmostEqual, withLeakCheck } from './utils';
+import { deepAlmostEqual } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
@@ -246,9 +246,7 @@ describe('dlmGenSys integration tests', async () => {
 
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
-          const result = await withLeakCheck(() =>
-            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options })
-          );
+          const result = await dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options });
 
           const matlab = toMatlab(result);
 

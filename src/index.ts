@@ -128,10 +128,17 @@ const dlmSmo = async (
   // Created unconditionally to avoid conditional `using` complexity.
   // Captured by backwardStep closure; disposed when dlmSmo scope exits after jit.
   using stab_I_eye       = np.eye(stateSize, undefined, { dtype });               // [m,m]
-  using stab_off_I       = np.subtract(np.ones([stateSize, stateSize], { dtype }), stab_I_eye);
+  using _stab_ones       = np.ones([stateSize, stateSize], { dtype });             // [m,m]
+  using stab_off_I       = np.subtract(_stab_ones, stab_I_eye);
   using stab_nLeak_fact  = np.array(1.0 - 1e-5, { dtype });                       // scalar
-  using stab_cDiag_eps_I = np.multiply(np.array(1e-7, { dtype }), stab_I_eye);   // [m,m]
-  using stab_cEps_I      = np.multiply(np.array(1e-6, { dtype }), stab_I_eye);   // [m,m]
+  using _stab_eps7       = np.array(1e-7, { dtype });                              // scalar
+  using stab_cDiag_eps_I = np.multiply(_stab_eps7, stab_I_eye);                   // [m,m]
+  using _stab_eps6       = np.array(1e-6, { dtype });                              // scalar
+  using stab_cEps_I      = np.multiply(_stab_eps6, stab_I_eye);                   // [m,m]
+  // Shared scalar constants used inside jit(core) — hoisted here to avoid
+  // inline np.array() temporaries that the leak checker flags (rc=1, never disposed).
+  using half             = np.array(0.5, { dtype });                               // scalar
+  using zeros_mm         = np.zeros([stateSize, stateSize], { dtype });            // [m,m]
 
   // Stack observations: shape [n, 1, 1] for matmul compatibility
   using y_arr = np.array(Array.from(y).map(yi => [[yi]]), { dtype });
@@ -270,7 +277,7 @@ const dlmSmo = async (
           // f32 default: average both triangles (C + C') / 2
           using Ct      = np.transpose(C_fwd_raw);
           using sumBoth = np.add(C_fwd_raw, Ct);
-          C_next = np.multiply(np.array(0.5, { dtype }), sumBoth);
+          C_next = np.multiply(half, sumBoth);
         }
         C_fwd_raw.dispose();
       } else {
@@ -346,7 +353,7 @@ const dlmSmo = async (
         using Nt = np.transpose(N_new);
         using Nsum = np.add(N_new, Nt);
         // jax-js-lint: allow-non-using — accumulator-swap: N_new.dispose() + N_new = N_stab below
-        const N_stab = np.multiply(np.array(0.5, { dtype }), Nsum);
+        const N_stab = np.multiply(half, Nsum);
         N_new.dispose();
         N_new = N_stab;
       }
@@ -359,7 +366,8 @@ const dlmSmo = async (
         // max(N*I, 0) correctly clamps diagonal; off-diag: max(0,0)=0 (no change).
         using N_d = np.multiply(N_new, stab_I_eye);
         using N_o = np.multiply(N_new, stab_off_I);
-        using N_d_c = np.maximum(N_d, np.zerosLike(N_d));
+        using _N_d_zeros = np.zerosLike(N_d);
+        using N_d_c = np.maximum(N_d, _N_d_zeros);
         // jax-js-lint: allow-non-using — accumulator-swap: N_new.dispose() + N_new = N_stab below
         const N_stab = np.add(N_d_c, N_o);
         N_new.dispose();
@@ -427,7 +435,7 @@ const dlmSmo = async (
           // Default: average both triangles
           using Ct   = np.transpose(C_raw);
           using sumC = np.add(C_raw, Ct);
-          C_sym = np.multiply(np.array(0.5, { dtype }), sumC);
+          C_sym = np.multiply(half, sumC);
         }
         // Step 2: always add cEps (unconditional for f32)
         // jax-js-lint: allow-non-using — post-cEps branch takes ownership below
@@ -471,7 +479,7 @@ const dlmSmo = async (
         }
       } else {
         // f64 default: raw result (matches MATLAB dlmsmo.m formula, no corrective steps)
-        C_smooth = np.add(C_raw, np.zeros([stateSize, stateSize], { dtype }));
+        C_smooth = np.add(C_raw, zeros_mm);
       }
     }
 
@@ -537,9 +545,8 @@ const dlmSmo = async (
       using y_safe_arr = np.where(is_nan, zero_n11, y_arr); // [n,1,1]
 
       using I_eye = np.eye(stateSize, undefined, { dtype });
-      using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
-
-      // ─── Arriving G/W convention (same as standard assoc path) ───
+      using _I_eye_1mm = np.reshape(I_eye, [1, stateSize, stateSize]);
+      using I_exp = np.tile(_I_eye_1mm, [n, 1, 1]);
       const gArrParts = np.split(G_scan, [n - 1], 0);
       const wArrParts = np.split(W_scan, [n - 1], 0);
       using G_head_arr = gArrParts[0];
@@ -614,7 +621,8 @@ const dlmSmo = async (
         using Z_pad = np.zeros([n, stateSize, stateSize - 1], { dtype });
         Z_obs = np.concatenate([Z_thin, Z_pad], -1);               // [n, m, m]
       } else {
-        Z_obs = np.multiply(np.array(1.0, { dtype }), Z_thin);     // [n, 1, 1] copy
+        using _one_scalar = np.array(1.0, { dtype });
+        Z_obs = np.multiply(_one_scalar, Z_thin);     // [n, 1, 1] copy
       }
 
       // eta = (Z_thin / Psi11) · y  [n, m, 1]
@@ -625,10 +633,12 @@ const dlmSmo = async (
       // NaN: A = G_arriving, b = 0, U = cholW, Z = 0, eta = 0
       using nan_mm = np.tile(is_nan, [1, stateSize, stateSize]);
       using A_all = np.where(nan_mm, G_arriving, A_obs);
-      using b_all = np.where(is_nan, np.zerosLike(b_obs), b_obs);
+      using _b_zeros = np.zerosLike(b_obs);
+      using b_all = np.where(is_nan, _b_zeros, b_obs);
       using U_all = np.where(nan_mm, cholW, U_obs);
       using zero_nmm = np.zerosLike(Z_obs);
-      using eta_all = np.where(is_nan, np.zerosLike(eta_obs), eta_obs);
+      using _eta_zeros = np.zerosLike(eta_obs);
+      using eta_all = np.where(is_nan, _eta_zeros, eta_obs);
       using Z_all_raw = np.where(nan_mm, zero_nmm, Z_obs);
       Z_obs.dispose();
 
@@ -685,7 +695,8 @@ const dlmSmo = async (
       using U1_init = bot0ColParts[1];                              // [1, m, m]
 
       // K at k=0
-      using K0 = np.multiply(mask1, np.divide(Psi0_21, Psi0_11)); // [1, m, 1]
+      using _K0_div = np.divide(Psi0_21, Psi0_11);
+      using K0 = np.multiply(mask1, _K0_div); // [1, m, 1]
       // b at k=0: x0 + K0·(y[0] - H·x0)
       using Fx0_1 = np.einsum('nij,njk->nik', F1, x0_first);
       using innov0 = np.subtract(y1, Fx0_1);
@@ -713,7 +724,8 @@ const dlmSmo = async (
 
       // ─── Square-root forward composition operator ───
       // Hoist I1 outside compose — vmap broadcasts [1,m,m] correctly (jax-js ≥65cb449)
-      using I1_sqrt = np.reshape(np.eye(stateSize, undefined, { dtype }), [1, stateSize, stateSize]);
+      using _I1_eye = np.eye(stateSize, undefined, { dtype });
+      using I1_sqrt = np.reshape(_I1_eye, [1, stateSize, stateSize]);
 
       const composeSqrtForward = (a: SqrtForwardElem, b_elem: SqrtForwardElem): SqrtForwardElem => {
         const m = stateSize;
@@ -723,7 +735,8 @@ const dlmSmo = async (
         //    [Z2,         0]]
         using U1t = np.einsum('nij->nji', a.U);                     // [n, m, m]
         using U1tZ2 = np.einsum('nij,njk->nik', U1t, b_elem.Z);    // [n, m, m]
-        using I_batch = np.add(np.zerosLike(a.U), I1_sqrt);         // [n, m, m] via broadcast
+        using _zeros_U = np.zerosLike(a.U);                         // [n, m, m]
+        using I_batch = np.add(_zeros_U, I1_sqrt);                   // [n, m, m] via broadcast
         using zero_mm = np.zerosLike(a.U);                          // [n, m, m]
         // Xi top: [U1'Z2, I] → [n, m, 2m]
         using xi_top = np.concatenate([U1tZ2, I_batch], -1);
@@ -815,7 +828,8 @@ const dlmSmo = async (
       ) as SqrtForwardElem;
 
       // Recover filtered state: x_filt = A·x0 + b
-      using Ax0 = np.matmul(scanned.A, np.reshape(x0, [stateSize, 1]));  // [n,m,m]×[m,1] → [n,m,1]
+      using _x0_col = np.reshape(x0, [stateSize, 1]);
+      using Ax0 = np.matmul(scanned.A, _x0_col);  // [n,m,m]×[m,1] → [n,m,1]
       const x_filt = np.add(Ax0, scanned.b);                        // [n, m, 1]
 
       // Recover filtered covariance: C_filt = A·C0·A' + U·U'   (where C = U U')
@@ -926,7 +940,8 @@ const dlmSmo = async (
         );  // [n, 1, 1] bool
         using term_bool_mm = np.tile(term_bool, [1, stateSize, stateSize]); // [n, m, m] bool
         // jax-js-lint: allow-non-using — E_all, g_all, D_all disposed after scan
-        const E_all = np.where(term_bool, E_raw, np.zerosLike(E_raw));
+        using _E_zeros_sqrt = np.zerosLike(E_raw);
+        const E_all = np.where(term_bool, E_raw, _E_zeros_sqrt);
         // For g at terminal: g[n-1] = x_filt[n-1] (not (I-E·G)·x_filt which would be same since E=0)
         // Since E[n-1] gets zeroed, g[n-1] = (I - 0)·x_filt[n-1] = x_filt[n-1]. Correct.
         const g_all = np.where(term_bool, g_raw, x_filt);
@@ -987,9 +1002,8 @@ const dlmSmo = async (
       using y_safe_arr = np.where(is_nan, zero_n11, y_arr); // [n,1,1]
 
       using I_eye = np.eye(stateSize, undefined, { dtype });
-      using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
-
-      // ─── Arriving vs departing G/W convention ───
+      using _I_eye_1mm = np.reshape(I_eye, [1, stateSize, stateSize]);
+      using I_exp = np.tile(_I_eye_1mm, [n, 1, 1]);
       //
       // G_scan[k] / W_scan[k] encode the departing transition from obs k to
       // obs k+1:  Δt = T[k+1] − T[k].  (Used by backward smoother.)
@@ -1010,7 +1024,7 @@ const dlmSmo = async (
       using W_head_arr = wArrParts[0];  // W_scan[0..n-2] = arriving for steps 1..n-1
       wArrParts[1].dispose();
       // G/W for arriving step 0: unit Δt (matches uniform prior convention)
-      using G_unit_1 = np.reshape(np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [1, 1, 1]), [1, stateSize, stateSize]);
+      using G_unit_1 = np.reshape(np.tile(_I_eye_1mm, [1, 1, 1]), [1, stateSize, stateSize]);
       // For G_arriving[0], use the identity-like uniform G. Since element 0 is
       // overwritten by exact initialization, we just need a valid [1,m,m] tensor.
       // Use G_scan[n-1] which encodes Δt=1 (the last departing step with unit Δt).
@@ -1043,12 +1057,15 @@ const dlmSmo = async (
       using J_obs = np.einsum('nij,njk,nkl->nil', Gt_batch, FtF_over_S, G_arriving);         // [n,m,m]
 
       // NaN handling for k>=2 elements: pure prediction for gapped y
-      using A_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), G_arriving, A_obs);
-      using b_all = np.where(is_nan, np.zerosLike(b_obs), b_obs);
-      using C_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), W_arriving, C_obs);
+      using nan_mm = np.tile(is_nan, [1, stateSize, stateSize]);
+      using A_all = np.where(nan_mm, G_arriving, A_obs);
+      using _b_zeros = np.zerosLike(b_obs);
+      using b_all = np.where(is_nan, _b_zeros, b_obs);
+      using C_all = np.where(nan_mm, W_arriving, C_obs);
       using zero_nmm = np.zerosLike(J_obs);
-      using eta_all = np.where(is_nan, np.zerosLike(eta_obs), eta_obs);
-      using J_all = np.where(np.tile(is_nan, [1, stateSize, stateSize]), zero_nmm, J_obs);
+      using _eta_zeros = np.zerosLike(eta_obs);
+      using eta_all = np.where(is_nan, _eta_zeros, eta_obs);
+      using J_all = np.where(nan_mm, zero_nmm, J_obs);
 
       // First element (k=1): exact initialization from prior (A1=0, b1/C1 from x0/C0)
       const F_parts = np.split(FF_scan, [1], 0);
@@ -1110,9 +1127,11 @@ const dlmSmo = async (
       J_parts[1].dispose();
 
       // Hoist constants outside compose — vmap broadcasts [1,m,m] correctly (jax-js ≥65cb449)
-      using I1 = np.reshape(np.eye(stateSize, undefined, { dtype }), [1, stateSize, stateSize]);
+      using _I1_eye_std = np.eye(stateSize, undefined, { dtype });
+      using I1 = np.reshape(_I1_eye_std, [1, stateSize, stateSize]);
       using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
-      using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
+      using _inv_eps_1 = np.reshape(inv_eps, [1, 1, 1]);
+      using regI = np.multiply(_inv_eps_1, I1);
 
       const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
         // Compose later (j=b_elem) after earlier (i=a)
@@ -1162,7 +1181,8 @@ const dlmSmo = async (
         { A: A_arr, b: b_arr, C: C_arr, eta: eta_arr, J: J_arr },
       ) as ForwardElem;
 
-      using Ax0 = np.matmul(scanned.A, np.reshape(x0, [stateSize, 1]));  // [n,m,m]×[m,1] → [n,m,1]
+      using _x0_col = np.reshape(x0, [stateSize, 1]);
+      using Ax0 = np.matmul(scanned.A, _x0_col);  // [n,m,m]×[m,1] → [n,m,1]
       const x_filt = np.add(Ax0, scanned.b);             // [n, m, 1]
 
       using AC0At = np.einsum('nij,jk,nlk->nil', scanned.A, C0, scanned.A);  // broadcast C0 [m,m]
@@ -1170,7 +1190,7 @@ const dlmSmo = async (
 
       using C_filt_t = np.einsum('nij->nji', C_filt_raw);
       using C_filt_sum = np.add(C_filt_raw, C_filt_t);
-      const C_filt = np.multiply(np.array(0.5, { dtype }), C_filt_sum); // [n,m,m]
+      const C_filt = np.multiply(half, C_filt_sum); // [n,m,m]
 
       scanned.A.dispose();
       scanned.b.dispose();
@@ -1291,12 +1311,14 @@ const dlmSmo = async (
           Array.from({ length: n }, (_, t) => [[t < n - 1]]),
         );  // [n, 1, 1] bool
         // jax-js-lint: allow-non-using — E_all disposed after scan
-        const E_all = np.where(term_bool, E_raw, np.zerosLike(E_raw));  // [n, m, m]
+        using _E_zeros = np.zerosLike(E_raw);
+        const E_all = np.where(term_bool, E_raw, _E_zeros);  // [n, m, m]
 
         // ImEG = I - E_k · G[k]  [n, m, m]
         using EG = np.einsum('nij,njk->nik', E_all, G_scan);
         using I_eye = np.eye(stateSize, undefined, { dtype });
-        using I_exp = np.tile(np.reshape(I_eye, [1, stateSize, stateSize]), [n, 1, 1]);
+        using _I_eye_bwd = np.reshape(I_eye, [1, stateSize, stateSize]);
+        using I_exp = np.tile(_I_eye_bwd, [n, 1, 1]);
         using ImEG = np.subtract(I_exp, EG);
 
         // g_k = (I - E_k·G[k]) · x̄_k  [n, m, 1]
@@ -1312,7 +1334,7 @@ const dlmSmo = async (
         using L_raw_t = np.einsum('nij->nji', L_raw);
         using L_sum = np.add(L_raw, L_raw_t);
         // jax-js-lint: allow-non-using — L_all disposed after scan
-        const L_all = np.multiply(np.array(0.5, { dtype }), L_sum);
+        const L_all = np.multiply(half, L_sum);
 
         const composeBackward = (a: BackwardElem, b_elem: BackwardElem): BackwardElem => {
           const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
@@ -1414,7 +1436,8 @@ const dlmSmo = async (
 
     // y_safe: replace NaN with 0 for numerically safe reductions
     using is_nan_y = np.isnan(y_1d);       // [n] bool
-    using y_safe = np.where(is_nan_y, np.zerosLike(y_1d), y_1d);  // [n]
+    using _zeros_y = np.zerosLike(y_1d);   // [n]
+    using y_safe = np.where(is_nan_y, _zeros_y, y_1d);  // [n]
 
     // Residuals: naturally Nan at missing positions (y_1d has NaN there)
     const resid0 = np.subtract(y_1d, yhat);    // [n]: NaN at missing obs
@@ -1439,9 +1462,10 @@ const dlmSmo = async (
       np.sum(np.multiply(mask_flat, np.square(resid2_raw))), nobs);
     // Sign-preserving guard: tiny epsilon prevents NaN when y contains exact
     // zeros, but preserves sign (negative y → negative MAPE, matching MATLAB).
+    using _eps_mape = np.array(1e-30, { dtype });                                  // scalar
     const mape = np.divide(
       np.sum(np.multiply(mask_flat,
-        np.divide(np.abs(resid2_raw), np.add(y_safe, np.array(1e-30, { dtype }))))),
+        np.divide(np.abs(resid2_raw), np.add(y_safe, _eps_mape)))),
       nobs
     );
 

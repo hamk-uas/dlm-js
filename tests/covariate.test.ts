@@ -19,7 +19,7 @@
 import { defaultDevice } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { dlmFit } from '../src/index';
-import { withLeakCheck } from './utils';
+
 
 // ─── Deterministic PRNG ──────────────────────────────────────────────────────
 function mulberry32(seed: number): () => number {
@@ -82,9 +82,7 @@ describe('covariate regression (X parameter)', () => {
   afterAll(() => { defaultDevice('cpu'); });
 
   it('β states converge to true values (Float64)', async () => {
-    const fit = await withLeakCheck(() =>
-      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X })
-    );
+    const fit = await dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X });
 
     // order=0 → local-level only, m_base=1; β₁=smoothed[1], β₂=smoothed[2]
     const m_base = 1;
@@ -105,9 +103,7 @@ describe('covariate regression (X parameter)', () => {
   }, 30000);
 
   it('XX field stores covariate rows verbatim', async () => {
-    const fit = await withLeakCheck(() =>
-      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X })
-    );
+    const fit = await dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X });
     expect(Array.isArray(fit.covariates)).toBe(true);
     expect((fit.covariates as number[][]).length).toBe(N);
     // Check a few rows
@@ -119,18 +115,14 @@ describe('covariate regression (X parameter)', () => {
   }, 30000);
 
   it('no covariates: covariates is empty, state size unchanged', async () => {
-    const fit = await withLeakCheck(() =>
-      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0 })
-    );
+    const fit = await dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0 });
     expect(fit.covariates).toEqual([]);
     // m_base = 1 for order=0 (local level)
     expect(fit.m).toBe(1);
   }, 30000);
 
   it('β recovery works with Float32 (within looser tolerance)', async () => {
-    const fit = await withLeakCheck(() =>
-      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f32', order: 0, X })
-    );
+    const fit = await dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f32', order: 0, X });
     const m_base = 1;
     const beta1_est = fit.smoothed.get(N - 1, m_base);
     const beta2_est = fit.smoothed.get(N - 1, m_base + 1);
@@ -143,9 +135,7 @@ describe('covariate regression (X parameter)', () => {
 
   it('single covariate (q=1) works', async () => {
     const X1 = X.map(row => [row[0]]);  // only first column
-    const fit = await withLeakCheck(() =>
-      dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X: X1 })
-    );
+    const fit = await dlmFit(y, { obsStd: S_OBS, processStd: [W_LEVEL], dtype: 'f64', order: 0, X: X1 });
     expect(fit.m).toBe(2);  // m_base=1 (order=0) + q=1
     const beta1_est = fit.smoothed.get(N - 1, 1);
     // β₁ should be close to TRUE_BETA[0], though now X₂ is omitted (signal contamination)

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import { dlmFit, toMatlab } from '../src/index';
-import { filterKeys, deepAlmostEqual, withLeakCheck } from './utils';
+import { filterKeys, deepAlmostEqual } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -30,9 +30,7 @@ const runTest = async (config: TestConfig) => {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const result = await withLeakCheck(() =>
-    dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config) })
-  );
+  const result = await dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config) });
 
   const matlab = toMatlab(result);
   const outputFileName = path.join(outputDir, `niledemo-out-${config.label.replace('/', '-')}.json`);

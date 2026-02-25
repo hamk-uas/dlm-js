@@ -15,7 +15,7 @@
  */
 import { describe, it } from 'vitest';
 import { dlmFit, dlmGenSys, toMatlab } from '../src/index';
-import { deepAlmostEqual, filterKeys, normalizeMatlabOutput, normalizeNulls, withLeakCheck } from './utils';
+import { deepAlmostEqual, filterKeys, normalizeMatlabOutput, normalizeNulls } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, getModelTolerances, assertAllFinite } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
@@ -131,9 +131,7 @@ describe('sqrt-assoc dlmFit vs Octave', async () => {
 
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
-          const result = await withLeakCheck(() =>
-            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'sqrt-assoc' })
-          );
+          const result = await dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'sqrt-assoc' });
 
           const matlab = toMatlab(result);
 
@@ -202,9 +200,7 @@ describe('sqrt-assoc niledemo vs Octave', async () => {
     it(`should match reference — sqrt-assoc (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'sqrt-assoc' })
-      );
+      const result = await dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'sqrt-assoc' });
 
       const matlab = toMatlab(result);
 
@@ -275,12 +271,10 @@ describe('sqrt-assoc gapped data vs Octave', async () => {
     it(`order=1 (m=2) should match Octave — sqrt-assoc (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(
+      const result = await dlmFit(
           Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
-        )
-      );
+        );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refA, 2);
@@ -306,12 +300,10 @@ describe('sqrt-assoc gapped data vs Octave', async () => {
     it(`order=0 (m=1) should match Octave — sqrt-assoc (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(
+      const result = await dlmFit(
           Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
-        )
-      );
+        );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refB, 1);
@@ -365,9 +357,7 @@ describe('sqrt-assoc wasm/f32 dlmFit (smoke: all outputs finite)', async () => {
           const input = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
-          const result = await withLeakCheck(() =>
-            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'sqrt-assoc' })
-          );
+          const result = await dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'sqrt-assoc' });
 
           const matlab = toMatlab(result);
 
@@ -400,9 +390,7 @@ describe('sqrt-assoc wasm/f32 niledemo (smoke: all outputs finite)', async () =>
     it(`all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'sqrt-assoc' })
-      );
+      const result = await dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'sqrt-assoc' });
 
       const matlab = toMatlab(result);
       assertAllFinite(matlab);
@@ -430,12 +418,10 @@ describe('sqrt-assoc wasm/f32 gapped data (smoke: all outputs finite)', async ()
   for (const config of f32Configs) {
     it(`order=1 (m=2) all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
       applyConfig(config);
-      const result = await withLeakCheck(() =>
-        dlmFit(
+      const result = await dlmFit(
           Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
-        )
-      );
+        );
       // Check only fields that are finite at missing timesteps (resid0/resid are NaN at NaN obs — expected)
       const matlab = toMatlab(result);
       assertAllFinite({ yhat: matlab.yhat, ystd: matlab.ystd, x: matlab.x, xstd: matlab.xstd, nobs: matlab.nobs });
@@ -443,12 +429,10 @@ describe('sqrt-assoc wasm/f32 gapped data (smoke: all outputs finite)', async ()
 
     it(`order=0 (m=1) all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
       applyConfig(config);
-      const result = await withLeakCheck(() =>
-        dlmFit(
+      const result = await dlmFit(
           Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
-        )
-      );
+        );
       const matlab = toMatlab(result);
       assertAllFinite({ yhat: matlab.yhat, ystd: matlab.ystd, x: matlab.x, xstd: matlab.xstd, nobs: matlab.nobs });
     });

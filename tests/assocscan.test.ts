@@ -11,7 +11,7 @@
  */
 import { describe, it } from 'vitest';
 import { dlmFit, dlmGenSys, toMatlab } from '../src/index';
-import { deepAlmostEqual, filterKeys, normalizeMatlabOutput, normalizeNulls, withLeakCheck } from './utils';
+import { deepAlmostEqual, filterKeys, normalizeMatlabOutput, normalizeNulls } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, getModelTolerances, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmOptions } from '../src/dlmgensys';
 import * as fs from 'fs';
@@ -121,9 +121,7 @@ describe('assoc dlmFit vs Octave', async () => {
 
           const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
 
-          const result = await withLeakCheck(() =>
-            dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'assoc' })
-          );
+          const result = await dlmFit(input.y, { obsStd: input.s, processStd: w, dtype: getDlmDtype(config), ...mc.options, algorithm: 'assoc' });
 
           const matlab = toMatlab(result);
 
@@ -191,9 +189,7 @@ describe('assoc niledemo vs Octave', async () => {
     it(`should match reference — assocScan (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'assoc' })
-      );
+      const result = await dlmFit(nileInput.y, { obsStd: nileInput.s, processStd: nileInput.w, dtype: getDlmDtype(config), algorithm: 'assoc' });
 
       const matlab = toMatlab(result);
 
@@ -263,12 +259,10 @@ describe('assoc gapped data vs Octave', async () => {
     it(`order=1 (m=2) should match Octave — assocScan (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(
+      const result = await dlmFit(
           Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'assoc' },
-        )
-      );
+        );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refA, 2);
@@ -294,12 +288,10 @@ describe('assoc gapped data vs Octave', async () => {
     it(`order=0 (m=1) should match Octave — assocScan (${config.label})`, async () => {
       applyConfig(config);
 
-      const result = await withLeakCheck(() =>
-        dlmFit(
+      const result = await dlmFit(
           Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
           { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'assoc' },
-        )
-      );
+        );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refB, 1);

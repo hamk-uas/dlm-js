@@ -245,20 +245,18 @@ const makeKalmanLoss = (
       using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
       using sVal = np.dot(expTheta, mask_s);
       using V2 = np.reshape(np.square(sVal), [1, 1]);
-      V2_arr = np.multiply(
-        np.ones([n, 1, 1], { dtype }),
-        np.reshape(V2, [1, 1, 1]),
-      );
+      using _V2_ones = np.ones([n, 1, 1], { dtype });
+      using _V2_1 = np.reshape(V2, [1, 1, 1]);
+      V2_arr = np.multiply(_V2_ones, _V2_1);
     }
 
     // W = diag(w²) from theta[0..m-1] (fixS) or theta[1..m] (estimating s)
     using W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
 
     // Broadcast W to [n, ...] for scan
-    using W_arr = np.multiply(
-      np.ones([n, 1, 1], { dtype }),
-      np.reshape(W, [1, m, m]),
-    );
+    using _W_ones = np.ones([n, 1, 1], { dtype });
+    using _W_1mm = np.reshape(W, [1, m, m]);
+    using W_arr = np.multiply(_W_ones, _W_1mm);
 
     // Build mask for scan: use provided mask or create all-ones (no NaN masking)
     const mask_for_scan = mask_arr ?? np.ones([n, 1, 1], { dtype });

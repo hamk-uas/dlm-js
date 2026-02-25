@@ -14,7 +14,7 @@
  */
 import { describe, it } from 'vitest';
 import { dlmFit, toMatlab } from '../src/index';
-import { deepAlmostEqual, withLeakCheck } from './utils';
+import { deepAlmostEqual } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -45,18 +45,16 @@ const runTest = async (config: TestConfig) => {
   const outDir = path.join(__dirname, 'out');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const result = await withLeakCheck(() =>
-    dlmFit(
-      inp.yy,                        // scaled observations (NaN-filled)
-      {
-        obsStd: inp.ss,              // per-observation sigma array (scaled)
-        processStd: inp.w,           // [0, wtrend, wseas, wseas, wseas, wseas]
-        dtype: getDlmDtype(config),
-        order: 1,
-        harmonics: 2,
-        X: X_rows,                   // n×3 covariate rows [solar, qbo1, qbo2]
-      },
-    )
+  const result = await dlmFit(
+    inp.yy,                        // scaled observations (NaN-filled)
+    {
+      obsStd: inp.ss,              // per-observation sigma array (scaled)
+      processStd: inp.w,           // [0, wtrend, wseas, wseas, wseas, wseas]
+      dtype: getDlmDtype(config),
+      order: 1,
+      harmonics: 2,
+      X: X_rows,                   // n×3 covariate rows [solar, qbo1, qbo2]
+    },
   );
 
   const matlab = toMatlab(result);

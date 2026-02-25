@@ -16,7 +16,7 @@ import { DType } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
 import { dlmFit, dlmGenSys } from '../src/index';
 import { getTestConfigs, applyConfig, getDlmDtype, assertAllFinite } from './test-matrix';
-import { withLeakCheck } from './utils';
+
 import type { DlmOptions } from '../src/dlmgensys';
 
 // ─── Deterministic PRNG (Mulberry32 + Box-Muller) ───────────────────────────
@@ -248,9 +248,7 @@ describe('synthetic ground-truth tests', async () => {
             sys.G, sys.F, sc.s, sc.w, sc.n, sc.seed,
           );
 
-          const result = await withLeakCheck(() =>
-            dlmFit(data.y, { obsStd: sc.s, processStd: sc.w, dtype: getDlmDtype(config), ...sc.options })
-          );
+          const result = await dlmFit(data.y, { obsStd: sc.s, processStd: sc.w, dtype: getDlmDtype(config), ...sc.options });
 
           // 1. All outputs finite
           assertAllFinite(result);

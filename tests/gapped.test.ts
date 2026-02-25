@@ -19,7 +19,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { dlmFit, toMatlab } from '../src/index';
-import { filterKeys, deepAlmostEqual, normalizeNulls, normalizeMatlabOutput, withLeakCheck } from './utils';
+import { filterKeys, deepAlmostEqual, normalizeNulls, normalizeMatlabOutput } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, type TestConfig } from './test-matrix';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -58,16 +58,14 @@ const runTest = async (
 
   const wArr = typeof w === 'number' ? [w] : w;
 
-  const result = await withLeakCheck(() =>
-    dlmFit(
-      Float64Array.from(y.map(v => (v === null ? NaN : v))),
-      {
-        obsStd: s,
-        processStd: wArr as number[],
-        dtype: getDlmDtype(config),
-        ...(options as any),
-      },
-    )
+  const result = await dlmFit(
+    Float64Array.from(y.map(v => (v === null ? NaN : v))),
+    {
+      obsStd: s,
+      processStd: wArr as number[],
+      dtype: getDlmDtype(config),
+      ...(options as any),
+    },
   );
 
   const matlab = toMatlab(result);
