@@ -116,6 +116,11 @@ test leaks 11–29 `userLeaked` arrays — all upstream-caused. We work around t
 with a per-test leak budget (`globalThis.__jaxUserLeakBudget = 30`), but this
 masks potential real user-code leaks.
 
+**Update (6e6d4fe):** After migrating from `np.dot(vec, one_hot_mask)` to
+`lax.dynamicIndexInDim` (which uses `Shrink` primitive internally), leaks
+increase to 33 per test — the reshaped traced graph captures 3 more constants
+in nested sub-jaxprs. Budget NOT bumped — waiting for upstream fix.
+
 Leak categories:
 1. **Closure-captured constants** (G, F, Ft, x0, C0, y_arr) — properly `using`'d
    at outer scope, but `.ref()`'d into nested scan sub-jaxpr `consts` that
