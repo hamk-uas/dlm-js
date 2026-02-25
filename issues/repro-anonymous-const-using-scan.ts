@@ -1,20 +1,19 @@
 /**
- * Repro: `using` + `markAnonymousIfTracing()` inside `jit(valueAndGrad(...))`
+ * Repro: `using` + anonymous consts in triple-nested jit → scan → valueAndGrad
  *
- * After 41b0bda, the jit→scan nesting level is fixed (Case 1-3 all pass).
- * But jit(valueAndGrad(lossFn)) with np.ones/np.zeros + using inside lossFn
- * still crashes — the valueAndGrad creates an additional abstract trace
- * nesting level that the inMakeJaxprBody() guard doesn't cover.
+ * After 41b0bda + 99ca222, Cases 1-4b (2-level nesting) all pass.
+ * But 3-level nesting (jit → lax.scan → valueAndGrad) still crashes.
+ * This is the exact architecture of dlm-js's Adam optimizer in dlmMLE.
  *
  * Expected: All cases OK.
- * Actual:   Case 4 (jit(valueAndGrad)) FAILED on a9db43d.
+ * Actual on 99ca222: Cases 1-4b OK, Case 5 FAILED.
  *
- * Affected version: a9db43d  (partially fixed from 2303627 by 41b0bda)
- * Last known good:  6e6d4fe
+ * Affected version: 99ca222
+ * Last known good:  6e6d4fe (no anonymous-const-related crashes)
  *
  * Run:  npx tsx issues/repro-anonymous-const-using-scan.ts
  */
-import { numpy as np, jit, lax, DType, valueAndGrad } from '@hamk-uas/jax-js-nonconsuming';
+import { numpy as np, jit, lax, DType, valueAndGrad, tree } from '@hamk-uas/jax-js-nonconsuming';
 
 async function main() {
   // ─── Case 1: using + np.eye inside scan body within jit → CRASHES ───
@@ -126,13 +125,69 @@ async function main() {
 
   theta.dispose();
 
+  // ─── Case 5: jit → lax.scan → valueAndGrad (triple nesting, Adam optimBlock pattern) ───
+  // This is the REAL bug: dlmMLE's Adam path uses:
+  //   jit((theta, optState, lastLik) => {
+  //     lax.scan(innerStep, {theta, optState, lastLik}, null, {length: 10})
+  //   })
+  // where innerStep calls valueAndGrad(lossFn)(carry.theta).
+  // lossFn creates np.ones([n,1,1]) with `using` → disposed during scan body tracing.
+
+  const lossFn5 = (theta5: any) => {
+    using s5 = np.exp(theta5);
+    using V2_5 = np.reshape(np.square(s5), [1, 1]);
+    using _ones5 = np.ones([5, 1, 1], { dtype: DType.Float64 });  // ← the crash site
+    using V2_arr5 = np.multiply(_ones5, V2_5);
+
+    const step5 = (carry5: any, inp5: any) => {
+      using pred5 = np.matmul(np.eye(1, undefined, { dtype: DType.Float64 }), carry5);
+      using diff5 = np.subtract(inp5, pred5);
+      using lik5 = np.divide(np.square(diff5), V2_arr5);
+      return [carry5, np.squeeze(lik5)];
+    };
+    const [c5, liks5] = lax.scan(step5, np.zeros([1, 1], { dtype: DType.Float64 }), V2_arr5);
+    c5.dispose();
+    return np.sum(liks5);
+  };
+
+  const theta5 = np.array([0.5], { dtype: DType.Float64 });
+
+  try {
+    type OptCarry = { theta: np.Array; lastLik: np.Array };
+
+    const innerStep5 = (carry: OptCarry, _x: null): [OptCarry, null] => {
+      const [likVal, _grad] = valueAndGrad(lossFn5)(carry.theta) as [np.Array, np.Array];
+      _grad.dispose();
+      return [{ theta: carry.theta, lastLik: likVal }, null];
+    };
+
+    const lastLik5 = np.array(Infinity, { dtype: DType.Float64 });
+
+    const optimBlock = jit((t: np.Array, lik: np.Array) => {
+      const [finalCarry, _ys] = lax.scan(
+        innerStep5,
+        { theta: t, lastLik: lik } as OptCarry,
+        null,
+        { length: 2 },
+      );
+      return finalCarry;
+    });
+
+    const result = await optimBlock(theta5, lastLik5) as OptCarry;
+    console.log('Case 5 (jit→scan→valueAndGrad, triple nesting) OK — lik:', result.lastLik.js());
+    tree.dispose(result);
+    lastLik5.dispose();
+  } catch (err: any) {
+    console.error('Case 5 (jit→scan→valueAndGrad, triple nesting) FAILED:', err.message);
+  }
+
+  theta5.dispose();
+
   // Summary
-  console.log('\nExpected: All cases OK');
-  console.log('Actual on a9db43d: Cases 1-3 OK (fixed by 41b0bda),');
-  console.log('  Case 4a OK, Case 4b FAILED');
-  console.log('\nThe remaining bug: jit(valueAndGrad(lossFn)) adds an extra');
-  console.log('abstract trace nesting level. np.ones() inside lossFn gets');
-  console.log('disposed during the valueAndGrad trace before the outer jit');
-  console.log('can capture it.');
+  console.log('\nExpected: All cases OK (including Case 5)');
+  console.log('Actual on 99ca222: Cases 1-4b OK (fixed by 41b0bda + 99ca222),');
+  console.log('  Case 5 FAILED (triple nesting: jit → scan → valueAndGrad)');
+  console.log('\nThis is the architecture of dlmMLE Adam optimizer.');
+  console.log('21 of 200 dlm-js tests fail because of this pattern.');
 }
 main();
