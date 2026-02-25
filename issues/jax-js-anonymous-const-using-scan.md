@@ -1,21 +1,27 @@
-# `using` + `markAnonymousIfTracing()` inside scan body crashes JIT
+# `using` + `markAnonymousIfTracing()` inside `jit(valueAndGrad(...))` body crashes JIT
 
 - **Status**: 🔴 Open
-- **Affected version**: `2303627` (specifically commits `2af40bc` + `ec9acec`)
+- **Affected version**: `a9db43d` (partially fixed from `2303627` by `41b0bda`)
 - **Last known good**: `6e6d4fe`
-- **Impact on dlm-js**: 132 of 200 tests fail — complete regression
+- **Impact on dlm-js**: 21 of 200 tests fail (all `mle.test.ts`)
 
 ## Summary
 
-After the anonymous const marking changes (`2af40bc`: mark anonymous consts at creation time; `ec9acec`: always ref anonymous consts for eye/arange/linspace), arrays created by `np.eye()`, `np.zeros()`, `np.arange()`, `np.linspace()` inside `lax.scan` bodies within `jit()` are disposed during tracing when declared with `using`, leaving the JIT with dangling constant references.
+Commit `41b0bda` fixed the `jit → scan` nesting level (our original repro passes), but the fix does not cover `jit(valueAndGrad(lossFn))` where `lossFn` uses `np.ones`/`np.zeros`/`np.eye` with `using` declarations. The `valueAndGrad` creates an additional abstract trace nesting level that the `inMakeJaxprBody()` guard doesn't cover.
+
+### What's fixed (41b0bda)
+
+- `jit → scan` body → `using` + `np.eye`/`np.ones`/`np.zeros` ✅ works
+- `valueAndGrad(lossFn)` without `jit` ✅ works
+- Nested jaxpr disposal (`repro-nested-jaxpr-disposal.ts`) ✅ zero leaks
+
+### What still crashes
+
+- `jit(valueAndGrad(lossFn))` where `lossFn` contains `using _V2_ones = np.ones(...)` ❌
 
 ## Root cause hypothesis
 
-`markAnonymousIfTracing()` on `np.eye()` (and other array-creation functions) changes the ownership semantics of the array. Inside a nested abstract trace (lax.scan body within jit), `[Symbol.dispose]()` was previously a no-op. With the new anonymous const system, the array is marked as owned by the outer JIT builder. The `using` keyword's `[Symbol.dispose]()` then actually disposes the array during tracing (because it's now "anonymous" and disposal is allowed), but the JIT retains a reference to it as a `ClosedJaxpr` constant. When the JIT executes, `_realizeSource` finds the disposed constant and throws:
-
-```
-ReferenceError: Referenced tracer Array:float64[2,2] has been disposed
-```
+`41b0bda` guards `[Symbol.dispose]()` to skip if `inMakeJaxprBody() && anonymousConstArrays.has(this)`. But `jit(valueAndGrad(...))` creates a deeper nesting: jit trace → valueAndGrad trace → scan trace. The anonymous const created by `np.ones()` inside the loss function body gets disposed during the `valueAndGrad` trace before the outer `jit` trace can capture it.
 
 ## Reproduction
 
@@ -23,50 +29,51 @@ ReferenceError: Referenced tracer Array:float64[2,2] has been disposed
 npx tsx issues/repro-anonymous-const-using-scan.ts
 ```
 
-Inline minimal repro:
+Standalone minimal repro (the `jit(valueAndGrad(...))` path):
 
 ```typescript
-import { numpy as np, jit, lax, DType } from '@hamk-uas/jax-js-nonconsuming';
+import { numpy as np, jit, lax, DType, valueAndGrad } from '@hamk-uas/jax-js-nonconsuming';
 
-const fn = (x) => {
-  const step = (carry, inp) => {
-    using e = np.eye(2, undefined, { dtype: DType.Float64 });  // ← crashes
-    // const e = np.eye(2, undefined, { dtype: DType.Float64 });  // ← works
-    const newCarry = np.add(np.matmul(e, carry), inp);
-    return [newCarry, newCarry];
+const lossFn = (theta: any) => {
+  using s = np.exp(theta);
+  using V2 = np.reshape(np.square(s), [1, 1]);
+  using _V2_ones = np.ones([5, 1, 1], { dtype: DType.Float64 }); // ← crashes
+  using V2_arr = np.multiply(_V2_ones, V2);
+
+  const step = (carry: any, inp: any) => {
+    using pred = np.matmul(np.eye(1, undefined, { dtype: DType.Float64 }), carry);
+    using diff = np.subtract(inp, pred);
+    using lik = np.divide(np.square(diff), V2_arr);
+    return [carry, np.squeeze(lik)];
   };
-  const [finalCarry, allSteps] = lax.scan(step, np.zeros([2, 1], { dtype: DType.Float64 }), x);
-  finalCarry.dispose();
-  return allSteps;
+  const [_, liks] = lax.scan(step, np.zeros([1, 1], { dtype: DType.Float64 }), V2_arr);
+  _.dispose();
+  return np.sum(liks);
 };
 
-const result = await jit(fn)(np.ones([5, 2, 1], { dtype: DType.Float64 }));
-// Throws: "Referenced tracer Array:float64[2,2] has been disposed"
-```
+const theta = np.array([0.5], { dtype: DType.Float64 });
 
-Key observation: the same pattern works fine in `jit` WITHOUT `lax.scan` nesting, and works fine in `lax.scan` without `using`. The regression is specifically `jit` → `lax.scan` body → `using` + anonymous-const-marked creation function.
+// valueAndGrad alone: OK
+const [val1, grad1] = valueAndGrad(lossFn)(theta);  // ✅ works
+
+// jit(valueAndGrad): CRASHES
+const [val2, grad2] = await jit(valueAndGrad(lossFn))(theta);
+// Throws: "Referenced tracer Array:float64[1,1] has been disposed"
+```
 
 ## Impact on dlm-js
 
-- **132 of 200 tests fail** — `dlmSmo` uses `jit(core)` where `core` contains `lax.scan(forwardStep, ...)` and `lax.scan(backwardStep, ...)`. Both step functions use `using` declarations for arrays created by `np.eye()`, `np.zeros()`, `np.array(...)`, `np.full(...)`, etc.
-- All 9 of 11 test files that call `dlmFit`/`dlmSmo` are affected.
-- The `using` pattern inside scan bodies is extensively used per the library's memory management conventions (ESLint rule `jax-js/require-using` enforces it).
+- **21 of 200 tests fail** — all in `mle.test.ts`. `dlmMLE` uses `jit(valueAndGrad(lossFn))` where `lossFn` creates arrays with `np.ones([n,1,1])`, `np.eye(m)`, `np.zeros([1,1,1])` declared with `using`.
+- 179 tests pass (all non-MLE tests) — the `jit → scan` fix in `41b0bda` resolved the `dlmSmo`/`dlmFit` crashes.
 
 ### Workaround locations
 
-The workaround would be removing `using` from all array creation inside scan bodies, but this would:
-1. Violate the project's own ESLint rules
-2. Reintroduce the exact leaks that `using` was designed to prevent
-3. Contradict the documented behavior: "`using` IS correct inside grad/jit/scan traced bodies"
-
-**No workaround applied** — waiting for upstream fix.
+No workaround applied — waiting for upstream fix.
 
 ## Suggested fix
 
-Restore the `[Symbol.dispose]()` no-op behavior for arrays created inside nested abstract traces (lax.scan/associativeScan body within jit). The `markAnonymousIfTracing()` call should not change disposal semantics during tracing — it should only affect ownership tracking for `ClosedJaxpr.dispose()` after tracing completes.
-
-Specifically: in `[Symbol.dispose]()`, if the array is inside a `makeJaxprBody` context (scan body tracing), disposal should remain a no-op regardless of anonymous marking.
+The `inMakeJaxprBody()` guard in `[Symbol.dispose]()` needs to account for the full nesting depth. When `jit(valueAndGrad(...))` traces, there are multiple makeJaxprBody levels on the stack. The anonymous const disposal guard should apply at ALL nesting depths, not just the immediate `makeJaxprBody` context.
 
 ## Related
 
-- `jax-js-jit-nested-jaxpr-disposal.md` — the original issue that motivated the anonymous const fix. The nested jaxpr disposal fix (`2af40bc`) is the correct direction, but the implementation broke `using` inside scan bodies.
+- `jax-js-jit-nested-jaxpr-disposal.md` — the original issue. Now RESOLVED for `jit → scan` nesting (zero leaks in repro). This issue tracks the remaining `jit(valueAndGrad(...))` regression.
