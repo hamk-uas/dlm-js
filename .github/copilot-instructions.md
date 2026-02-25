@@ -15,7 +15,8 @@ Agentic Evolution Protocol (AEP) 🧬
   1. **Write a structured issue file** in `issues/jax-js-<topic>.md`. Include: Status line (🔴 Open), Summary, Affected version (commit hash), Root cause hypothesis, Reproduction (inline code + standalone repro script in `issues/repro-*.ts`), Impact on dlm-js, Suggested fix (concrete, actionable). The file should be self-contained enough for the upstream agent to act on without further context.
   2. **Feature requests** (missing primitives, broadcasting, etc.) go in `issues/jax-js-missing-jax-primitives.md` — append sections rather than creating separate files. Include: current workaround code, what JAX/NumPy provides, impact (number of affected sites in `src/`).
   3. **Track workaround locations** in the issue file — list specific files and line counts where the workaround pattern appears, so the upstream agent knows the blast radius and the consumer-mode hunt (below) can find them quickly.
-  4. **Inform the user** that new issues are ready for relay to the upstream repo. The user passes them on; the agent does not push to upstream directly.
+  4. **Commit issue files to git immediately** after writing: `git add issues/ && git commit -m "issues: file <topic>"`. Issue files are dlm-js assets — they must be recoverable from git history regardless of future deletions.
+  5. **Inform the user** that new issues are ready for relay to the upstream repo. The user passes them on; the agent does not push to upstream directly.
 
 - **Consumer mode (the upgrade & integration loop):** When the user reports a new upstream push to `@hamk-uas/jax-js-nonconsuming`:
   1. **Fetch the upstream commit list** and read commit messages. Cross-reference each commit against open `issues/` files — commit messages often cite our issue file names directly.
