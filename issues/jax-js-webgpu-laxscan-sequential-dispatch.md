@@ -133,12 +133,17 @@ scan problem at all.
 - **Option 1** is the current recommendation: use WASM (`defaultDevice('wasm')`).
   ~22 ms flat for N=100–102400.  WebGPU is slower for all practical dlm-js
   state sizes (m ≤ 8) because dispatch latency dominates GPU compute benefit.
-- **Option 2** is deferred pending need; the mathematical reformulation is
-  non-trivial and moot while WASM meets performance requirements.
+- **Option 2** was implemented: `algorithm: 'assoc'` now uses
+  `lax.associativeScan(composeBackward, ..., { reverse: true })` for the
+  backward smoother, achieving O(log N) dispatches on WebGPU for both the
+  forward filter and backward smoother.  The `scan` algorithm path still uses
+  sequential `lax.scan(backwardStep, ...)` — O(N) on WebGPU.
+- **Note**: the new upstream fused Kogge-Stone `associativeScan` (commit `2b61935`)
+  is currently broken — see `jax-js-webgpu-assoc-numerical-instability.md`.
+  Lockfile pinned at `297f93a` until the regression is fixed.
 
 ## References
 
 - Repro script: [`issues/repro-associativescan-dispatch.ts`](repro-associativescan-dispatch.ts)
-- Related upstream fix (assocScan correctness): [`issues/jax-js-webgpu-jit-einsum.md`](jax-js-webgpu-jit-einsum.md)
 - Scaling benchmark: `pnpm run bench:scaling` → `assets/timings/bench-scaling.json`
-- dlm-js backward smoother: `src/index.ts` `backwardStep` function
+- dlm-js backward smoother: `src/index.ts` — `backwardStep` (scan) / `composeBackward` (assoc)
