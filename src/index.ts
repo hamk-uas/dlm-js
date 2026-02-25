@@ -156,9 +156,13 @@ const dlmSmo = async (
   // With covariates: caller provides FF_arr [n, 1, m_ext] directly.
   // Both cases use the same step functions — no branching inside scan.
   // ─────────────────────────────────────────────────────────────────────────
-  const FF_scan: np.Array = FF_arr !== undefined
-    ? FF_arr
-    : np.tile(np.reshape(F, [1, 1, stateSize]), [n, 1, 1]);
+  let FF_scan: np.Array;
+  if (FF_arr !== undefined) {
+    FF_scan = FF_arr;
+  } else {
+    using F_3d = np.reshape(F, [1, 1, stateSize]);
+    FF_scan = np.tile(F_3d, [n, 1, 1]);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Step functions receive FF_t ([1, m]), G_t ([m, m]), and W_t ([m, m])
@@ -1609,8 +1613,14 @@ export const dlmFit = async (
     W_scan = np.array(W_tv_data, { dtype });
   } else {
     // Uniform timesteps: tile constant G/W to [n, m, m]
-    G_scan = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
-    W_scan = np.tile(np.reshape(W, [1, m, m]), [n, 1, 1]);
+    {
+      using G_3d = np.reshape(G, [1, m, m]);
+      G_scan = np.tile(G_3d, [n, 1, 1]);
+    }
+    {
+      using W_3d = np.reshape(W, [1, m, m]);
+      W_scan = np.tile(W_3d, [n, 1, 1]);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
