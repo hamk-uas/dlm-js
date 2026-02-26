@@ -137,9 +137,11 @@ const buildG = (
     const eiData = Array.from({ length: m }, (_, j) => j === arInds[i] ? [1] : [0]);
     const ejData = Array.from({ length: m }, (_, j) => [j === arCol ? 1 : 0]);
     using ei = np.array(eiData, { dtype });     // [m, 1]
-    using ejt = np.transpose(np.array(ejData, { dtype })); // [1, m]
+    using _ej = np.array(ejData, { dtype });
+    using ejt = np.transpose(_ej); // [1, m]
     using outer = np.matmul(ei, ejt);            // [m, m]
-    using scaled = np.multiply(np.reshape(phi_i, [1, 1]), outer);
+    using _phi_11 = np.reshape(phi_i, [1, 1]);
+    using scaled = np.multiply(_phi_11, outer);
     // jax-js-lint: allow-non-using
     const newContrib = np.add(arContrib, scaled);
     arContrib.dispose();
@@ -336,9 +338,11 @@ const makeKalmanLossAssoc = (
   return (theta: np.Array): np.Array => {
     // Hoist constants outside compose — vmap broadcasts [1,m,m] correctly (jax-js ≥65cb449)
     // Created per-call (once per optimizer iteration) instead of O(N log N) times in compose.
-    using I1 = np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]);
+    using _eye = np.eye(m, undefined, { dtype });
+    using I1 = np.reshape(_eye, [1, m, m]);
     using inv_eps = np.array(dtype === DType.Float32 ? 1e-6 : 1e-12, { dtype });
-    using regI = np.multiply(np.reshape(inv_eps, [1, 1, 1]), I1);
+    using _inv_eps_3d = np.reshape(inv_eps, [1, 1, 1]);
+    using regI = np.multiply(_inv_eps_3d, I1);
 
     const composeForward = (a: ForwardElem, b_elem: ForwardElem): ForwardElem => {
       using CiJj = np.einsum('nij,njk->nik', a.C, b_elem.J);
@@ -387,7 +391,8 @@ const makeKalmanLossAssoc = (
     if (!fixS) {
       using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
       using sVal = np.dot(expTheta, mask_s);
-      V2 = np.reshape(np.square(sVal), [1, 1]);
+      using _sVal2 = np.square(sVal);
+      V2 = np.reshape(_sVal2, [1, 1]);
     }
 
     // W = diag(w²) [m, m] — traced
@@ -399,22 +404,32 @@ const makeKalmanLossAssoc = (
     const ownsMask = mask_arr === undefined;
 
     // Per-step V2(t): fixed array or broadcast scalar
+    let V2_3d: np.Array | undefined;
+    if (!fixS) V2_3d = np.reshape(V2!, [1, 1, 1]);
     const V2_per_step = fixS
       ? fixedV2_arr!
-      : np.tile(np.reshape(V2!, [1, 1, 1]), [n, 1, 1]);
+      : np.tile(V2_3d!, [n, 1, 1]);
+    V2_3d?.dispose();
     const ownsV2ps = !fixS;
 
     using y_flat = np.squeeze(y_arr, [2]);                     // [n,1]
     // Boolean NaN mask for np.where blending (observed vs missing-step elements)
-    using is_nan_n = np.equal(mask_n, np.zeros([1, 1, 1], { dtype }));  // [n,1,1] bool
+    using _zeros_111 = np.zeros([1, 1, 1], { dtype });
+    using is_nan_n = np.equal(mask_n, _zeros_111);  // [n,1,1] bool
     using is_nan_mm = np.tile(is_nan_n, [1, m, m]);                     // [n,m,m] bool
 
-    using G_exp = np.tile(np.reshape(G, [1, m, m]), [n, 1, 1]);
-    using W_exp = np.tile(np.reshape(W, [1, m, m]), [n, 1, 1]);
-    using F_exp = np.tile(np.reshape(F, [1, 1, m]), [n, 1, 1]);
+    using _G_3d = np.reshape(G, [1, m, m]);
+    using G_exp = np.tile(_G_3d, [n, 1, 1]);
+    using _W_3d = np.reshape(W, [1, m, m]);
+    using W_exp = np.tile(_W_3d, [n, 1, 1]);
+    using _F_3d = np.reshape(F, [1, 1, m]);
+    using F_exp = np.tile(_F_3d, [n, 1, 1]);
     using Ft = np.transpose(F);
-    using Ft_exp = np.tile(np.reshape(Ft, [1, m, 1]), [n, 1, 1]);
-    using I_exp = np.tile(np.reshape(np.eye(m, undefined, { dtype }), [1, m, m]), [n, 1, 1]);
+    using _Ft_3d = np.reshape(Ft, [1, m, 1]);
+    using Ft_exp = np.tile(_Ft_3d, [n, 1, 1]);
+    using _eye_I = np.eye(m, undefined, { dtype });
+    using _eye_3d = np.reshape(_eye_I, [1, m, m]);
+    using I_exp = np.tile(_eye_3d, [n, 1, 1]);
 
     // Lemma 1 observed-step terms
     using FW = np.einsum('nij,njk->nik', F_exp, W_exp);        // [n,1,m]
@@ -423,7 +438,8 @@ const makeKalmanLossAssoc = (
 
     using WFt = np.einsum('nij,njk->nik', W_exp, Ft_exp);      // [n,m,1]
     using K_obs_raw = np.divide(WFt, S_obs);                   // [n,m,1]
-    using K_obs = np.where(is_nan_n, np.zerosLike(K_obs_raw), K_obs_raw); // [n,m,1]
+    using _K_zeros = np.zerosLike(K_obs_raw);
+    using K_obs = np.where(is_nan_n, _K_zeros, K_obs_raw); // [n,m,1]
 
     using KF = np.einsum('nij,njk->nik', K_obs, F_exp);        // [n,m,m]
     using ImKF = np.subtract(I_exp, KF);
@@ -439,18 +455,23 @@ const makeKalmanLossAssoc = (
     using FGt = np.einsum('nij->nji', FG);                     // [n,m,1]
     using eta_num = np.multiply(FGt, y_col);                   // [n,m,1]
     using eta_obs_raw = np.divide(eta_num, S_obs);             // [n,m,1]
-    using eta_obs = np.where(is_nan_n, np.zerosLike(eta_obs_raw), eta_obs_raw); // [n,m,1]
+    using _eta_zeros = np.zerosLike(eta_obs_raw);
+    using eta_obs = np.where(is_nan_n, _eta_zeros, eta_obs_raw); // [n,m,1]
 
     using J_num = np.einsum('nij,njk->nik', FGt, FG);          // [n,m,m]
     using J_obs_raw = np.divide(J_num, S_obs);                 // [n,m,m]
-    using J_obs = np.where(is_nan_mm, np.zerosLike(J_obs_raw), J_obs_raw); // [n,m,m]
+    using _J_zeros = np.zerosLike(J_obs_raw);
+    using J_obs = np.where(is_nan_mm, _J_zeros, J_obs_raw); // [n,m,m]
 
     // Missing-step blend: A=G when NaN, A_obs when observed; etc.
     using A_all = np.where(is_nan_mm, G_exp, A_obs);           // [n,m,m]
-    using b_all = np.where(is_nan_n, np.zerosLike(b_obs), b_obs); // [n,m,1]
+    using _b_zeros = np.zerosLike(b_obs);
+    using b_all = np.where(is_nan_n, _b_zeros, b_obs); // [n,m,1]
     using C_all = np.where(is_nan_mm, W_exp, C_obs);           // [n,m,m]
-    using eta_all = np.where(is_nan_n, np.zerosLike(eta_obs), eta_obs); // [n,m,1]
-    using J_all = np.where(is_nan_mm, np.zerosLike(J_obs), J_obs); // [n,m,m]
+    using _eta_all_zeros = np.zerosLike(eta_obs);
+    using eta_all = np.where(is_nan_n, _eta_all_zeros, eta_obs); // [n,m,1]
+    using _J_all_zeros = np.zerosLike(J_obs);
+    using J_all = np.where(is_nan_mm, _J_all_zeros, J_obs); // [n,m,m]
 
     // First element (k=1): exact initialization from prior
     const F_parts = np.split(F_exp, [1], 0);
@@ -471,7 +492,8 @@ const makeKalmanLossAssoc = (
     using C0_first = np.reshape(C0, [1, m, m]);
     using x0_first = np.reshape(x0, [1, m, 1]);
 
-    using S1 = np.add(np.einsum('nij,njk,nlk->nil', F1, C0_first, F1), V2_1);
+    using _F1C0F1t = np.einsum('nij,njk,nlk->nil', F1, C0_first, F1);
+    using S1 = np.add(_F1C0F1t, V2_1);
     using C0Ft1 = np.einsum('ij,nkj->nik', C0, F1);
     using K1_obs = np.divide(C0Ft1, S1);
     using K1 = np.multiply(mask1, K1_obs);
@@ -524,7 +546,8 @@ const makeKalmanLossAssoc = (
     // x_filt[t] = scanned.A[t] · x0 + scanned.b[t]  [n, m, 1]
     // Note: np.add creates NEW arrays — x_filt and C_filt are independent of
     // scanned.b / scanned.S, so tree.dispose(scanned) below is safe.
-    using Ax0 = np.matmul(scanned.A, np.reshape(x0, [m, 1]));    // [n,m,m]×[m,1] → [n,m,1] (batch broadcast)
+    using _x0_col = np.reshape(x0, [m, 1]);
+    using Ax0 = np.matmul(scanned.A, _x0_col);    // [n,m,m]×[m,1] → [n,m,1] (batch broadcast)
     using x_filt = np.add(Ax0, scanned.b);
 
     // C_filt[t] = scanned.A[t]·C0·scanned.A[t]' + scanned.S[t]  [n, m, m]
@@ -532,7 +555,8 @@ const makeKalmanLossAssoc = (
     using C_filt_raw = np.add(AC0At, scanned.C);
     using C_filt_t = np.einsum('nij->nji', C_filt_raw);
     using C_filt_sum = np.add(C_filt_raw, C_filt_t);
-    using C_filt = np.multiply(np.array(0.5, { dtype }), C_filt_sum);
+    using _half = np.array(0.5, { dtype });
+    using C_filt = np.multiply(_half, C_filt_sum);
 
     scanned.A.dispose();
     scanned.b.dispose();
@@ -568,7 +592,8 @@ const makeKalmanLossAssoc = (
     using x_pred = np.concatenate([x0_batch, x_pred_rest], 0);     // [n, m, 1]
 
     using GCGt = np.einsum('ij,njk,lk->nil', G, C_filt_head, G);   // [n-1, m, m]
-    using C_pred_rest = np.add(GCGt, np.reshape(W, [1, m, m]));    // broadcast [1,m,m] → [n-1,m,m]
+    using _W_3d_pred = np.reshape(W, [1, m, m]);
+    using C_pred_rest = np.add(GCGt, _W_3d_pred);    // broadcast [1,m,m] → [n-1,m,m]
     using C0_batch = np.reshape(C0, [1, m, m]);
     using C_pred = np.concatenate([C0_batch, C_pred_rest], 0);     // [n, m, m]
 

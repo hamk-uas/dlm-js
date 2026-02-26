@@ -183,13 +183,15 @@ export function dlmPrior(spec: DlmPriorSpec): DlmLossFn {
 
       using logW = np.log(processPart);
       using sc = np.array(shapeCoeffs);
-      using shapePenalty = np.sum(np.multiply(sc, logW));
+      using _scLogW = np.multiply(sc, logW);
+      using shapePenalty = np.sum(_scLogW);
 
       using w2 = np.square(processPart);
       using one_w = np.array(1);
       using invW2 = np.divide(one_w, w2);
       using rc = np.array(rateCoeffs);
-      using ratePenalty = np.sum(np.multiply(rc, invW2));
+      using _rcInvW2 = np.multiply(rc, invW2);
+      using ratePenalty = np.sum(_rcInvW2);
 
       using penalty = np.add(shapePenalty, ratePenalty);
       swapTotal(penalty);
@@ -208,7 +210,9 @@ export function dlmPrior(spec: DlmPriorSpec): DlmLossFn {
       using mu = np.array(means);
       using iv = np.array(invVar);
       using diff = np.subtract(arPart, mu);
-      using penalty = np.sum(np.multiply(iv, np.square(diff)));
+      using _diff2 = np.square(diff);
+      using _weighted = np.multiply(iv, _diff2);
+      using penalty = np.sum(_weighted);
       swapTotal(penalty);
     }
 
