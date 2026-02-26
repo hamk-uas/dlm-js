@@ -1,86 +1,101 @@
-# `using` + anonymous consts inside triple-nested `jit → lax.scan → valueAndGrad` crashes
+# `using` + anonymous consts inside `valueAndGrad(wrapper)` where wrapper calls scan-containing function
 
-- **Status**: 🔴 Open
-- **Affected version**: `99ca222` (partially fixed from `2303627` by `41b0bda`; `99ca222` evalJaxpr refactor did not help)
-- **Last known good**: `6e6d4fe`
-- **Impact on dlm-js**: 21 of 200 tests fail (all `mle.test.ts`)
+- **Status**: 🟡 Partially fixed — `e034f26` resolved core triple-nesting crash (14/21 MLE tests fixed), but wrapping a scan-containing function inside another function traced by `valueAndGrad` still leaks/crashes (7/21 tests)
+- **Affected version**: `e034f26` (PETracer #rc drain fix; previous: `99ca222`, `41b0bda`)
+- **Impact on dlm-js**: 7 of 200 tests fail (MAP/prior tests in `mle.test.ts`; was 21 on `99ca222`)
 
 ## Summary
 
-The anonymous const disposal fix in `41b0bda` covers 2-level nesting (`jit → valueAndGrad`), but NOT 3-level nesting (`jit → lax.scan → valueAndGrad`). The `99ca222` evalJaxpr non-consuming refactor did not change this.
+The `e034f26` fix (drain PETracer #rc in `partialEvalGraphToJaxpr` for multi-output scan equations) resolved the core triple-nesting crash. **14 of 21 MLE tests now pass** — the standard `dlmMLE` path (`jit → lax.scan → valueAndGrad(kalmanLoss)`) works correctly.
 
-### What's fixed (41b0bda / 99ca222)
+However, **7 MAP/prior tests still fail** due to a remaining leak vector: wrapping a function that contains `lax.scan` inside another function passed to `valueAndGrad`. This is the exact pattern dlm-js uses for MAP estimation.
 
-- `jit(valueAndGrad(lossFn))` where lossFn uses `np.ones` + `using` ✅ works (2 levels)
-- `jit → scan` body → `using` + `np.eye`/`np.ones`/`np.zeros` ✅ works
-- `valueAndGrad(lossFn)` without `jit` ✅ works
-- Nested jaxpr disposal ✅ zero leaks
+### What works after e034f26
 
-### What still crashes
+- `valueAndGrad(kalmanLoss)(theta)` where `kalmanLoss` internally calls `lax.scan` ✅
+- `jit(lax.scan(step))` where step calls `valueAndGrad(kalmanLoss)` ✅ (14 tests)
+- All non-MLE tests (179/179) ✅
 
-- `jit(fn)` where `fn` calls `lax.scan(innerStep, ...)` and `innerStep` calls `valueAndGrad(lossFn)` where `lossFn` contains `using _ones = np.ones(...)` ❌ (3 levels: jit → scan → valueAndGrad)
+### What still crashes/leaks
 
-This is the exact architecture of dlmMLE's Adam optimizer path:
-```
-jit((theta, optState, lastLik) => {
-  lax.scan(innerStep, {theta, optState, lastLik}, null, {length: 10});
-})
-// where innerStep = (carry) => {
-//   const [lik, grad] = valueAndGrad(lossFn)(carry.theta);  // lossFn has np.ones
-//   ...
-// }
-```
+- `valueAndGrad(wrapper)(theta)` where `wrapper = (theta) => kalmanLoss(theta)` ❌
+- Same crash with any custom wrapper, even the trivial identity `(theta) => kalmanLoss(theta)` ❌
+- Adam path (jit → scan → valueAndGrad(wrapper)): 8 leaked arrays + UseAfterFreeError
+- Natural gradient path (jit → valueAndGrad(wrapper)): 4 leaked arrays + UseAfterFreeError
 
-## Root cause hypothesis
+## Root cause
 
-`41b0bda` guards `[Symbol.dispose]()` to skip if `inMakeJaxprBody() && anonymousConstArrays.has(this)`. This works for 2-level nesting (`jit → valueAndGrad`). But in 3-level nesting (`jit → lax.scan → valueAndGrad`), the `lax.scan` body creates its own makeJaxprBody context. When valueAndGrad traces inside that scan body, anonymous consts created by `np.ones()` in the innermost lossFn get disposed during the scan body tracing, before the outer jit can capture them.
+When `valueAndGrad` traces `wrapper(theta)`, and `wrapper` calls `kalmanLoss(theta)` which internally uses `lax.scan`, the inner scan creates anonymous const PETracers. These tracers are created one level deeper in the call stack compared to when `kalmanLoss` is traced directly. The `e034f26` drain fix handles const tracers at the direct scan level but not when the scan is called through an intermediate wrapper function during partial evaluation.
+
+The key invariant: `valueAndGrad(f)` where `f` directly IS the scan-containing function → 0 leaks. But `valueAndGrad(g)` where `g` calls `f` → leaks. The only difference is one level of function call indirection.
 
 ## Reproduction
 
 ```bash
-npx tsx issues/repro-anonymous-const-using-scan.ts
+npx tsx issues/repro-wrapped-valueandgrad-scan.ts
 ```
 
-Standalone minimal repro — the triple-nesting pattern:
+Or run the failing tests directly:
+```bash
+pnpm vitest run tests/mle.test.ts -t "MAP"
+pnpm vitest run tests/mle.test.ts -t "dlmPrior"
+```
+
+### Expected output from repro
+
+```
+Case 1 (no loss):        userLeaked= 0
+Case 2 (identity+Adam):  CRASH: Referenced tracer Array:float64[1] has been disposed
+  leaked anyway: 8
+Case 3 (identity+natrl): CRASH: Referenced tracer Array:float64[1] has been disposed
+  leaked anyway: 4
+
+=== Summary ===
+  ✅ OK  No loss (direct kalmanLoss)
+  💥 CRASH  Identity loss (Adam)
+  💥 CRASH  Identity loss (natural)
+```
+
+### Minimal pattern
 
 ```typescript
-// The REAL crash pattern (Case 5 in repro):
-// jit → lax.scan(innerStep) → valueAndGrad(lossFn) → inner lax.scan
-// This is dlmMLE's Adam optimizer architecture.
+// This works — kalmanLoss is traced directly:
+const gradFn = jit(valueAndGrad(kalmanLoss));
+gradFn(theta); // ✅ 0 leaks
 
-const lossFn = (theta) => {
-  using _ones = np.ones([n, 1, 1], { dtype });  // ← disposed during scan body tracing
-  // ... lax.scan(step, ...) inside ...
-  return np.sum(liks);
-};
-
-const innerStep = (carry, _x) => {
-  const [lik, grad] = valueAndGrad(lossFn)(carry.theta);
-  // ...
-  return [newCarry, null];
-};
-
-const optimBlock = jit((theta, optState, lastLik) => {
-  const [finalCarry] = lax.scan(innerStep, carry, null, { length: 10 });
-  return finalCarry;
-});
-// Throws: "Referenced tracer Array:float64[n,1,1] has been disposed"
+// This crashes — kalmanLoss is called through a wrapper:
+const wrapper = (theta: np.Array): np.Array => kalmanLoss(theta);
+const gradFn2 = jit(valueAndGrad(wrapper));
+gradFn2(theta); // ❌ UseAfterFreeError + leaks
 ```
+
+Where `kalmanLoss` is built by `makeKalmanLoss` — it contains `lax.scan` with structured inputs, many `using` intermediates, and multi-field carry/output shapes (the full Kalman filter forward pass).
 
 ## Impact on dlm-js
 
-- **21 of 200 tests fail** — all in `mle.test.ts`. The Adam path uses `jit → lax.scan(innerStep, ..., {length: 10})` where `innerStep` calls `valueAndGrad(lossFn)` and `lossFn` creates arrays with `np.ones([n,1,1])`, `np.eye(m)`, `np.zeros([1,1,1])` declared with `using`.
-- The natural gradient path (`jit(valueAndGrad(lossFn))` — 2 levels) now works on 99ca222 but is exercised in same test suite and fails due to earlier Adam tests contaminating state.
-- 179 tests pass (all non-MLE tests).
+- **7 of 200 tests fail** — all MAP/prior tests in `mle.test.ts`:
+  - `MAP: adam returns priorPenalty` (crash + 8 leaks)
+  - `MAP: natural gradient returns priorPenalty` (crash + 4 leaks)
+  - `MAP: identity loss` (8 leaks)
+  - `dlmPrior: IG on obsVar` (8 leaks)
+  - `dlmPrior: IG on processVar` (8 leaks)
+  - `dlmPrior: IG on both` (8 leaks)
+  - `dlmPrior: IG with natural gradient` (4 leaks)
+- 193 tests pass (all non-MAP tests).
+- The MAP feature wraps `kalmanLoss` to add prior penalty terms. Even a trivial identity wrapper triggers the bug.
 
 ### Workaround locations
 
-No workaround applied — waiting for upstream fix.
+No workaround available — the wrapper is architecturally necessary for MAP/prior estimation.
+Affected code: `src/mle.ts` lines 862–880 (the `lossFn` closure).
 
 ## Suggested fix
 
-The `inMakeJaxprBody()` guard in `[Symbol.dispose]()` needs to account for the full nesting depth. When `jit → lax.scan → valueAndGrad` traces, there are 3+ makeJaxprBody levels on the stack. An anonymous const array created by `np.ones()` in the innermost lossFn body gets disposed during the scan body tracing. The guard should suppress disposal at ALL nesting depths, not just 1-2 levels deep.
+The `e034f26` drain logic in `partialEvalGraphToJaxpr` handles const PETracers for scan equations at the top level of the traced function. It needs to also handle const PETracers created by scan equations called through intermediate function closures. The closure call doesn't add a new tracing context — it's still the same `valueAndGrad` trace — but the scan's anonymous consts may be registered at a different depth in the equation list.
 
 ## Related
 
-- `jax-js-jit-nested-jaxpr-disposal.md` — RESOLVED in `41b0bda`+`a9db43d`: zero leaks in repro. This issue tracks the remaining triple-nesting regression.
+- `e034f26` — drain PETracer #rc in partialEvalGraphToJaxpr (PARTIAL FIX for this issue)
+- `41b0bda` — anonymous const disposal guard for 2-level nesting (RESOLVED: 2-level works)
+- `a9db43d` — nested jaxpr disposal (RESOLVED: zero leaks in repro)
+- `99ca222` — evalJaxpr non-consuming refactor (did not fix triple-nesting)
