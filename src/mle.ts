@@ -99,7 +99,8 @@ const buildDiagW = (
     }),
     { dtype },
   );  // [m, nTheta]
-  using wVec = np.matmul(wEntries, np.reshape(expTheta, [-1, 1]));  // [m, 1]
+  using _expTheta_col = np.reshape(expTheta, [-1, 1]);
+  using wVec = np.matmul(wEntries, _expTheta_col);  // [m, 1]
   using wFlat = np.squeeze(wVec, [-1]);  // [m]
   using w2 = np.square(wFlat);
   return np.diag(w2);
@@ -244,7 +245,8 @@ const makeKalmanLoss = (
       // s = exp(theta[0]) via dot mask
       using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
       using sVal = np.dot(expTheta, mask_s);
-      using V2 = np.reshape(np.square(sVal), [1, 1]);
+      using _sVal2 = np.square(sVal);
+      using V2 = np.reshape(_sVal2, [1, 1]);
       using _V2_ones = np.ones([n, 1, 1], { dtype });
       using _V2_1 = np.reshape(V2, [1, 1, 1]);
       V2_arr = np.multiply(_V2_ones, _V2_1);
@@ -269,6 +271,7 @@ const makeKalmanLoss = (
       checkpoint !== undefined ? { checkpoint } : undefined,
     );
     if (ownsMask) mask_for_scan.dispose();
+    if (!fixS) V2_arr.dispose();
     tree.dispose(fc);
     const total = np.sum(likTerms);
     likTerms.dispose();
@@ -1032,6 +1035,8 @@ export const dlmMLE = async (
 
     const thetaData = await theta.data() as Float64Array | Float32Array;
     theta.dispose();
+    gradFn.dispose();
+    exactHessFn?.dispose();
     fixedV2_arr?.dispose();
     mleMaskArr?.dispose();
 
@@ -1185,6 +1190,7 @@ export const dlmMLE = async (
   theta.dispose(); tree.dispose(optState); lastLik.dispose();
   fixedV2_arr?.dispose();
   mleMaskArr?.dispose();
+  optimBlock.dispose();
 
   const wOff = fixS ? 0 : 1;
   const s_opt = fixS ? NaN : Math.exp(thetaData[0]);

@@ -272,9 +272,9 @@ describe('sqrt-assoc gapped data vs Octave', async () => {
       applyConfig(config);
 
       const result = await dlmFit(
-          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
-          { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
-        );
+        Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
+        { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
+      );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refA, 2);
@@ -301,9 +301,9 @@ describe('sqrt-assoc gapped data vs Octave', async () => {
       applyConfig(config);
 
       const result = await dlmFit(
-          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
-          { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
-        );
+        Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
+        { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
+      );
 
       const matlab = toMatlab(result);
       const normalizedRef = normalizeMatlabOutput(refB, 1);
@@ -419,9 +419,9 @@ describe('sqrt-assoc wasm/f32 gapped data (smoke: all outputs finite)', async ()
     it(`order=1 (m=2) all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
       applyConfig(config);
       const result = await dlmFit(
-          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
-          { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
-        );
+        Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
+        { obsStd: s, processStd: w, dtype: getDlmDtype(config), order: 1, algorithm: 'sqrt-assoc' },
+      );
       // Check only fields that are finite at missing timesteps (resid0/resid are NaN at NaN obs — expected)
       const matlab = toMatlab(result);
       assertAllFinite({ yhat: matlab.yhat, ystd: matlab.ystd, x: matlab.x, xstd: matlab.xstd, nobs: matlab.nobs });
@@ -430,9 +430,9 @@ describe('sqrt-assoc wasm/f32 gapped data (smoke: all outputs finite)', async ()
     it(`order=0 (m=1) all outputs finite — sqrt-assoc-f32 (${config.label})`, async () => {
       applyConfig(config);
       const result = await dlmFit(
-          Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
-          { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
-        );
+        Float64Array.from(y_gapped.map(v => (v === null ? NaN : v))),
+        { obsStd: s, processStd: [w_level], dtype: getDlmDtype(config), order: 0, algorithm: 'sqrt-assoc' },
+      );
       const matlab = toMatlab(result);
       assertAllFinite({ yhat: matlab.yhat, ystd: matlab.ystd, x: matlab.x, xstd: matlab.xstd, nobs: matlab.nobs });
     });
