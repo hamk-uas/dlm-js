@@ -15,6 +15,7 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 - **Kalman filter & RTS smoother**: Sequential (`scan`), exact O(log N) parallel (`assoc`), and square-root parallel (`sqrt-assoc`) algorithms.
 - **Autodiff MLE**: Jointly estimate observation noise, process noise, and AR coefficients via `jit(valueAndGrad + Adam)`.
 - **Multiple backends**: Runs on CPU, WASM (recommended for speed), and WebGPU.
+- **Multivariate observations**: Vector-valued observations (p > 1) with full matrix algebra (inv, matmul, einsum, slogdet).
 - **Missing data & irregular timestamps**: Built-in support for NaN observations and arbitrary time steps.
 - **Forecasting**: Propagate states $h$ steps ahead with calibrated uncertainty bounds.
 - **Cross-platform**: Works in Node.js and the browser (ESM & CommonJS).
@@ -377,6 +378,16 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
 </p>
 
 *Nile flow (n=100) with 23 NaN observations. Gray bands mark missing timesteps. Outer light band: observation prediction interval `F·x_smooth ± 2·ystd`; inner opaque band: state uncertainty `smoothed[0] ± 2·smoothedStd[0]`. The smoother interpolates continuously through all gaps with no extra configuration.*
+
+#### Multivariate Observations (p = 2)
+
+<p align="center">
+  <img alt="Multivariate demo (sequential scan)" src="assets/multivariate-demo-scan.svg" width="100%" />
+  <br/><br/>
+  <img alt="Multivariate demo (associative scan)" src="assets/multivariate-demo-assoc.svg" width="100%" />
+</p>
+
+*Two sensors observing the same local linear trend state (order=1, m=2, p=2). Each panel shows one sensor's observations with the shared smoothed level ± 2σ bands. Sensor 2 has higher observation noise — the smoother correctly down-weights it. Both `scan` and `assoc` algorithms support p > 1; `sqrt-assoc` and `dlmForecast` throw for p > 1. Validated against Octave reference (`multivariate.test.ts`: 48 tests — order=1, order=0, gapped, order=1+AR(2) × scan/assoc × all backends).*
 
 ### scan algorithm
 
