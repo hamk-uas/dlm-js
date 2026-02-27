@@ -452,7 +452,7 @@ Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATL
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Gapped order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
 <!-- generated:bench-full-table -->
-| backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | Gapped | max \|Δ\| | max \|Δ\|% |
+| backend | dtype | algorithm | stab | Nile o=0 (warm) | Nile o=1 (warm) | Kaisaniemi (warm) | Energy (warm) | Gapped (warm) | max \|Δ\| | max \|Δ\|% |
 |---------|-------|-----------|------|-------|-------|-------|-------|-------|----------|------------|
 | **cpu** | **f64** | **scan** | **triu** | **230 ms** | **426 ms** | **525 ms** | **597 ms** | **441 ms** | **9.31e-11** | **4.20e-9** |
 |  |  | scan | off | 198 ms | 343 ms | 436 ms | 491 ms | 346 ms | 2.08e-8 | 1.06e-4 |
@@ -483,7 +483,7 @@ Both error columns show worst case across all 5 benchmark models and all output 
 - **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matching MATLAB `dlmsmo.m`), f32 uses Joseph-form update. The `assoc`/`sqrt-assoc` paths use their own exact formulation regardless of dtype. Overhead is negligible on WASM. Disable f64 symmetrization with `stabilization: { cTriuSym: false }`.
 - **f32 precision is limited to ~1–4% max error for large models.** Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
 - **WebGPU `assoc` is faster than `scan`** — `assoc` dispatches O(log n) rounds via a single `queue.submit()`, while `scan` dispatches O(n) sequential rounds. At small n (100–120), `assoc` is ~1.5–2× faster; the gap widens with larger n (see scaling table below).
-- **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->2010 ms<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->349 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1634 ms<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
+- **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->2010 ms (warm)<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->349 ms (warm)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1634 ms (warm)<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
 - **WebGPU numerical differences** vs WASM/f64 are from Float32 precision and parallel scan reordering, not algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The gapped-data demo uses the same Nile dataset with 23 observations removed.
@@ -493,8 +493,8 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 `dlmFit` warm-run timings (jitted core, second of two runs):
 
-| Model | $n$ | $m$ | wasm / f64 / scan | webgpu / f32 / assoc |
-|-------|-----|-----|-------------------|--------------------------|
+| Model | $n$ | $m$ | wasm / f64 / scan (warm) | webgpu / f32 / assoc (warm) |
+|-------|-----|-----|--------------------------|------------------------------|
 | Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->344 ms<!-- /timing --> |
 | Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->36 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->352 ms<!-- /timing --> |
 | Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->506 ms<!-- /timing --> |
@@ -504,8 +504,8 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at exponentially increasing N (WASM: 2 warmup + 4 timed runs, median; WebGPU: same). WASM uses sequential `scan`; WebGPU uses `assoc` (both forward filter and backward smoother via `lax.associativeScan`):
 
-| N | wasm/f64/scan | webgpu/f32/assoc | ratio |
-|---|---------------|-----------------|-------|
+| N | wasm/f64/scan (warm) | webgpu/f32/assoc (warm) | ratio |
+|---|----------------------|-------------------------|-------|
 | 100 | <!-- timing:scale:wasm-f64:n100 -->30 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->349 ms<!-- /timing --> | 10× |
 | 200 | <!-- timing:scale:wasm-f64:n200 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->381 ms<!-- /timing --> | 8× |
 | 400 | <!-- timing:scale:wasm-f64:n400 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->407 ms<!-- /timing --> | 9× |
@@ -524,9 +524,9 @@ A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at ex
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.1 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->2010 ms<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.1 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->2010 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
 
-2. **WebGPU scales sub-linearly at small N** (dispatch overhead dominates), but the growth rate accelerates at large N as per-step GPU arithmetic begins to dominate. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). At small N the GPU parallelism makes per-round work essentially free (~350–520 ms of fixed overhead), but at N>400k the per-round arithmetic becomes significant. A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->349 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1634 ms<!-- /timing -->).
+2. **WebGPU scales sub-linearly at small N** (dispatch overhead dominates), but the growth rate accelerates at large N as per-step GPU arithmetic begins to dominate. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). At small N the GPU parallelism makes per-round work essentially free (~350–520 ms of fixed overhead), but at N>400k the per-round arithmetic becomes significant. A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->349 ms (warm)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1634 ms (warm)<!-- /timing -->).
 
 3. **The WASM-to-WebGPU ratio converges as N grows, but the convergence is slowing**: ~12× at N=100, ~6× at N=102400, ~2× at N=409600, ~1.9× at N=819200, ~1.6× at N=1638400. WebGPU's per-doubling growth factor was ~1.4× at intermediate N but has risen to ~1.6× at large N (approaching WASM's ~2×). No crossover was observed up to N=1638400; given the accelerating WebGPU growth rate, a crossover is unlikely at practical series lengths on this hardware.
 
@@ -794,8 +794,8 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 **Benchmark (WASM, Float64, 60 iterations):**
 
-| Dataset | n | m | `checkpoint: false` ($n$) | `checkpoint: true` ($\sqrt{n}$) | speedup |
-|---------|---|---|--------------------|-----------------------|---------|
+| Dataset | n | m | `checkpoint: false` ($n$, warm) | `checkpoint: true` ($\sqrt{n}$, warm) | speedup |
+|---------|---|---|-------------------------------|---------------------------------------|---------|
 | Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->2282 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->2307 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+1%<!-- /timing --> |
 | Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2914 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2852 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-2%<!-- /timing --> |
 

@@ -53,7 +53,7 @@ if (LIST) {
   for (const [key, slot] of Object.entries(timingRegistry)) {
     const sidecar = readTimingsSidecar(slot.sidecar);
     const current = sidecar?.[slot.field] != null
-      ? formatTiming(sidecar[slot.field], slot.format)
+      ? formatTiming(sidecar[slot.field], slot.format, slot.warmth)
       : "(no sidecar yet — run the script to generate it)";
     console.log(`  ${key.padEnd(maxKey + 2)} ${current}`);
     console.log(`  ${"".padEnd(maxKey + 2)} source: ${slot.script}`);
@@ -64,7 +64,7 @@ if (LIST) {
 
 // ── Build value map from available sidecars ─────────────────────────────────
 
-const valueMap = new Map<string, string>();   // key → formatted string
+const valueMap = new Map<string, number>();    // key → raw numeric value
 const gapped: string[] = [];
 
 for (const [key, slot] of Object.entries(timingRegistry)) {
@@ -73,7 +73,7 @@ for (const [key, slot] of Object.entries(timingRegistry)) {
     gapped.push(key);
     continue;
   }
-  valueMap.set(key, formatTiming(sidecar[slot.field], slot.format));
+  valueMap.set(key, sidecar[slot.field] as number);
 }
 
 if (gapped.length > 0) {
@@ -98,14 +98,6 @@ try {
   }
 } catch { /* optional */ }
 
-// ── Build raw-numeric map for computed expressions ─────────────────────────
-
-const rawMap = new Map<string, number>();
-for (const [key, slot] of Object.entries(timingRegistry)) {
-  const sidecar = readTimingsSidecar(slot.sidecar);
-  if (sidecar?.[slot.field] != null) rawMap.set(key, sidecar[slot.field] as number);
-}
-
 // ── Evaluate a <!-- computed:EXPR --> expression ───────────────────────────
 //
 // Expression syntax (standard JS with two helper functions):
@@ -118,7 +110,7 @@ for (const [key, slot] of Object.entries(timingRegistry)) {
 
 function evalComputed(expr: string): string {
   const slotFn = (key: string): number => {
-    const v = rawMap.get(key);
+    const v = valueMap.get(key);
     if (v == null) throw new Error(`slot("${key}") — no value in sidecars`);
     return v;
   };
@@ -161,18 +153,26 @@ for (const filePath of mdFiles) {
   let updated = original;
   let filePatched = 0;
 
-  updated = updated.replace(MARKER_RE, (match, key: string, _oldVal: string) => {
+  updated = updated.replace(MARKER_RE, (match, key: string, _oldVal: string, offset: number) => {
     const trimmedKey = key.trim();
     if (!(trimmedKey in timingRegistry)) {
       // Key is not registered at all — warn
       console.warn(`[update-timings] Unknown timing key "${trimmedKey}" in ${relative(root, filePath)}`);
       return match;
     }
-    const newVal = valueMap.get(trimmedKey);
-    if (newVal == null) {
+    const rawVal = valueMap.get(trimmedKey);
+    if (rawVal == null) {
       // Registered but no sidecar yet — leave unchanged (already warned above)
       return match;
     }
+    const slot = timingRegistry[trimmedKey];
+    // Detect table context: suppress warmth annotation inside Markdown table
+    // rows (line starts with |) — warmth goes in the column heading instead.
+    const lineStart = updated.lastIndexOf('\n', offset) + 1;
+    const linePrefix = updated.substring(lineStart, offset);
+    const inTable = linePrefix.trimStart().startsWith('|');
+    const warmth = inTable ? undefined : slot.warmth;
+    const newVal = formatTiming(rawVal, slot.format, warmth);
     filePatched++;
     return `<!-- timing:${key} -->${newVal}<!-- /timing -->`;
   });

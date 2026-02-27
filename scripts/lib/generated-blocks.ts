@@ -93,7 +93,7 @@ const MODEL_ORDER = [
   "Gapped, order=1",
 ] as const;
 
-const MODEL_HEADERS = ["Nile o=0", "Nile o=1", "Kaisaniemi", "Energy", "Gapped"];
+const MODEL_HEADERS = ["Nile o=0 (warm)", "Nile o=1 (warm)", "Kaisaniemi (warm)", "Energy (warm)", "Gapped (warm)"];
 
 // Row order matching the current README layout (excludes cpu/sqrt-assoc
 // which has very large errors due to JS interpreter numerical behaviour).

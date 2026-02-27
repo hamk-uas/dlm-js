@@ -34,6 +34,10 @@ export type TimingSlot = {
   field: string;
   /** How to render the raw numeric value as a string. */
   format: TimingFormat;
+  /** Whether this measurement is a cold (first-run / incl. JIT) or warm
+   *  (subsequent-run) timing.  Undefined for values that are neither
+   *  (iteration counts, likelihoods, total elapsed, percentages). */
+  warmth?: 'cold' | 'warm';
   /** One-line human description (appears in --list output). */
   description: string;
 };
@@ -45,6 +49,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — Nile demo",
   },
@@ -52,6 +57,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Nile demo",
   },
@@ -59,6 +65,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg-assoc",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — Nile demo (assoc)",
   },
@@ -66,6 +73,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg-assoc",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Nile demo (assoc)",
   },
@@ -73,6 +81,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg-sqrt-assoc",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — Nile demo (sqrt-assoc)",
   },
@@ -80,6 +89,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg-sqrt-assoc",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Nile demo (sqrt-assoc)",
   },
@@ -87,6 +97,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg-sqrt-assoc-f32",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — Nile demo (sqrt-assoc/f32)",
   },
@@ -94,6 +105,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-niledemo-svg.ts",
     sidecar:     "gen-niledemo-svg-sqrt-assoc-f32",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Nile demo (sqrt-assoc/f32)",
   },
@@ -102,6 +114,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-kaisaniemi-svg.ts",
     sidecar:     "gen-kaisaniemi-svg",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — Kaisaniemi demo",
   },
@@ -109,6 +122,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-kaisaniemi-svg.ts",
     sidecar:     "gen-kaisaniemi-svg",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Kaisaniemi demo",
   },
@@ -116,6 +130,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-kaisaniemi-svg.ts",
     sidecar:     "gen-kaisaniemi-svg-assoc",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — Kaisaniemi demo (assoc)",
   },
@@ -123,6 +138,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-kaisaniemi-svg.ts",
     sidecar:     "gen-kaisaniemi-svg-assoc",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — Kaisaniemi demo (assoc)",
   },
@@ -131,6 +147,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-trigar-svg.ts",
     sidecar:     "gen-trigar-svg",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — energy/trigar demo",
   },
@@ -138,6 +155,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-trigar-svg.ts",
     sidecar:     "gen-trigar-svg",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — energy/trigar demo",
   },
@@ -145,6 +163,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-trigar-svg.ts",
     sidecar:     "gen-trigar-svg-assoc",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — energy/trigar demo (assoc)",
   },
@@ -152,6 +171,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-trigar-svg.ts",
     sidecar:     "gen-trigar-svg-assoc",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — energy/trigar demo (assoc)",
   },
@@ -160,6 +180,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-gapped-svg.ts",
     sidecar:     "gen-gapped-svg",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — gapped-data demo",
   },
@@ -167,6 +188,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-gapped-svg.ts",
     sidecar:     "gen-gapped-svg",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — gapped-data demo",
   },
@@ -174,6 +196,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-gapped-svg.ts",
     sidecar:     "gen-gapped-svg-assoc",
     field:       "firstRunMs",
+    warmth:      "cold",
     format:      "ms2",
     description: "dlmFit first-run wall-clock — gapped-data demo (assoc)",
   },
@@ -181,6 +204,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     script:      "scripts/gen-gapped-svg.ts",
     sidecar:     "gen-gapped-svg-assoc",
     field:       "warmRunMs",
+    warmth:      "warm",
     format:      "ms2",
     description: "dlmFit warm-run wall-clock — gapped-data demo (assoc)",
   },
@@ -492,64 +516,64 @@ export const timingRegistry: Record<string, TimingSlot> = {
 
   // ── Cross-backend dlmFit benchmark (bench-backends.ts) ───────────────────
 
-  "bb:nile-o0:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__cpu_f32__warm",       format: "ms0", description: "dlmFit warm — Nile order=0, cpu/f32" },
-  "bb:nile-o0:wasm-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__wasm_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=0, wasm/f32" },
-  "bb:nile-o0:wasm-f64":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__wasm_f64__warm",      format: "ms0", description: "dlmFit warm — Nile order=0, wasm/f64" },
+  "bb:nile-o0:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__cpu_f32__warm",       format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=0, cpu/f32" },
+  "bb:nile-o0:wasm-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__wasm_f32__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=0, wasm/f32" },
+  "bb:nile-o0:wasm-f64":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o0__wasm_f64__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=0, wasm/f64" },
 
-  "bb:nile-o1:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__cpu_f32__warm",       format: "ms0", description: "dlmFit warm — Nile order=1, cpu/f32" },
-  "bb:nile-o1:wasm-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__wasm_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=1, wasm/f32" },
-  "bb:nile-o1:wasm-f64":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__wasm_f64__warm",      format: "ms0", description: "dlmFit warm — Nile order=1, wasm/f64" },
+  "bb:nile-o1:cpu-f32":   { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__cpu_f32__warm",       format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=1, cpu/f32" },
+  "bb:nile-o1:wasm-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__wasm_f32__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=1, wasm/f32" },
+  "bb:nile-o1:wasm-f64":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "nile_o1__wasm_f64__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=1, wasm/f64" },
 
-  "bb:kaisaniemi:cpu-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__cpu_f32__warm",   format: "ms0", description: "dlmFit warm — Kaisaniemi trig, cpu/f32" },
-  "bb:kaisaniemi:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__wasm_f32__warm",  format: "ms0", description: "dlmFit warm — Kaisaniemi trig, wasm/f32" },
-  "bb:kaisaniemi:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__wasm_f64__warm",  format: "ms0", description: "dlmFit warm — Kaisaniemi trig, wasm/f64" },
+  "bb:kaisaniemi:cpu-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__cpu_f32__warm",   format: "ms0", warmth: "warm", description: "dlmFit warm — Kaisaniemi trig, cpu/f32" },
+  "bb:kaisaniemi:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__wasm_f32__warm",  format: "ms0", warmth: "warm", description: "dlmFit warm — Kaisaniemi trig, wasm/f32" },
+  "bb:kaisaniemi:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "kaisaniemi__wasm_f64__warm",  format: "ms0", warmth: "warm", description: "dlmFit warm — Kaisaniemi trig, wasm/f64" },
 
-  "bb:trigar:cpu-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__cpu_f32__warm",   format: "ms0", description: "dlmFit warm — Energy trig+AR, cpu/f32" },
-  "bb:trigar:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f32__warm",  format: "ms0", description: "dlmFit warm — Energy trig+AR, wasm/f32" },
-  "bb:trigar:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f64__warm",  format: "ms0", description: "dlmFit warm — Energy trig+AR, wasm/f64" },
+  "bb:trigar:cpu-f32":  { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__cpu_f32__warm",   format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, cpu/f32" },
+  "bb:trigar:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f32__warm",  format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, wasm/f32" },
+  "bb:trigar:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f64__warm",  format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, wasm/f64" },
 
   // ── WebGPU dlmFit benchmark (bench-gpu.ts, Deno) ─────────────────────────
 
-  "bb:nile-o0:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o0__webgpu_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=0, webgpu/f32" },
-  "bb:nile-o1:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o1__webgpu_f32__warm",      format: "ms0", description: "dlmFit warm — Nile order=1, webgpu/f32" },
-  "bb:kaisaniemi:webgpu-f32": { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "kaisaniemi__webgpu_f32__warm",   format: "ms0", description: "dlmFit warm — Kaisaniemi trig, webgpu/f32" },
-  "bb:trigar:webgpu-f32":     { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "trigar__webgpu_f32__warm",       format: "ms0", description: "dlmFit warm — Energy trig+AR, webgpu/f32" },
+  "bb:nile-o0:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o0__webgpu_f32__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=0, webgpu/f32" },
+  "bb:nile-o1:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o1__webgpu_f32__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=1, webgpu/f32" },
+  "bb:kaisaniemi:webgpu-f32": { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "kaisaniemi__webgpu_f32__warm",   format: "ms0", warmth: "warm", description: "dlmFit warm — Kaisaniemi trig, webgpu/f32" },
+  "bb:trigar:webgpu-f32":     { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "trigar__webgpu_f32__warm",       format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, webgpu/f32" },
 
   // ── Backend scaling benchmark (bench-scaling.ts, Deno) ──────────────────
   // WASM/f64 at N=100..102400; WebGPU/f32 at N=100..1600 only.
   // Data: Nile order=1 (m=2) tiled to each N. Warmup=2, Runs=4, median.
 
-  "scale:wasm-f64:n100":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n100",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=100" },
-  "scale:wasm-f64:n200":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n200",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=200" },
-  "scale:wasm-f64:n400":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n400",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=400" },
-  "scale:wasm-f64:n800":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n800",    format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=800" },
-  "scale:wasm-f64:n1600":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n1600",   format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=1600" },
-  "scale:wasm-f64:n3200":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n3200",   format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=3200" },
-  "scale:wasm-f64:n6400":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n6400",   format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=6400" },
-  "scale:wasm-f64:n12800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n12800",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=12800" },
-  "scale:wasm-f64:n25600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n25600",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=25600" },
-  "scale:wasm-f64:n51200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n51200",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=51200" },
-  "scale:wasm-f64:n102400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n102400", format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=102400" },
-  "scale:wasm-f64:n204800": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n204800", format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=204800" },
-  "scale:wasm-f64:n409600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n409600",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=409600" },
-  "scale:wasm-f64:n819200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n819200",  format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=819200" },
-  "scale:wasm-f64:n1638400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n1638400", format: "ms0", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=1638400" },
+  "scale:wasm-f64:n100":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n100",    format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=100" },
+  "scale:wasm-f64:n200":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n200",    format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=200" },
+  "scale:wasm-f64:n400":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n400",    format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=400" },
+  "scale:wasm-f64:n800":    { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n800",    format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=800" },
+  "scale:wasm-f64:n1600":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n1600",   format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=1600" },
+  "scale:wasm-f64:n3200":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n3200",   format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=3200" },
+  "scale:wasm-f64:n6400":   { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n6400",   format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=6400" },
+  "scale:wasm-f64:n12800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n12800",  format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=12800" },
+  "scale:wasm-f64:n25600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n25600",  format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=25600" },
+  "scale:wasm-f64:n51200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n51200",  format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=51200" },
+  "scale:wasm-f64:n102400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n102400", format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=102400" },
+  "scale:wasm-f64:n204800": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n204800", format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=204800" },
+  "scale:wasm-f64:n409600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n409600",  format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=409600" },
+  "scale:wasm-f64:n819200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n819200",  format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=819200" },
+  "scale:wasm-f64:n1638400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "wasm_f64_n1638400", format: "ms0", warmth: "warm", description: "WASM/f64 dlmFit warm — Nile/order=1 tiled to N=1638400" },
 
-  "scale:webgpu-f32:n100":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n100",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=100" },
-  "scale:webgpu-f32:n200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n200",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=200" },
-  "scale:webgpu-f32:n400":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n400",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=400" },
-  "scale:webgpu-f32:n800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n800",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=800" },
-  "scale:webgpu-f32:n1600": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n1600", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=1600" },
-  "scale:webgpu-f32:n3200": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n3200", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=3200" },
-  "scale:webgpu-f32:n6400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n6400", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=6400" },
-  "scale:webgpu-f32:n12800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n12800",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=12800" },
-  "scale:webgpu-f32:n25600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n25600",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=25600" },
-  "scale:webgpu-f32:n51200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n51200",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=51200" },
-  "scale:webgpu-f32:n102400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n102400", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=102400" },
-  "scale:webgpu-f32:n204800": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n204800", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=204800" },
-  "scale:webgpu-f32:n409600": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n409600", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=409600" },
-  "scale:webgpu-f32:n819200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n819200",  format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=819200" },
-  "scale:webgpu-f32:n1638400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n1638400", format: "ms0", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=1638400" },
+  "scale:webgpu-f32:n100":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n100",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=100" },
+  "scale:webgpu-f32:n200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n200",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=200" },
+  "scale:webgpu-f32:n400":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n400",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=400" },
+  "scale:webgpu-f32:n800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n800",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=800" },
+  "scale:webgpu-f32:n1600": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n1600", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=1600" },
+  "scale:webgpu-f32:n3200": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n3200", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=3200" },
+  "scale:webgpu-f32:n6400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n6400", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=6400" },
+  "scale:webgpu-f32:n12800":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n12800",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=12800" },
+  "scale:webgpu-f32:n25600":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n25600",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=25600" },
+  "scale:webgpu-f32:n51200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n51200",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=51200" },
+  "scale:webgpu-f32:n102400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n102400", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=102400" },
+  "scale:webgpu-f32:n204800": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n204800", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=204800" },
+  "scale:webgpu-f32:n409600": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n409600", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=409600" },
+  "scale:webgpu-f32:n819200":  { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n819200",  format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=819200" },
+  "scale:webgpu-f32:n1638400": { script: "scripts/bench-scaling.ts", sidecar: "bench-scaling", field: "webgpu_f32_n1638400", format: "ms0", warmth: "warm", description: "WebGPU/f32 dlmFit warm — Nile/order=1 tiled to N=1638400" },
 
   // ── Checkpoint benchmark (bench-checkpoint.ts) ──────────────────────────
 
@@ -558,6 +582,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     sidecar:     "bench-checkpoint",
     field:       "nile_false_ms",
     format:      "ms0",
+    warmth:      "warm",
     description: "Checkpoint bench: Nile, checkpoint:false, mean ms (60 iters)",
   },
   "ckpt:nile:false-s": {
@@ -565,6 +590,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     sidecar:     "bench-checkpoint",
     field:       "nile_false_ms",
     format:      "s1",
+    warmth:      "warm",
     description: "Checkpoint bench: Nile, checkpoint:false, mean seconds (60 iters)",
   },
   "ckpt:nile:true-ms": {
@@ -572,6 +598,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     sidecar:     "bench-checkpoint",
     field:       "nile_true_ms",
     format:      "ms0",
+    warmth:      "warm",
     description: "Checkpoint bench: Nile, checkpoint:true, mean ms (60 iters)",
   },
   "ckpt:nile:speedup": {
@@ -586,6 +613,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     sidecar:     "bench-checkpoint",
     field:       "energy_false_ms",
     format:      "ms0",
+    warmth:      "warm",
     description: "Checkpoint bench: Energy, checkpoint:false, mean ms (60 iters)",
   },
   "ckpt:energy:true-ms": {
@@ -593,6 +621,7 @@ export const timingRegistry: Record<string, TimingSlot> = {
     sidecar:     "bench-checkpoint",
     field:       "energy_true_ms",
     format:      "ms0",
+    warmth:      "warm",
     description: "Checkpoint bench: Energy, checkpoint:true, mean ms (60 iters)",
   },
   "ckpt:energy:speedup": {
@@ -604,12 +633,19 @@ export const timingRegistry: Record<string, TimingSlot> = {
   },
 };
 
-/** Format a raw numeric timing value according to an entry's format code. */
-export function formatTiming(value: number, format: TimingFormat): string {
+/** Format a raw numeric timing value according to an entry's format code.
+ *  When `warmth` is provided and the format is a time unit (ms/s), the
+ *  label " (cold)" or " (warm)" is appended. */
+export function formatTiming(
+  value: number,
+  format: TimingFormat,
+  warmth?: 'cold' | 'warm',
+): string {
+  const tag = warmth ? ` (${warmth})` : '';
   switch (format) {
-    case "ms2": return `${value.toFixed(2)} ms`;
-    case "ms0": return `${Math.round(value)} ms`;
-    case "s1":  return `${(value / 1000).toFixed(1)} s`;
+    case "ms2": return `${value.toFixed(2)} ms${tag}`;
+    case "ms0": return `${Math.round(value)} ms${tag}`;
+    case "s1":  return `${(value / 1000).toFixed(1)} s${tag}`;
     case "int": return String(Math.round(value));
     case "pctdiff": return `${value >= 0 ? "+" : ""}${Math.round(value)}%`;
     case "lik1":    return value.toFixed(1);
