@@ -57,7 +57,7 @@
     "check:timings": "npx tsx scripts/update-timings.ts -- --check",
     "check:freshness": "npx tsx scripts/check-freshness.ts",
     "preflight": "npx tsx scripts/preflight.ts",
-    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m && octave-cli --no-gui tests/octave/ozonedemo.m && octave-cli --no-gui tests/octave/gappeddata_test.m",
+    "test:octave": "octave-cli --no-gui tests/octave/niledemo.m && octave-cli --no-gui tests/octave/gensys_tests.m && octave-cli --no-gui tests/octave/kaisaniemi_demo.m && octave-cli --no-gui tests/octave/ozonedemo.m && octave-cli --no-gui tests/octave/gappeddata_test.m && octave-cli --no-gui tests/octave/multivariate_demo.m",
     "test:octave:gapped": "octave-cli --no-gui tests/octave/gappeddata_test.m",
     "test:node": "vitest run",
     "test": "pnpm run lint && pnpm run test:octave && pnpm run test:node",
