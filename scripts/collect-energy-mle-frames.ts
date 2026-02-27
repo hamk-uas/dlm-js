@@ -30,8 +30,7 @@ const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
 const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
 const m = 5; // 2 (poly order=1) + 2 (trig k=1) + 1 (AR)
 const nSwParams = 1 + m; // theta[0]=log(s), theta[1..5]=log(w[i])
-const maxIter = 300;
-const lr = 0.02;
+const maxIter = 50;
 const tol = 1e-6;
 const TARGET_FPS = 10;
 const HOLD_SECONDS = 2;
@@ -65,7 +64,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
 
   const mle = await withLeakCheck(() =>
     dlmMLE(y, {
-      ...options, maxIter, lr, tol, dtype: 'f64',
+      ...options, maxIter, tol, dtype: 'f64', optimizer: 'natural' as const,
       callbacks: {
         onInit: (theta) => {
           thetaHistory.push(Array.from(theta));

@@ -27,8 +27,7 @@ const t: number[] = input.t;
 const n = y.length;
 const options = { order: 1 };
 const m = 2; // order=1 → m=2
-const maxIter = 300;
-const lr = 0.05;
+const maxIter = 50;
 const tol = 1e-6;
 const TARGET_FPS = 10;
 const HOLD_SECONDS = 2;
@@ -58,7 +57,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
 
   const mle = await withLeakCheck(() =>
     dlmMLE(y, {
-      ...options, maxIter, lr, tol, dtype: 'f64',
+      ...options, maxIter, tol, dtype: 'f64', optimizer: 'natural' as const,
       callbacks: {
         onInit: (theta) => {
           thetaHistory.push(Array.from(theta));

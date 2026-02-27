@@ -29,8 +29,7 @@ const t: number[] = input.t;
 const n = y.length;
 const options = { order: 1 };
 const m = 2; // order=1 → m=2
-const maxIter = 300;
-const lr = 0.05;
+const maxIter = 50;
 const tol = 1e-6;
 const TARGET_FPS = 10;
 const HOLD_SECONDS = 2;
@@ -53,7 +52,7 @@ console.log("Phase 1: Full optimization...");
 const thetaHistory: number[][] = [];
 
 const mle = await dlmMLE(y, {
-  ...options, maxIter, lr, tol, dtype: 'f32',
+  ...options, maxIter, tol, dtype: 'f32', optimizer: 'natural' as const,
   callbacks: {
     onInit: (theta) => { thetaHistory.push(Array.from(theta)); },
     onIteration: (_iter, theta, _lik) => { thetaHistory.push(Array.from(theta)); },
