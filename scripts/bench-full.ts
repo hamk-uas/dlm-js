@@ -29,6 +29,9 @@ import { resolve, dirname } from "node:path";
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const sidecarDir = resolve(root, "assets/timings");
 
+/** Hard timeout per dlmFit call — skip the combo if it exceeds this. */
+const TIMEOUT_MS = 5_000;
+
 // ── Init WebGPU (needed before first webgpu call) ─────────────────────────
 
 await init("webgpu");
@@ -267,6 +270,12 @@ async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
     return { firstMs: NaN, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
   }
   const t1 = performance.now();
+  const firstMs = t1 - t0;
+
+  // If the first run exceeded the timeout, skip the warm run entirely.
+  if (firstMs > TIMEOUT_MS) {
+    return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN };
+  }
 
   // Warm run (cached) — also used for error computation
   const t2 = performance.now();
@@ -274,20 +283,28 @@ async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
   try {
     r2 = await dlmFit(y, fitOpts);
   } catch {
-    return { firstMs: t1 - t0, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
+    return { firstMs, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
   }
   const t3 = performance.now();
+  const warmMs = t3 - t2;
+
+  // If the warm run exceeded the timeout, still record the time but skip errors.
+  if (warmMs > TIMEOUT_MS) {
+    r2[Symbol.dispose]?.();
+    return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN };
+  }
 
   // Compute errors from warm run before dispose
   const gotVals = flattenResult(r2, m, n);
   const { maxAbsErr, maxPctErr } = computeErrors(gotVals, trimRef(refVals, gotVals.length));
   r2[Symbol.dispose]?.();
 
-  return { firstMs: t1 - t0, warmMs: t3 - t2, stable, maxAbsErr, maxPctErr };
+  return { firstMs, warmMs, stable, maxAbsErr, maxPctErr };
 }
 
 function fmtMs(ms: number): string {
   if (isNaN(ms)) return '  crash';
+  if (!isFinite(ms)) return '   >5 s';
   return ms.toFixed(0).padStart(7);
 }
 

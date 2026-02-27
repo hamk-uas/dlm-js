@@ -231,6 +231,23 @@ export const artifactGroups: ArtifactGroup[] = [
     command: "pnpm run bench:full   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
     heavy: true,
   },
+
+  // ── Scaling benchmark (WASM vs WebGPU) ──────────────────────────────────
+  {
+    id: "bench-scaling",
+    label: "WASM vs WebGPU scaling benchmark",
+    sources: [
+      "src/index.ts",
+      "src/dlmgensys.ts",
+      "src/types.ts",
+      "scripts/bench-scaling.ts",
+    ],
+    outputs: [
+      "assets/timings/bench-scaling.json",
+    ],
+    command: "pnpm run bench:scaling   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
+    heavy: true,
+  },
 ];
 
 // ── Algorithm coverage declarations ───────────────────────────────────────

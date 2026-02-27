@@ -37,6 +37,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, dirname, relative } from "node:path";
 import { timingRegistry, formatTiming } from "./lib/timing-registry.ts";
 import { readTimingsSidecar } from "./lib/timing-sidecar.ts";
+import { generatedBlocks } from "./lib/generated-blocks.ts";
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const args = process.argv.slice(2);
@@ -190,6 +191,23 @@ for (const filePath of mdFiles) {
       console.warn(`[update-timings] computed error in ${relative(root, filePath)}: ${e}`);
       return match;
     }
+  });
+
+  // Matches: <!-- generated:ID -->...<!-- /generated -->
+  // Replaces the entire content between markers with the generator output.
+  // Uses dotAll (s flag) so `.` matches newlines in multi-line blocks.
+  const GENERATED_RE = /<!-- generated:(\S+) -->\n?([\s\S]*?)<!-- \/generated -->/g;
+
+  updated = updated.replace(GENERATED_RE, (match, id: string, oldContent: string) => {
+    const generator = generatedBlocks[id.trim()];
+    if (!generator) {
+      console.warn(`[update-timings] Unknown generated block "${id}" in ${relative(root, filePath)}`);
+      return match;
+    }
+    const newContent = generator();
+    if (newContent + "\n" === oldContent || newContent === oldContent.trim()) return match;
+    filePatched++;
+    return `<!-- generated:${id} -->\n${newContent}\n<!-- /generated -->`;
   });
 
   if (updated !== original) {

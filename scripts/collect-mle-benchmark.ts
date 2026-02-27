@@ -37,12 +37,18 @@ const RUNS   = 3;
 const MAX_ITER = 300;
 const LR       = 0.05;
 
+/** Hard timeout per dlmMLE run — report >30 s and stop if exceeded. */
+const TIMEOUT_MS = 30_000;
+
 async function timedMle(
   y: number[],
   options: Record<string, unknown>,
 ): Promise<{ elapsed: number; iterations: number; lik: number }> {
   // warm-up
-  await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
+  const warmup = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
+  if (warmup.elapsed > TIMEOUT_MS) {
+    return { elapsed: Infinity, iterations: warmup.iterations, lik: warmup.deviance };
+  }
 
   const times: number[] = [];
   let last = { elapsed: 0, iterations: 0, lik: 0 };
@@ -50,6 +56,9 @@ async function timedMle(
     const r = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
     times.push(r.elapsed);
     last = { elapsed: r.elapsed, iterations: r.iterations, lik: r.deviance };
+    if (r.elapsed > TIMEOUT_MS) {
+      return { elapsed: Infinity, iterations: last.iterations, lik: last.lik };
+    }
   }
   times.sort((a, b) => a - b);
   return { elapsed: times[Math.floor(RUNS / 2)], iterations: last.iterations, lik: last.lik };
@@ -95,7 +104,10 @@ async function timedMleNatural(
   options: Record<string, unknown>,
 ): Promise<{ elapsed: number; iterations: number; lik: number }> {
   // warm-up
-  await dlmMLE(y, { ...options, maxIter: 50, tol: 1e-6, dtype: 'f64' as const, optimizer: 'natural' as const });
+  const warmup = await dlmMLE(y, { ...options, maxIter: 50, tol: 1e-6, dtype: 'f64' as const, optimizer: 'natural' as const });
+  if (warmup.elapsed > TIMEOUT_MS) {
+    return { elapsed: Infinity, iterations: warmup.iterations, lik: warmup.deviance };
+  }
 
   const times: number[] = [];
   let last = { elapsed: 0, iterations: 0, lik: 0 };
@@ -103,6 +115,9 @@ async function timedMleNatural(
     const r = await dlmMLE(y, { ...options, maxIter: 50, tol: 1e-6, dtype: 'f64' as const, optimizer: 'natural' as const });
     times.push(r.elapsed);
     last = { elapsed: r.elapsed, iterations: r.iterations, lik: r.deviance };
+    if (r.elapsed > TIMEOUT_MS) {
+      return { elapsed: Infinity, iterations: last.iterations, lik: last.lik };
+    }
   }
   times.sort((a, b) => a - b);
   return { elapsed: times[Math.floor(RUNS / 2)], iterations: last.iterations, lik: last.lik };

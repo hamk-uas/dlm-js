@@ -451,41 +451,40 @@ Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATL
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Gapped order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
+<!-- generated:bench-full-table -->
 | backend | dtype | algorithm | stab | Nile o=0 | Nile o=1 | Kaisaniemi | Energy | Gapped | max \|Δ\| | max \|Δ\|% |
-|---------|-------|-----------|------|----------|----------|------------|--------|---------|----------|------------|
-| **cpu** | **f64** | **scan** | **triu** | **214 ms** | **431 ms** | **542 ms** | **582 ms** | **455 ms** | **1.14e-10** | **1.11e-9** |
-| | | scan | off | 184 ms | 351 ms | 448 ms | 500 ms | 367 ms | 3.78e-8 | 1.62e-4 |
-| | | assoc | built-in | 92 ms | 215 ms | 891 ms | 1586 ms | 220 ms | 1.33e-8 | 2.17e-5 |
-| | **f32** | **scan** | **joseph** | **195 ms** | **408 ms** | **506 ms** | **562 ms** | **408 ms** | **1.32e-2** | **2.67e-1** |
-| | | scan | joseph+triu | 237 ms | 448 ms | 570 ms | 633 ms | 463 ms | 9.17e-3 | 9.34e-1 |
-| | | assoc | built-in | 69 ms | 215 ms | 902 ms | 1622 ms | 222 ms | 1.28e-2 | 2.01e+1 |
-| **wasm** | **f64** | **scan** | **triu** | **23 ms** | **30 ms** | **28 ms** | **28 ms** | **26 ms** | **1.14e-10** | **1.11e-9** |
-| | | scan | off | 18 ms | 24 ms | 23 ms | 23 ms | 22 ms | 3.78e-8 | 1.62e-4 |
-| | | assoc | built-in | 28 ms | 31 ms | 34 ms | 43 ms | 30 ms | 1.33e-8 | 2.17e-5 |
-| | | sqrt-assoc | built-in | 35 ms | 43 ms | 96 ms | 113 ms | 42 ms | 2.92e-8 | 2.03e-4 |
-| | **f32** | **scan** | **joseph** | **18 ms** | **25 ms** | **25 ms** | **26 ms** | **24 ms** | **3.99e-2** | **9.66e-1** |
-| | | scan | joseph+triu | 21 ms | 27 ms | 27 ms | 27 ms | 27 ms | 1.30e-2 | 2.32 |
-| | | assoc | built-in | 25 ms | 32 ms | 35 ms | 41 ms | 30 ms | 1.21e-2 | 21.9 |
-| | | sqrt-assoc | built-in | 33 ms | 41 ms | 85 ms | 112 ms | 42 ms | 2.86e-2 | 1.99e+2 |
-| **webgpu** | **f32** | **assoc** | **built-in** | **318 ms** | **332 ms** | **330 ms** | **335 ms** | **327 ms** | **1.29e-2** | **1.98e+1** |
-| | | scan | joseph | 321 ms | 329 ms | 337 ms | 339 ms | 328 ms | 1.29e-2 | 1.98e+1 |
-| | | scan | joseph+triu | 321 ms | 331 ms | 335 ms | 329 ms | 331 ms | 1.29e-2 | 1.98e+1 |
+|---------|-------|-----------|------|-------|-------|-------|-------|-------|----------|------------|
+| **cpu** | **f64** | **scan** | **triu** | **235 ms** | **424 ms** | **542 ms** | **606 ms** | **430 ms** | **9.31e-11** | **4.20e-9** |
+|  |  | scan | off | 208 ms | 338 ms | 436 ms | 481 ms | 349 ms | 2.08e-8 | 1.06e-4 |
+|  |  | assoc | built-in | 151 ms | 331 ms | 1257 ms | 1746 ms | 334 ms | 1.33e-8 | 2.17e-5 |
+|  | **f32** | **scan** | **joseph** | **233 ms** | **397 ms** | **509 ms** | **554 ms** | **396 ms** | **5.86e-3** | **0.29** |
+|  |  | scan | joseph+triu | 252 ms | 459 ms | 571 ms | 625 ms | 451 ms | 0.01 | 0.90 |
+|  |  | assoc | built-in | 146 ms | 320 ms | 1272 ms | 1782 ms | 324 ms | 0.01 | 20.1 |
+| **wasm** | **f64** | **scan** | **triu** | **25 ms** | **27 ms** | **25 ms** | **27 ms** | **27 ms** | **9.31e-11** | **4.20e-9** |
+|  |  | scan | off | 19 ms | 22 ms | 24 ms | 23 ms | 23 ms | 2.08e-8 | 1.06e-4 |
+|  |  | assoc | built-in | 76 ms | 99 ms | 214 ms | 105 ms | 100 ms | 1.33e-8 | 2.17e-5 |
+|  |  | sqrt-assoc | built-in | 127 ms | 131 ms | 167 ms | 196 ms | 133 ms | 2.92e-8 | 2.03e-4 |
+|  | **f32** | **scan** | **joseph** | **21 ms** | **24 ms** | **27 ms** | **26 ms** | **24 ms** | **0.04** | **1.27** |
+|  |  | scan | joseph+triu | 21 ms | 27 ms | 26 ms | 29 ms | 28 ms | 0.04 | 1.78 |
+|  |  | assoc | built-in | 72 ms | 97 ms | 217 ms | 103 ms | 99 ms | 0.01 | 21.9 |
+|  |  | sqrt-assoc | built-in | 124 ms | 132 ms | 157 ms | 173 ms | 134 ms | 0.03 | 199 |
+| **webgpu** | **f32** | **assoc** | **built-in** | **344 ms** | **383 ms** | **528 ms** | **388 ms** | **383 ms** | **0.01** | **20.5** |
+|  |  | scan | joseph | 331 ms | 384 ms | 540 ms | 388 ms | 385 ms | 0.01 | 20.5 |
+|  |  | scan | joseph+triu | 351 ms | 383 ms | 535 ms | 402 ms | 384 ms | 0.01 | 20.5 |
+<!-- /generated -->
 
 Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
 
-**Key findings:**
-- **WASM is ~10–20× faster than CPU** — the JS interpreter backend has significant overhead for small matrix operations.
-- **`assoc` on CPU is faster for small m, slower for large m** — for m=1–2, the scan composition is cheap and reduces interpreter overhead; for m=4–5 the extra matrix operations dominate (~3× slower than `scan` on CPU).
-- **`assoc` on WASM is 4–10× slower than `scan`** — warm-run times are 96–219 ms for `assoc` vs 22–27 ms for `scan` (96–102 ms for m=1–2, up to 219 ms for m=4); the extra matrix compositions in the 5-tuple `composeForward` dominate at small n on WASM. Prefer `scan` on WASM unless the parallel formulation is explicitly required.
-- **`sqrt-assoc` on WASM matches reference precision on f64** (worst-case max |Δ| = 2.92e-8, max |Δ|% = 2.03e-4) and is ~5–7× slower than `scan` due to QR decompositions and triangular solves per composition step (124–192 ms vs 22–27 ms warm). f32 precision is comparable to `assoc` f32. The `sqrt-assoc` path maintains PSD covariances structurally (Cholesky factors); no Joseph form or symmetrization is needed.
-- **Why does the f64 default (cTriuSym) match Octave ~330× better than unsymmetrized f64?** MATLAB DLM (`dlmsmo.m`) uses `triu(C)+triu(C,1)'` symmetrization after each prediction step — the `cTriuSym` mode replicates this exactly. Before this was default, the raw f64 path accumulated numerical drift that diverged from the MATLAB reference. The improvement is most pronounced for larger state dimensions (3.78e-8 → 1.14e-10 max |Δ| for Energy m=5; smaller models show even deeper reductions). Disable with `stabilization: { cTriuSym: false }`.
-- **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matches MATLAB), f32 uses Joseph-form update (always applied for scan). No user configuration needed for standard use. The `assoc` path uses its own exact per-timestep formulation regardless of dtype.
-- **f32 precision is limited to ~1–4% max error for large models** — Joseph-form stabilization prevents covariance collapse but float32 arithmetic limits precision for m ≥ 4. Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
-- **Stabilization overhead is negligible on WASM** — `cTriuSym` adds two `np.triu` calls per step; wasm/f64 default vs no-sym differ by ≤5 ms across all models.
-- **WebGPU `scan` and `assoc` have similar warm-run times at small n** (~350–550 ms for n=100–120). At this scale both paths are dominated by per-dispatch GPU overhead, not per-step arithmetic. `assoc` remains the WebGPU default since it dispatches O(log n) rounds (architecturally optimal for large n; see scaling table below).
-- **WebGPU is ~10–15× slower than WASM** for the benchmarked models (n=100–120) — GPU dispatch latency dominates at small data sizes. The crossover point where WebGPU becomes competitive lies well above n=100k (see scaling table).
-- **WASM stays flat up to N≈3200 (fixed overhead), then scales linearly** — asymptotic per-step cost ~1.1 µs/step, giving ~<!-- timing:scale:wasm-f64:n1638400 -->1856 ms<!-- /timing --> at N=1638400. WebGPU/f32 `assoc` scales **sub-linearly at small N** (dispatch overhead dominates) but approaches O(N) at large N as per-step GPU arithmetic begins to dominate: a 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->370 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->747 ms<!-- /timing -->), and the ratio narrows to ~1.6× at N=1.6M.
-- **WebGPU results may differ slightly** from sequential WASM/f64 due to Float32 precision and operation reordering in the parallel scan, not from any algorithmic approximation — both paths use exact per-timestep Kalman gains.
+**Key findings** (see table above for exact numbers):
+- **WASM is ~10–20× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.
+- **`assoc` on CPU is faster for small m, slower for large m.** For m≥4 the extra matrix compositions dominate (~3× slower than `scan`).
+- **`assoc` on WASM is slower than `scan`** — the 5-tuple composition overhead dominates at small n. Prefer `scan` on WASM unless the parallel formulation is explicitly required.
+- **`sqrt-assoc` matches reference precision on wasm/f64** and maintains PSD covariances structurally (Cholesky factors) — no Joseph form or symmetrization needed. Slower than `scan` due to QR decompositions per composition step.
+- **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matching MATLAB `dlmsmo.m`), f32 uses Joseph-form update. The `assoc`/`sqrt-assoc` paths use their own exact formulation regardless of dtype. Overhead is negligible on WASM. Disable f64 symmetrization with `stabilization: { cTriuSym: false }`.
+- **f32 precision is limited to ~1–4% max error for large models.** Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
+- **WebGPU is dispatch-dominated at small n** — `scan` and `assoc` have similar warm-run times. `assoc` is the default since it dispatches O(log n) rounds (architecturally optimal for large n; see scaling table below).
+- **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->2015 ms<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->363 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1473 ms<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
+- **WebGPU numerical differences** vs WASM/f64 are from Float32 precision and parallel scan reordering, not algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The gapped-data demo uses the same Nile dataset with 23 observations removed.
 
@@ -496,9 +495,9 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 | Model | $n$ | $m$ | wasm / f64 / scan | webgpu / f32 / assoc |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->342 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->35 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->362 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->27 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->504 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->27 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->342 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->27 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->362 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->26 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->504 ms<!-- /timing --> |
 | Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->25 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->516 ms<!-- /timing --> |
 
 **WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
@@ -507,27 +506,27 @@ A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at ex
 
 | N | wasm/f64/scan | webgpu/f32/assoc | ratio |
 |---|---------------|-----------------|-------|
-| 100 | <!-- timing:scale:wasm-f64:n100 -->30 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->370 ms<!-- /timing --> | 10× |
-| 200 | <!-- timing:scale:wasm-f64:n200 -->26 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->399 ms<!-- /timing --> | 8× |
-| 400 | <!-- timing:scale:wasm-f64:n400 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->420 ms<!-- /timing --> | 9× |
-| 800 | <!-- timing:scale:wasm-f64:n800 -->28 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->433 ms<!-- /timing --> | 13× |
-| 1600 | <!-- timing:scale:wasm-f64:n1600 -->32 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->456 ms<!-- /timing --> | 12× |
-| 3200 | <!-- timing:scale:wasm-f64:n3200 -->33 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->475 ms<!-- /timing --> | 12× |
-| 6400 | <!-- timing:scale:wasm-f64:n6400 -->37 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->504 ms<!-- /timing --> | 10× |
-| 12800 | <!-- timing:scale:wasm-f64:n12800 -->44 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->524 ms<!-- /timing --> | 10× |
-| 25600 | <!-- timing:scale:wasm-f64:n25600 -->56 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->547 ms<!-- /timing --> | 9× |
-| 51200 | <!-- timing:scale:wasm-f64:n51200 -->82 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->616 ms<!-- /timing --> | 6× |
-| 102400 | <!-- timing:scale:wasm-f64:n102400 -->131 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->747 ms<!-- /timing --> | 4× |
-| 204800 | <!-- timing:scale:wasm-f64:n204800 -->289 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->921 ms<!-- /timing --> | 3× |
-| 409600 | <!-- timing:scale:wasm-f64:n409600 -->481 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->1116 ms<!-- /timing --> | 2× |
-| 819200 | <!-- timing:scale:wasm-f64:n819200 -->933 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->1767 ms<!-- /timing --> | 1.9× |
-| 1638400 | <!-- timing:scale:wasm-f64:n1638400 -->1856 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1638400 -->2933 ms<!-- /timing --> | 1.6× |
+| 100 | <!-- timing:scale:wasm-f64:n100 -->31 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->363 ms<!-- /timing --> | 10× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->386 ms<!-- /timing --> | 8× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->418 ms<!-- /timing --> | 9× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->28 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->441 ms<!-- /timing --> | 13× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->29 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->458 ms<!-- /timing --> | 12× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->30 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->463 ms<!-- /timing --> | 12× |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->33 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->503 ms<!-- /timing --> | 10× |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->38 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->575 ms<!-- /timing --> | 10× |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->52 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->712 ms<!-- /timing --> | 9× |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->73 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->976 ms<!-- /timing --> | 6× |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->152 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->1473 ms<!-- /timing --> | 4× |
+| 204800 | <!-- timing:scale:wasm-f64:n204800 -->289 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->2589 ms<!-- /timing --> | 3× |
+| 409600 | <!-- timing:scale:wasm-f64:n409600 -->532 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->4533 ms<!-- /timing --> | 2× |
+| 819200 | <!-- timing:scale:wasm-f64:n819200 -->998 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->8460 ms<!-- /timing --> | 1.9× |
+| 1638400 | <!-- timing:scale:wasm-f64:n1638400 -->2015 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1638400 -->16657 ms<!-- /timing --> | 1.6× |
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.1 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1856 ms<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.1 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->2015 ms<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
 
-2. **WebGPU scales sub-linearly at small N** (dispatch overhead dominates), but the growth rate accelerates at large N as per-step GPU arithmetic begins to dominate. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). At small N the GPU parallelism makes per-round work essentially free (~350–520 ms of fixed overhead), but at N>400k the per-round arithmetic becomes significant. A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->370 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->747 ms<!-- /timing -->).
+2. **WebGPU scales sub-linearly at small N** (dispatch overhead dominates), but the growth rate accelerates at large N as per-step GPU arithmetic begins to dominate. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). At small N the GPU parallelism makes per-round work essentially free (~350–520 ms of fixed overhead), but at N>400k the per-round arithmetic becomes significant. A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->363 ms<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1473 ms<!-- /timing -->).
 
 3. **The WASM-to-WebGPU ratio converges as N grows, but the convergence is slowing**: ~12× at N=100, ~6× at N=102400, ~2× at N=409600, ~1.9× at N=819200, ~1.6× at N=1638400. WebGPU's per-doubling growth factor was ~1.4× at intermediate N but has risen to ~1.6× at large N (approaching WASM's ~2×). No crossover was observed up to N=1638400; given the accelerating WebGPU growth rate, a crossover is unlikely at practical series lengths on this hardware.
 
@@ -568,11 +567,11 @@ Noise parameters are optimized in log-space: $s = e^{\theta_s}$, $w_i = e^{\thet
 
 The entire optimization step is wrapped in a single `jit()` call. For Adam, this includes `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update; for natural gradient, the `jit(valueAndGrad(loss))` call is reused for both the gradient and finite-difference Hessian evaluations. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in ~122 iterations (~2.6 s) with Adam (b2=0.9), or ~5 iterations (~1.5 s) with the natural gradient optimizer.
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:nile-mle:iterations -->190<!-- /timing --> iterations (~<!-- timing:nile-mle:elapsed -->3559 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->5<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:nile-order1:elapsed -->1575 ms<!-- /timing -->) with the natural gradient optimizer.
 
 **Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
-- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->300<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.4 s<!-- /timing --> on WASM).
+- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->300<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->6.0 s<!-- /timing --> on WASM).
 - **WebGPU + Float32:** `makeKalmanLossAssoc` — `lax.associativeScan` forward filter (O(log n) depth per iteration). Details below.
 
 Both paths are wrapped in `jit(valueAndGrad(lossFn))` with optax Adam. The final refit after convergence calls `dlmFit` (which itself uses the parallel path on WebGPU).
@@ -774,11 +773,11 @@ All timings measured on the same machine. The MATLAB DLM toolbox was run under O
 
 | Model | $n$ | $m$ | params | dlm-js Adam (wasm) | dlm-js natural (wasm) | Octave `fminsearch` | $-2\log L$ (Adam) | $-2\log L$ (natural) | $-2\log L$ (Octave) |
 |-------|---|---|--------|--------------------|-----------------------|---------------------|-------------------|----------------------|---------------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->3743 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->1508 ms<!-- /timing --> | 2827 ms | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1109.3<!-- /timing --> | 1104.6 |
-| Nile, order=1, fit w only | 100 | 2 | 2 | — | — | 1623 ms | — | — | 1104.7 |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->2323 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->1283 ms<!-- /timing --> | 610 ms | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | 1095.8 |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->4867 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->4030 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->6409 ms<!-- /timing --> | — | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — | — |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:nile-mle:elapsed -->3559 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->1575 ms<!-- /timing --> | <!-- computed:static("octave-nile-order1-elapsed-ms") + " ms" -->2827 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1109.3<!-- /timing --> | <!-- computed:static("octave-nile-order1-lik") -->1104.6<!-- /computed --> |
+| Nile, order=1, fit w only | 100 | 2 | 2 | — | — | <!-- computed:static("octave-nile-w-only-elapsed-ms") + " ms" -->1623 ms<!-- /computed --> | — | — | <!-- computed:static("octave-nile-w-only-lik") -->1104.7<!-- /computed --> |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->2312 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->1242 ms<!-- /timing --> | <!-- computed:static("octave-nile-order0-elapsed-ms") + " ms" -->610 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- computed:static("octave-nile-order0-lik") -->1095.8<!-- /computed --> |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->5393 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->4694 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->5993 ms<!-- /timing --> | — | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | — | — |
 
 Octave timings are from Octave with `fminsearch`; dlm-js timings are single fresh-run wall-clock times (including JIT overhead) from `pnpm run bench:mle`.
 
@@ -786,7 +785,7 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 - **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("nile-mle:elapsed") ? "faster" : "slower" -->faster<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
 - **Likelihood values:** All three optimizers converge to very similar $-2\log L$ values on Nile (Adam vs Octave difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
 - **Natural gradient:** Uses second-order curvature (FD Hessian + Levenberg-Marquardt damping) and converges in fewer iterations (≤50 vs 300 for Adam), but each iteration is more expensive due to per-parameter finite-difference Hessian evaluations.
-- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->4.9 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->22<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->4.0 s<!-- /timing -->).
+- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.4 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->22<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->4.7 s<!-- /timing -->).
 - **Joint $s+w$ fitting:** dlm-js always fits both $s$ and $w$; MATLAB DLM can fit $w$ only (`fitv=0`).
 
 ##### Gradient checkpointing
@@ -797,8 +796,8 @@ Octave timings are from Octave with `fminsearch`; dlm-js timings are single fres
 
 | Dataset | n | m | `checkpoint: false` ($n$) | `checkpoint: true` ($\sqrt{n}$) | speedup |
 |---------|---|---|--------------------|-----------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->2340 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->2351 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+0%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2902 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2912 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->+0%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->2301 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->2322 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+1%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2883 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2897 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->+0%<!-- /timing --> |
 
 
 #### MCMC (MATLAB DLM only)
