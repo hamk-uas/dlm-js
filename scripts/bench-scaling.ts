@@ -8,6 +8,13 @@
  *     backward passes use associativeScan since the Särkkä & García-Fernández
  *     2020 parallel smoother was implemented).
  *
+ * Timing methodology:
+ *   - WASM: jit() is polymorphic in N — one JIT compilation covers all array
+ *     sizes.  A single warmup at N=100 compiles the JIT, then each N is timed
+ *     with RUNS warm calls (median reported).
+ *   - WebGPU: jit() is NOT polymorphic in N — each new N triggers
+ *     recompilation.  Each N is measured as a cold call (includes JIT).
+ *
  * Must be run with Deno (WebGPU requires --unstable-webgpu):
  *   pnpm run bench:scaling
  *
@@ -41,7 +48,6 @@ const N_ALL: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600
  *  so scaling should be sub-linear. Measured at the same N values as WASM. */
 const N_GPU: number[] = [100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600, 819_200, 1_638_400];
 
-const WARMUP = 2;
 const RUNS   = 4;
 
 // ── Load Nile data ──────────────────────────────────────────────────────────
@@ -64,29 +70,29 @@ function median(arr: number[]): number {
   return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
 }
 
-async function timedMedian(n: number, dtype: DlmDtype): Promise<number> {
+/** WASM warm median: JIT is polymorphic in N — already compiled once upfront.
+ *  Just run RUNS times and take the median. */
+async function timedWarm(n: number): Promise<number> {
   const y = makeY(n);
-
-  // First run (JIT compilation)
-  const r0 = await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
-  r0[Symbol.dispose]?.();
-
-  // Warmup runs (discard — let JIT stabilize)
-  for (let i = 1; i < WARMUP; i++) {
-    const r = await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
-    r[Symbol.dispose]?.();
-  }
-
-  // Timed runs
   const times: number[] = [];
   for (let i = 0; i < RUNS; i++) {
     const t1 = performance.now();
-    const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype, ...options });
+    const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64' as DlmDtype, ...options });
     times.push(performance.now() - t1);
     r[Symbol.dispose]?.();
   }
-
   return median(times);
+}
+
+/** WebGPU cold: JIT is NOT polymorphic in N — each N recompiles.
+ *  Measure the single first call (includes JIT). */
+async function timedCold(n: number): Promise<number> {
+  const y = makeY(n);
+  const t1 = performance.now();
+  const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f32' as DlmDtype, ...options });
+  const elapsed = performance.now() - t1;
+  r[Symbol.dispose]?.();
+  return elapsed;
 }
 
 // ── Init both backends ─────────────────────────────────────────────────────
@@ -94,10 +100,19 @@ async function timedMedian(n: number, dtype: DlmDtype): Promise<number> {
 await init("wasm");
 await init("webgpu");
 
+// ── WASM JIT warmup (polymorphic in N — one compilation covers all sizes) ──
+
+defaultDevice("wasm");
+console.log("Compiling WASM JIT (single warmup at N=100)...");
+const rWarmup = await dlmFit(makeY(100), { obsStd: s, processStd: w, dtype: 'f64' as DlmDtype, ...options });
+rWarmup[Symbol.dispose]?.();
+
 // ── Run benchmarks ─────────────────────────────────────────────────────────
 
-console.log("\n=== Backend scaling benchmark (WASM/f64 all N · WebGPU/f32 small N) ===\n");
-console.log(`Model: Nile order=1, m=2, data tiled. Warmup=${WARMUP}, Runs=${RUNS}, median.\n`);
+console.log("\n=== Backend scaling benchmark ===");
+console.log("  WASM/f64:   warm (JIT polymorphic in N, compiled once)");
+console.log(`  WebGPU/f32: cold (JIT recompiles per N)\n`);
+console.log(`Model: Nile order=1, m=2, data tiled. WASM: ${RUNS} warm runs, median. WebGPU: single cold call.\n`);
 
 const colW = [10, 16, 14, 18, 10];
 const hdr = [
@@ -114,18 +129,18 @@ const sidecar: Record<string, number> = {};
 
 for (const n of N_ALL) {
   try {
-    // ── WASM / f64 ──────────────────────────────────────────────────────────
+    // ── WASM / f64 (warm — JIT already compiled) ─────────────────────────────
     defaultDevice("wasm");
-    const wasmMs = await timedMedian(n, 'f64');
+    const wasmMs = await timedWarm(n);
     sidecar[`wasm_f64_n${n}`] = wasmMs;
 
     const usPerStep = (wasmMs / n) * 1000;
 
-    // ── WebGPU / f32 (small N only) ─────────────────────────────────────────
+    // ── WebGPU / f32 (cold — JIT recompiles for this N) ─────────────────────
     let gpuMs: number | null = null;
     if (N_GPU.includes(n)) {
       defaultDevice("webgpu");
-      gpuMs = await timedMedian(n, 'f32');
+      gpuMs = await timedCold(n);
       sidecar[`webgpu_f32_n${n}`] = gpuMs;
     }
 

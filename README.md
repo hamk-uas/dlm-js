@@ -483,7 +483,7 @@ Both error columns show worst case across all 5 benchmark models and all output 
 - **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matching MATLAB `dlmsmo.m`), f32 uses Joseph-form update. The `assoc`/`sqrt-assoc` paths use their own exact formulation regardless of dtype. Overhead is negligible on WASM. Disable f64 symmetrization with `stabilization: { cTriuSym: false }`.
 - **f32 precision is limited to ~1–4% max error for large models.** Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
 - **WebGPU `assoc` is faster than `scan`** — `assoc` dispatches O(log n) rounds via a single `queue.submit()`, while `scan` dispatches O(n) sequential rounds. At small n (100–120), `assoc` is ~1.5–2× faster; the gap widens with larger n (see scaling table below).
-- **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->2010 ms (warm)<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->349 ms (warm)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1634 ms (warm)<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
+- **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->1914 ms (warm)<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->537 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1836 ms (cold)<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
 - **WebGPU numerical differences** vs WASM/f64 are from Float32 precision and parallel scan reordering, not algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The gapped-data demo uses the same Nile dataset with 23 observations removed.
@@ -502,33 +502,33 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 **WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
 
-A scaling benchmark (Nile order=1, m=2) measured `dlmFit` warm-run timings at exponentially increasing N (WASM: 2 warmup + 4 timed runs, median; WebGPU: same). WASM uses sequential `scan`; WebGPU uses `assoc` (both forward filter and backward smoother via `lax.associativeScan`):
+A scaling benchmark (Nile order=1, m=2) measures `dlmFit` at exponentially increasing N. WASM `jit()` is polymorphic in N (one JIT compilation covers all array sizes), so WASM timings are warm (4 runs, median). WebGPU `jit()` is not polymorphic in N (each new N recompiles), so WebGPU timings are cold (single first call including JIT). WASM uses sequential `scan`; WebGPU uses `assoc` (both forward filter and backward smoother via `lax.associativeScan`):
 
-| N | wasm/f64/scan (warm) | webgpu/f32/assoc (warm) | ratio |
+| N | wasm/f64/scan (warm) | webgpu/f32/assoc (cold) | ratio |
 |---|----------------------|-------------------------|-------|
-| 100 | <!-- timing:scale:wasm-f64:n100 -->30 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->349 ms<!-- /timing --> | 10× |
-| 200 | <!-- timing:scale:wasm-f64:n200 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->381 ms<!-- /timing --> | 8× |
-| 400 | <!-- timing:scale:wasm-f64:n400 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->407 ms<!-- /timing --> | 9× |
-| 800 | <!-- timing:scale:wasm-f64:n800 -->28 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->433 ms<!-- /timing --> | 13× |
-| 1600 | <!-- timing:scale:wasm-f64:n1600 -->32 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->451 ms<!-- /timing --> | 12× |
-| 3200 | <!-- timing:scale:wasm-f64:n3200 -->29 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->461 ms<!-- /timing --> | 12× |
-| 6400 | <!-- timing:scale:wasm-f64:n6400 -->31 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->501 ms<!-- /timing --> | 10× |
-| 12800 | <!-- timing:scale:wasm-f64:n12800 -->38 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->598 ms<!-- /timing --> | 10× |
-| 25600 | <!-- timing:scale:wasm-f64:n25600 -->50 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->739 ms<!-- /timing --> | 9× |
-| 51200 | <!-- timing:scale:wasm-f64:n51200 -->75 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->1020 ms<!-- /timing --> | 6× |
-| 102400 | <!-- timing:scale:wasm-f64:n102400 -->138 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->1634 ms<!-- /timing --> | 4× |
-| 204800 | <!-- timing:scale:wasm-f64:n204800 -->294 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->2711 ms<!-- /timing --> | 3× |
-| 409600 | <!-- timing:scale:wasm-f64:n409600 -->545 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->4920 ms<!-- /timing --> | 2× |
-| 819200 | <!-- timing:scale:wasm-f64:n819200 -->1004 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->9429 ms<!-- /timing --> | 1.9× |
-| 1638400 | <!-- timing:scale:wasm-f64:n1638400 -->2010 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1638400 -->18163 ms<!-- /timing --> | 1.6× |
+| 100 | <!-- timing:scale:wasm-f64:n100 -->30 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->537 ms<!-- /timing --> | 17.9× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->26 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->480 ms<!-- /timing --> | 18.4× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->502 ms<!-- /timing --> | 18.3× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->27 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->527 ms<!-- /timing --> | 19.6× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->28 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->550 ms<!-- /timing --> | 19.7× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->29 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->608 ms<!-- /timing --> | 21.2× |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->32 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->674 ms<!-- /timing --> | 21.2× |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->37 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->739 ms<!-- /timing --> | 20.1× |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->60 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->889 ms<!-- /timing --> | 14.8× |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->78 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->1203 ms<!-- /timing --> | 15.4× |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->133 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->1836 ms<!-- /timing --> | 13.8× |
+| 204800 | <!-- timing:scale:wasm-f64:n204800 -->240 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->2959 ms<!-- /timing --> | 12.3× |
+| 409600 | <!-- timing:scale:wasm-f64:n409600 -->480 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->4893 ms<!-- /timing --> | 10.2× |
+| 819200 | <!-- timing:scale:wasm-f64:n819200 -->942 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->9428 ms<!-- /timing --> | 10.0× |
+| 1638400 | <!-- timing:scale:wasm-f64:n1638400 -->1914 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1638400 -->18237 ms<!-- /timing --> | 9.5× |
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.1 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->2010 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.2 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1914 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
 
-2. **WebGPU scales sub-linearly at small N** (dispatch overhead dominates), but the growth rate accelerates at large N as per-step GPU arithmetic begins to dominate. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). At small N the GPU parallelism makes per-round work essentially free (~350–520 ms of fixed overhead), but at N>400k the per-round arithmetic becomes significant. A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->349 ms (warm)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1634 ms (warm)<!-- /timing -->).
+2. **WebGPU cold timings include per-N JIT recompilation** (WebGPU `jit()` is not polymorphic in N). At small N the ~500 ms JIT overhead dominates; at large N the GPU arithmetic dominates. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). A 1024× increase from N=100 to N=102400 roughly triples the runtime (<!-- timing:scale:webgpu-f32:n100 -->537 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1836 ms (cold)<!-- /timing -->).
 
-3. **The WASM-to-WebGPU ratio converges as N grows, but the convergence is slowing**: ~12× at N=100, ~6× at N=102400, ~2× at N=409600, ~1.9× at N=819200, ~1.6× at N=1638400. WebGPU's per-doubling growth factor was ~1.4× at intermediate N but has risen to ~1.6× at large N (approaching WASM's ~2×). No crossover was observed up to N=1638400; given the accelerating WebGPU growth rate, a crossover is unlikely at practical series lengths on this hardware.
+3. **The cold-WebGPU-to-warm-WASM ratio decreases as N grows** (~18× at small N where JIT overhead dominates, ~10× at N=1.6M where GPU execution time dominates). No crossover was observed up to N=1638400.
 
 
 ## MLE
