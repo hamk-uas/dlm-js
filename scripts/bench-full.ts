@@ -86,9 +86,9 @@ const models: Model[] = [
   },
   {
     label: "Kaisaniemi, trig",
-    // kaisaniemi-in.json includes the options used to generate the reference
+    // kaisaniemi-in.json stores MATLAB option names (trig → harmonics)
     y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: toW(kaisaniemiIn.w),
-    options: kaisaniemiIn.options,      // { order: 1, harmonics: 1 }
+    options: { order: 1, harmonics: 1 },
     n: 117, m: 4,
   },
   {

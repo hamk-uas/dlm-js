@@ -465,23 +465,23 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 <!-- generated:bench-full-table -->
 | backend | dtype | algorithm | stab | Nile o=0 (warm) | Nile o=1 (warm) | Kaisaniemi (warm) | Energy (warm) | Gapped (warm) | max \|Δ\| | max \|Δ\|% |
 |---------|-------|-----------|------|-------|-------|-------|-------|-------|----------|------------|
-| **cpu** | **f64** | **scan** | **triu** | **252 ms** | **416 ms** | **526 ms** | **578 ms** | **433 ms** | **9.31e-11** | **4.20e-9** |
-|  |  | scan | off | 203 ms | 338 ms | 426 ms | 474 ms | 344 ms | 2.08e-8 | 1.06e-4 |
-|  |  | assoc | built-in | 157 ms | 330 ms | 1255 ms | 1746 ms | 336 ms | 1.33e-8 | 2.17e-5 |
-|  | **f32** | **scan** | **joseph** | **214 ms** | **398 ms** | **500 ms** | **551 ms** | **395 ms** | **5.86e-3** | **0.29** |
-|  |  | scan | joseph+triu | 248 ms | 444 ms | 565 ms | 628 ms | 452 ms | 0.01 | 0.90 |
-|  |  | assoc | built-in | 143 ms | 318 ms | 1267 ms | 1768 ms | 329 ms | 0.01 | 20.1 |
-| **wasm** | **f64** | **scan** | **triu** | **26 ms** | **26 ms** | **27 ms** | **27 ms** | **26 ms** | **9.31e-11** | **4.20e-9** |
-|  |  | scan | off | 20 ms | 21 ms | 22 ms | 23 ms | 23 ms | 2.08e-8 | 1.06e-4 |
-|  |  | assoc | built-in | 81 ms | 96 ms | 270 ms | 109 ms | 100 ms | 1.33e-8 | 2.17e-5 |
-|  |  | sqrt-assoc | built-in | 122 ms | 154 ms | 167 ms | 183 ms | 139 ms | 2.92e-8 | 2.03e-4 |
-|  | **f32** | **scan** | **joseph** | **21 ms** | **24 ms** | **25 ms** | **24 ms** | **24 ms** | **0.04** | **1.27** |
-|  |  | scan | joseph+triu | 23 ms | 28 ms | 28 ms | 27 ms | 27 ms | 0.04 | 1.78 |
-|  |  | assoc | built-in | 76 ms | 101 ms | 214 ms | 101 ms | 104 ms | 0.01 | 21.9 |
-|  |  | sqrt-assoc | built-in | 122 ms | 132 ms | 157 ms | 172 ms | 138 ms | 0.03 | 199 |
-| **webgpu** | **f32** | **assoc** | **built-in** | **354 ms** | **418 ms** | **592 ms** | **437 ms** | **445 ms** | **0.01** | **20.5** |
-|  |  | scan | joseph | 557 ms | 746 ms | 843 ms | 924 ms | 873 ms | 0.01 | 0.98 |
-|  |  | scan | joseph+triu | 671 ms | 741 ms | 857 ms | 931 ms | 1018 ms | 0.03 | 2.99 |
+| **cpu** | **f64** | **scan** | **triu** | **236 ms** | **430 ms** | **545 ms** | **606 ms** | **448 ms** | **9.31e-11** | **4.20e-9** |
+|  |  | scan | off | 217 ms | 349 ms | 446 ms | 494 ms | 376 ms | 2.08e-8 | 1.06e-4 |
+|  |  | assoc | built-in | 149 ms | 340 ms | 1259 ms | 1736 ms | 322 ms | 1.33e-8 | 2.17e-5 |
+|  | **f32** | **scan** | **joseph** | **222 ms** | **412 ms** | **515 ms** | **566 ms** | **407 ms** | **5.83e-3** | **0.29** |
+|  |  | scan | joseph+triu | 249 ms | 455 ms | 579 ms | 629 ms | 462 ms | 0.01 | 0.90 |
+|  |  | assoc | built-in | 151 ms | 325 ms | 1277 ms | 1765 ms | 332 ms | 0.01 | 19.6 |
+| **wasm** | **f64** | **scan** | **triu** | **25 ms** | **27 ms** | **27 ms** | **27 ms** | **28 ms** | **9.31e-11** | **4.20e-9** |
+|  |  | scan | off | 20 ms | 23 ms | 22 ms | 23 ms | 30 ms | 2.08e-8 | 1.06e-4 |
+|  |  | assoc | built-in | 78 ms | 100 ms | 220 ms | 108 ms | 102 ms | 1.33e-8 | 2.17e-5 |
+|  |  | sqrt-assoc | built-in | 120 ms | 137 ms | 237 ms | 200 ms | 139 ms | 2.92e-8 | 2.03e-4 |
+|  | **f32** | **scan** | **joseph** | **20 ms** | **25 ms** | **28 ms** | **25 ms** | **27 ms** | **0.04** | **1.27** |
+|  |  | scan | joseph+triu | 22 ms | 28 ms | 29 ms | 28 ms | 28 ms | 0.04 | 1.78 |
+|  |  | assoc | built-in | 76 ms | 99 ms | 230 ms | 106 ms | 101 ms | 0.01 | 21.9 |
+|  |  | sqrt-assoc | built-in | 123 ms | 132 ms | 159 ms | 190 ms | 137 ms | 0.03 | 199 |
+| **webgpu** | **f32** | **assoc** | **built-in** | **371 ms** | **431 ms** | **597 ms** | **434 ms** | **453 ms** | **0.01** | **20.5** |
+|  |  | scan | joseph | 612 ms | 760 ms | 879 ms | 917 ms | 922 ms | 0.01 | 0.98 |
+|  |  | scan | joseph+triu | 721 ms | 763 ms | 893 ms | 925 ms | 1068 ms | 0.03 | 2.99 |
 <!-- /generated -->
 
 Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
