@@ -496,10 +496,10 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 
 | Model | $n$ | $m$ | wasm / f64 / scan | webgpu / f32 / assoc |
 |-------|-----|-----|-------------------|--------------------------|
-| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->298 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->35 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->300 ms<!-- /timing --> |
-| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->27 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->299 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->25 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->294 ms<!-- /timing --> |
+| Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->24 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->342 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->35 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->362 ms<!-- /timing --> |
+| Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->27 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->504 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->25 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->516 ms<!-- /timing --> |
 
 **WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
 

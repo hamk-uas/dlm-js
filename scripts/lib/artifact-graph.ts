@@ -198,6 +198,23 @@ export const artifactGroups: ArtifactGroup[] = [
     heavy: false,
   },
 
+  // ── WebGPU dlmFit benchmark (Deno) ───────────────────────────────────────
+  {
+    id: "bench-gpu",
+    label: "WebGPU dlmFit benchmark (float32, assoc)",
+    sources: [
+      "src/index.ts",
+      "src/dlmgensys.ts",
+      "src/types.ts",
+      "scripts/bench-gpu.ts",
+    ],
+    outputs: [
+      "assets/timings/bench-gpu.json",
+    ],
+    command: "pnpm run bench:gpu   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
+    heavy: true,
+  },
+
   // ── Full benchmark table (Deno + WebGPU) ────────────────────────────────
   {
     id: "bench-full",
