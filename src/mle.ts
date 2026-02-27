@@ -688,7 +688,9 @@ const solveRegularized = (
  * For nTheta = 2–6, that's 200–600 ms — far cheaper than JIT-compiling
  * `jacfwd(grad(loss))` which takes ~24 s for the trace alone.
  *
- * Accuracy: O(h²) with h = ε^(1/3) ≈ 6e-6 for float64.
+ * Accuracy: O(h²) with per-parameter relative step hⱼ = ε·max(|θⱼ|, 1).
+ * Relative stepping keeps the Hessian accurate when parameters drift to
+ * extreme log-space values (e.g. w → 0 ⇒ θ → −7).
  * Result is explicitly symmetrized: H → (H + Hᵀ) / 2.
  *
  * @internal
@@ -700,29 +702,32 @@ const computeHessianFD = async (
   dtype: DType,
   fdStepSize: number = 1e-5,
 ): Promise<number[][]> => {
-  const h = fdStepSize;
   const H: number[][] = Array.from({ length: nTheta }, () => new Array(nTheta).fill(0));
 
   for (let j = 0; j < nTheta; j++) {
-    // θ + h·eⱼ
+    // Relative FD step: scale by |θⱼ| so the perturbation stays meaningful
+    // even when parameters drift to extreme log-space values (e.g. θ → −7).
+    const hj = fdStepSize * Math.max(Math.abs(thetaData[j]), 1.0);
+
+    // θ + hⱼ·eⱼ
     const thetaPlus = [...thetaData];
-    thetaPlus[j] += h;
+    thetaPlus[j] += hj;
     using tpArr = np.array(thetaPlus, { dtype });
     const [lpArr, gpArr] = gradFn(tpArr) as [np.Array, np.Array];
     const gPlus = Array.from(await gpArr.data() as Float64Array | Float32Array);
     lpArr.dispose(); gpArr.dispose();
 
-    // θ - h·eⱼ
+    // θ - hⱼ·eⱼ
     const thetaMinus = [...thetaData];
-    thetaMinus[j] -= h;
+    thetaMinus[j] -= hj;
     using tmArr = np.array(thetaMinus, { dtype });
     const [lmArr, gmArr] = gradFn(tmArr) as [np.Array, np.Array];
     const gMinus = Array.from(await gmArr.data() as Float64Array | Float32Array);
     lmArr.dispose(); gmArr.dispose();
 
-    // H[:,j] = (g⁺ - g⁻) / (2h)
+    // H[:,j] = (g⁺ - g⁻) / (2hⱼ)
     for (let i = 0; i < nTheta; i++) {
-      H[i][j] = (gPlus[i] - gMinus[i]) / (2 * h);
+      H[i][j] = (gPlus[i] - gMinus[i]) / (2 * hj);
     }
   }
 
@@ -979,9 +984,13 @@ export const dlmMLE = async (
       }
 
       // ── 2. Check convergence ──
+      // Require BOTH small relative loss change AND small gradient norm.
+      // Loss-only checks are fooled by plateaus (the optimizer may be far from
+      // the optimum but moving along a flat ridge).
       if (iter > 0) {
         const relChange = Math.abs((likNum - prevLik) / (Math.abs(prevLik) + 1e-30));
-        if (relChange < tol) { prevLik = likNum; iter++; break; }
+        const gNorm = Math.sqrt(g.reduce((s, v) => s + v * v, 0));
+        if (relChange < tol && gNorm < 1.0) { prevLik = likNum; iter++; break; }
       }
       prevLik = likNum;
 
