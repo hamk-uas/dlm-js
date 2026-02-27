@@ -777,7 +777,7 @@ export const dlmMLE = async (
   } = opts ?? {};
   const useNatural = optimizerChoice === 'natural';
   const hessianMode = naturalOpts?.hessian ?? 'fd';
-  const lmInit = naturalOpts?.lambdaInit ?? 1e-4;
+  const lmInit = naturalOpts?.lambdaInit ?? 0.1;
   const lmShrink = naturalOpts?.lambdaShrink ?? 0.5;
   const lmGrow = naturalOpts?.lambdaGrow ?? 2;
   const fdStep = naturalOpts?.fdStep ?? 1e-5;
@@ -919,19 +919,19 @@ export const dlmMLE = async (
     : kalmanLoss;
 
   // ════════════════════════════════════════════════════════════════════════════
-  // Natural gradient (Fisher dualization) optimizer path
+  // Natural gradient / Levenberg-Marquardt optimizer path
   // ════════════════════════════════════════════════════════════════════════════
   //
   // Solves  Δθ = −η · (H + λI)⁻¹ · g  where H is the Hessian of the
-  // Kalman −2·logL computed via central finite differences of the gradient,
-  // and g is the gradient.  This is the Modula "modular dualization"
-  // procedure with the Fisher Information metric as the norm on parameter
-  // space.
+  // Kalman −2·logL (≈ observed Fisher information on log-scale params)
+  // computed via central finite differences of the gradient, and g is
+  // the gradient.  This is Amari's natural gradient (1998) with
+  // Levenberg-Marquardt damping (Marquardt 1963).
   //
-  // Levenberg-Marquardt damping adapts λ: shrink when loss decreases (trust
-  // the quadratic model), grow when it increases (fall back toward gradient
-  // descent).  For nTheta ≤ ~10 the (nTheta×nTheta) solve is done in plain
-  // JS — effectively free.
+  // LM damping adapts λ: shrink when loss decreases (trust the quadratic
+  // model), grow when it increases (fall back toward gradient descent).
+  // For nTheta ≤ ~10 the (nTheta×nTheta) solve is done in plain JS —
+  // effectively free.
   //
   // Cost per iteration:
   //   hessian='fd' (default): one valueAndGrad + 2·nTheta perturbed gradient
