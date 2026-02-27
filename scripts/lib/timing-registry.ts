@@ -441,6 +441,23 @@ export const timingRegistry: Record<string, TimingSlot> = {
     description: "dlmMLE final −2log L — Kaisaniemi trig model",
   },
 
+  // ── Nile order=1, fit w only (obsStdFixed) ──────────────────────────────
+
+  "mle-bench:nile-wonly:elapsed": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nile_wonly_elapsed",
+    format:      "ms0",
+    description: "dlmMLE Adam — Nile order=1 (w only), wall-clock",
+  },
+  "mle-bench:nile-wonly:lik": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nile_wonly_lik",
+    format:      "lik1",
+    description: "dlmMLE Adam — Nile order=1 (w only), −2log L",
+  },
+
   // ── Natural gradient MLE benchmark ───────────────────────────────────────
 
   "nat-mle-bench:nile-order1:elapsed": {
@@ -512,6 +529,49 @@ export const timingRegistry: Record<string, TimingSlot> = {
     field:       "nat_kaisaniemi_lik",
     format:      "lik1",
     description: "dlmMLE natural — Kaisaniemi trig model, −2log L",
+  },
+
+  "nat-mle-bench:nile-wonly:elapsed": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_wonly_elapsed",
+    format:      "ms0",
+    description: "dlmMLE natural — Nile order=1 (w only), wall-clock",
+  },
+  "nat-mle-bench:nile-wonly:lik": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_nile_wonly_lik",
+    format:      "lik1",
+    description: "dlmMLE natural — Nile order=1 (w only), −2log L",
+  },
+  "nat-mle-bench:energy:elapsed": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_energy_elapsed",
+    format:      "ms0",
+    description: "dlmMLE natural — Energy trig+AR model, wall-clock",
+  },
+  "nat-mle-bench:energy:elapsed-s": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_energy_elapsed",
+    format:      "s1",
+    description: "dlmMLE natural — Energy trig+AR model (seconds, for prose)",
+  },
+  "nat-mle-bench:energy:iterations": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_energy_iterations",
+    format:      "int",
+    description: "dlmMLE natural — Energy trig+AR model, iteration count",
+  },
+  "nat-mle-bench:energy:lik": {
+    script:      "scripts/collect-mle-benchmark.ts",
+    sidecar:     "collect-mle-benchmark",
+    field:       "nat_energy_lik",
+    format:      "lik1",
+    description: "dlmMLE natural — Energy trig+AR model, −2log L",
   },
 
   // ── Cross-backend dlmFit benchmark (bench-backends.ts) ───────────────────

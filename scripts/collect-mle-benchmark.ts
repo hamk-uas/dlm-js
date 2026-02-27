@@ -29,6 +29,7 @@ defaultDevice("wasm");
 
 const nileIn        = JSON.parse(readFileSync(resolve(root, "tests/niledemo-in.json"), "utf-8"));
 const kaisaniemiIn  = JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-in.json"), "utf-8"));
+const energyIn      = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "utf-8"));
 
 // ── Helper: median of N timed runs (after 1 warm-up) ──────────────────────
 
@@ -83,6 +84,14 @@ console.log(["Nile order=0 (s+w)", "100", "1",
   `${Math.round(nileOrder0.elapsed)} ms`, String(nileOrder0.iterations), nileOrder0.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
 
+// Nile order=1 with observation noise fixed (MATLAB DLM fitv=0).
+// obsStdFixed = constant array of initial s from niledemo-in.json.
+const sFixed = new Array(nileIn.y.length).fill(nileIn.s);
+const nileWonly = await timedMle(nileIn.y, { order: 1, obsStdFixed: sFixed });
+console.log(["Nile order=1 (w only)", "100", "2",
+  `${Math.round(nileWonly.elapsed)} ms`, String(nileWonly.iterations), nileWonly.lik.toFixed(1)]
+  .map(s => s.padEnd(28)).join(" "));
+
 const kaisaniemi = await timedMle(kaisaniemiIn.y, { order: 1, harmonics: 1, seasonLength: 12 });
 console.log(["Kaisaniemi trig (s+w)", "117", "4",
   `${Math.round(kaisaniemi.elapsed)} ms`, String(kaisaniemi.iterations), kaisaniemi.lik.toFixed(1)]
@@ -133,9 +142,20 @@ console.log(["Nile order=0 (s+w)", "100", "1",
   `${Math.round(natNileOrder0.elapsed)} ms`, String(natNileOrder0.iterations), natNileOrder0.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
 
+const natNileWonly = await timedMleNatural(nileIn.y, { order: 1, obsStdFixed: sFixed });
+console.log(["Nile order=1 (w only)", "100", "2",
+  `${Math.round(natNileWonly.elapsed)} ms`, String(natNileWonly.iterations), natNileWonly.lik.toFixed(1)]
+  .map(s => s.padEnd(28)).join(" "));
+
 const natKaisaniemi = await timedMleNatural(kaisaniemiIn.y, { order: 1, harmonics: 1, seasonLength: 12 });
 console.log(["Kaisaniemi trig (s+w)", "117", "4",
   `${Math.round(natKaisaniemi.elapsed)} ms`, String(natKaisaniemi.iterations), natKaisaniemi.lik.toFixed(1)]
+  .map(s => s.padEnd(28)).join(" "));
+
+const energyOpts = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
+const natEnergy = await timedMleNatural(energyIn.y, energyOpts);
+console.log(["Energy trig+AR (s+w+φ)", "120", "5",
+  `${Math.round(natEnergy.elapsed)} ms`, String(natEnergy.iterations), natEnergy.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
 
 console.log("\nDone.");
@@ -159,8 +179,17 @@ writeTimingsSidecar("collect-mle-benchmark", {
   nat_nile_order0_elapsed:     natNileOrder0.elapsed,
   nat_nile_order0_iterations:  natNileOrder0.iterations,
   nat_nile_order0_lik:         natNileOrder0.lik,
+  nile_wonly_elapsed:           nileWonly.elapsed,
+  nile_wonly_iterations:        nileWonly.iterations,
+  nile_wonly_lik:               nileWonly.lik,
+  nat_nile_wonly_elapsed:       natNileWonly.elapsed,
+  nat_nile_wonly_iterations:    natNileWonly.iterations,
+  nat_nile_wonly_lik:           natNileWonly.lik,
   nat_kaisaniemi_elapsed:      natKaisaniemi.elapsed,
   nat_kaisaniemi_iterations:   natKaisaniemi.iterations,
   nat_kaisaniemi_lik:          natKaisaniemi.lik,
+  nat_energy_elapsed:          natEnergy.elapsed,
+  nat_energy_iterations:       natEnergy.iterations,
+  nat_energy_lik:              natEnergy.lik,
 });
 stampMachineInfo();
