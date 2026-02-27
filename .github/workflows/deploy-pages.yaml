@@ -20,18 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # Generate TypeDoc API documentation
-      - run: pnpm run docs
-
+      # docs/ is pre-committed — regenerate locally with `pnpm run docs`
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
