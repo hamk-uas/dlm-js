@@ -973,11 +973,11 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 7. Bernstein, J. & Newhouse, L. (2024). [Modular Duality in Deep Learning](https://arxiv.org/abs/2410.21265). *arXiv:2410.21265*. — Unifying framework for optimizer design via steepest descent under a norm. The duality map $\mathcal{D}_{\|\cdot\|}$ converts gradients to primal-space updates; for the Euclidean norm this recovers gradient descent, for the operator norm it yields Shampoo/µP, and for the Hessian quadratic form it gives Newton's method. See [Optimizers](#optimizers).
 
 ### Authors
-* Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
+* Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/`, `tests/octave/niledemo.m`, `tests/octave/ozonedemo.m`, and `tests/octave/kaisaniemi.mat`
 * Olli Niemitalo (Olli.Niemitalo@hamk.fi) -- Supervision of AI coding agents
 
 ### Copyright
-* 2013-2017 Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/` and `tests/octave/niledemo.m`
+* 2013-2017 Marko Laine -- Original DLM and mcmcstat sources in `tests/octave/dlm/`, `tests/octave/niledemo.m`, `tests/octave/ozonedemo.m`, and `tests/octave/kaisaniemi.mat`
 * 2026 HAMK Häme University of Applied Sciences
   
 ### License
