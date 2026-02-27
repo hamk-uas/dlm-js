@@ -7,7 +7,7 @@
  *
  * Test strategy:
  * 1. Uniform timestamps should reproduce the standard (no-timestamp) result exactly.
- * 2. Order=0 with gaps: timestamps with Δt>1 should match NaN-padded uniform
+ * 2. Order=0 with gaps: timestamps with Δt>1 should match Nan-stuffed uniform
  *    model at the observed indices (G=I so cumulated W = Δt·w²).
  * 3. Order=1 with irregular spacing: reasonableness checks (finite outputs,
  *    ystd widens over gaps, correct shapes).
@@ -35,8 +35,8 @@ const TREND_DATA = Array.from({ length: 30 }, (_, t) => 100 + 2 * t + (Math.sin(
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Build NaN-padded version of GAP data at uniform Δt=1 (indices 0..19) */
-function buildNanPadded(): number[] {
+/** Build Nan-stuffed version of GAP data at uniform Δt=1 (indices 0..19) */
+function buildNanStuffed(): number[] {
   const y = new Array(20).fill(NaN);
   for (let i = 0; i < 10; i++) y[i] = LEVEL_DATA[i];
   for (let i = 15; i < 20; i++) y[i] = LEVEL_DATA[i];
@@ -275,7 +275,7 @@ describe('timestamps', () => {
     });
   });
 
-  // ── Order=0 with gap: timestamps vs NaN-padded uniform ────────────────
+  // ── Order=0 with gap: timestamps vs Nan-stuffed uniform ────────────────
 
   describe('order=0 gap behavior', () => {
     it('ystd widens at the gap boundary and yhat interpolates (f64)', async () => {
@@ -338,9 +338,9 @@ describe('timestamps', () => {
     });
   });
 
-  // ── Timestamps vs NaN-padded equivalence (order=1, Nile gapped data) ──
+  // ── Timestamps vs Nan-stuffed equivalence (order=1, Nile gapped data) ──
 
-  describe('timestamps vs NaN-padded equivalence (order=1)', () => {
+  describe('timestamps vs Nan-stuffed equivalence (order=1)', () => {
     it('smoothed states match at observed indices', async () => {
       const configs = await f64Configs();
       if (configs.length === 0) return;
@@ -376,7 +376,7 @@ describe('timestamps', () => {
         }
       }
 
-      // NaN-padded fit
+      // Nan-stuffed fit
       const nanResult = await dlmFit(y, { obsStd: s, processStd: w, dtype: dlmDtype, ...opts });
       const nanM = toMatlab(nanResult);
       const nanLevel = nanM.x[0] as Float64Array;

@@ -250,7 +250,7 @@ push(`<text x="${legX + 103}" y="${legY + 14}" dominant-baseline="middle" fill="
 push(`<rect x="${legX + 8}" y="${legY + 30}" width="14" height="14" fill="${jsObsBandColor}" stroke="none"/>`);
 push(`<rect x="${legX + 8}" y="${legY + 34}" width="14" height="6" fill="${jsStateBandColor}" stroke="none"/>`);
 push(`<line x1="${legX + 8}" y1="${legY + 37}" x2="${legX + 22}" y2="${legY + 37}" stroke="${jsColor}" stroke-width="2"/>`);
-push(`<text x="${legX + 26}" y="${legY + 37}" dominant-baseline="middle" fill="#333" font-size="11">NaN-padded fit ±2σ state / ±2σ obs</text>`);
+push(`<text x="${legX + 26}" y="${legY + 37}" dominant-baseline="middle" fill="#333" font-size="11">Nan-stuffed fit ±2σ state / ±2σ obs</text>`);
 // Timestamps fit
 push(`<rect x="${legX + 8}" y="${legY + 52}" width="14" height="14" fill="${tsStateBandColor}" stroke="none"/>`);
 push(`<line x1="${legX + 8}" y1="${legY + 59}" x2="${legX + 22}" y2="${legY + 59}" stroke="${tsColor}" stroke-width="2"/>`);
