@@ -107,7 +107,7 @@ const dlmSmo = async (
   const device = defaultDevice();
   const f32 = dtype === DType.Float32;
   const useSqrtAssocScan = forceSqrtAssocScan ?? false;
-  const useAssocScan = !useSqrtAssocScan && (forceAssocScan || (f32 && device === 'webgpu'));
+  const useAssocScan = !useSqrtAssocScan && (forceAssocScan ?? (f32 && device === 'webgpu'));
 
   // ── Stabilization flags (f32 sequential backward step only) ──────────────────
   // Flags are captured as JS constants — each unique combination produces a
@@ -1525,7 +1525,7 @@ export const dlmFit = async (
     X, algorithm, stabilization,
   } = opts;
   const dtype = parseDtype(opts.dtype);
-  const forceAssocScan = algorithm === 'assoc' ? true : undefined;
+  const forceAssocScan = algorithm === 'assoc' ? true : algorithm === 'scan' ? false : undefined;
   const forceSqrtAssocScan = algorithm === 'sqrt-assoc' ? true : undefined;
 
   // Build DlmOptions for dlmGenSys
