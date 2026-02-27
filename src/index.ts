@@ -62,28 +62,36 @@ export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
  * @param G - State transition matrix (m×m)
  * @param W - State noise covariance (m×m)
  * @param C0_data - Initial state covariance (m×m as nested array)
+ * @param y_arr - Observations tensor [n, p, 1] (p=1 for univariate)
+ * @param V2_arr - Observation noise covariance [n, p, p] (diagonal for independent noise)
+ * @param x0_data - Initial state mean (m×1 as nested array)
+ * @param G_scan - Per-step transition matrices [n, m, m]
+ * @param W_scan - Per-step noise covariances [n, m, m]
+ * @param C0_data - Initial state covariance (m×m as nested array)
  * @param stateSize - State dimension m (extended: m_base + q for covariates)
+ * @param obsSize - Observation dimension p (1 for univariate)
  * @param dtype - Computation precision
- * @param FF_arr - Optional time-varying observation matrix [n, 1, m] (for covariates)
+ * @param FF_scan - Observation matrix [n, p, m] (time-varying or tiled static)
  * @returns Smoothed and filtered state estimates with diagnostics
  * @internal
  */
 const dlmSmo = async (
-  y: FloatArray,
-  F: np.Array,
-  V_std: FloatArray,
+  y_arr: np.Array,     // [n, p, 1] observations
+  V2_arr: np.Array,    // [n, p, p] observation noise covariance
   x0_data: number[][],
   G_scan: np.Array,   // [n, m, m] per-step transition matrix
   W_scan: np.Array,   // [n, m, m] per-step noise covariance
   C0_data: number[][],
   stateSize: number,
+  obsSize: number,
   dtype: DType = DType.Float64,
-  FF_arr?: np.Array,  // [n, 1, m_ext] time-varying F (covariates)
+  FF_scan: np.Array,  // [n, p, m] observation matrix
   forceAssocScan?: boolean,
   stabilization?: DlmStabilization,
   forceSqrtAssocScan?: boolean,
 ): Promise<DlmSmoResult & Disposable> => {
-  const n = y.length;
+  const n = y_arr.shape[0];
+  const p = obsSize;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Branch selection: three execution paths based on device + dtype
@@ -140,11 +148,6 @@ const dlmSmo = async (
   using half             = np.array(0.5, { dtype });                               // scalar
   using zeros_mm         = np.zeros([stateSize, stateSize], { dtype });            // [m,m]
 
-  // Stack observations: shape [n, 1, 1] for matmul compatibility
-  using y_arr = np.array(Array.from(y).map(yi => [[yi]]), { dtype });
-  // Stack V² (variance): shape [n, 1, 1]
-  using V2_arr = np.array(Array.from(V_std).map(v => [[v * v]]), { dtype });
-  
   // Initial state
   using x0 = np.array(x0_data, { dtype });
   using C0 = np.array(C0_data, { dtype });
@@ -158,26 +161,14 @@ const dlmSmo = async (
   using N0 = np.array(N0_data, { dtype });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build FF_scan: [n, 1, m] pytree input for the scan.
-  // Without covariates: broadcast static F to shape [n, 1, m].
-  // With covariates: caller provides FF_arr [n, 1, m_ext] directly.
-  // Both cases use the same step functions — no branching inside scan.
-  // ─────────────────────────────────────────────────────────────────────────
-  let FF_scan: np.Array;
-  if (FF_arr !== undefined) {
-    FF_scan = FF_arr;
-  } else {
-    using F_3d = np.reshape(F, [1, 1, stateSize]);
-    FF_scan = np.tile(F_3d, [n, 1, 1]);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
   // Step functions receive FF_t ([1, m]), G_t ([m, m]), and W_t ([m, m])
   // from the scan pytree. All three can be time-varying.
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Constant [1,1] ones tensor captured by forwardStep closure for NaN masking.
-  using const_one_11 = np.array([[1.0]], { dtype });
+  // NaN mask constants: [1,1] scalar mask broadcasts to [p,1] and [m,p] via multiply.
+  // All-or-nothing per timestep: if ANY yi component is NaN, entire step is skipped.
+  using const_one_11 = np.array([[1.0]], { dtype });  // [1,1] observed
+  using zero_11 = np.array([[0.0]], { dtype });        // [1,1] NaN
 
   type ForwardCarry = { x: np.Array; C: np.Array };
   type ForwardX = { y: np.Array; V2: np.Array; FF: np.Array; Gt: np.Array; Wt: np.Array };
@@ -195,41 +186,50 @@ const dlmSmo = async (
     const { x: xi, C: Ci } = carry;
     const { y: yi, V2: V2i, FF: FFi, Gt: G_t, Wt: W_t } = inp;
 
-    // NaN masking: mask = 1.0 if y is observed, 0.0 if y is NaN.
-    // When y is NaN, the measurement update is skipped entirely:
-    //   x_{t|t} = x_{t|t-1}  (no correction)
-    //   C_{t|t} = C_{t|t-1}  (no reduction)
-    // This is achieved by zeroing K and v, which makes L = G and
-    // the update terms vanish without branching inside the scan.
-    using is_nan = np.isnan(yi);                                   // [1,1] bool
-    using zero_11 = np.zerosLike(yi);                              // [1,1]
-    const mask_t = np.where(is_nan, zero_11, const_one_11);       // [1,1]: 0 if NaN
-    using y_safe = np.where(is_nan, zero_11, yi);                  // [1,1]: 0 if NaN
+    // NaN masking: mask = 1.0 if observation is valid, 0.0 if NaN.
+    // p=1: isnan(yi) directly.  p>1: sum propagates NaN → all-or-nothing.
+    // mask_t is always [1,1] scalar, broadcasts to [p,1] and [m,p].
+    let is_nan_11: np.Array;
+    if (p === 1) {
+      is_nan_11 = np.isnan(yi);                                     // [1,1] bool
+    } else {
+      using yi_sum = np.reshape(np.sum(yi), [1, 1]);                // [1,1]
+      is_nan_11 = np.isnan(yi_sum);                                 // [1,1] bool
+    }
+    using _is_nan = is_nan_11;
+    const mask_t = np.where(_is_nan, zero_11, const_one_11);       // [1,1]: 0 or 1
+    using y_safe = np.where(_is_nan, np.zerosLike(yi), yi);         // [p,1]: 0 if NaN
 
-    // Innovation: v = (y_safe - FF·x) * mask  [1,1]  (0 when NaN)
-    using FFxi = np.matmul(FFi, xi);
+    // Innovation: v = mask * (y_safe - FF·x)  [p,1]  (0 when NaN)
+    using FFxi = np.matmul(FFi, xi);                                // [p,m]·[m,1] → [p,1]
     using v_raw = np.subtract(y_safe, FFxi);
-    const v = np.multiply(mask_t, v_raw);
+    const v = np.multiply(mask_t, v_raw);                           // [1,1]×[p,1] broadcast
 
-    // Innovation covariance: Cp = FF·C·FF' + V²  [1,1]
+    // Innovation covariance: Cp = FF·C·FF' + V²  [p,p]
     const Cp = np.add(
-      np.einsum('ij,jk,lk->il', FFi, Ci, FFi),
+      np.einsum('ij,jk,lk->il', FFi, Ci, FFi),                    // [p,p]
       V2i
     );
 
-    // Kalman gain: K = mask * (G·C·FF' / Cp)  [m,1]  (0 when NaN)
-    using GCFFt = np.einsum('ij,jk,lk->il', G_t, Ci, FFi);
-    using K_raw = np.divide(GCFFt, Cp);
-    const K = np.multiply(mask_t, K_raw);  // [1,1]×[m,1] → [m,1] by broadcast
+    // Kalman gain: K = mask * (G·C·FF' · Cp⁻¹)  [m,p]  (0 when NaN)
+    using GCFFt = np.einsum('ij,jk,lk->il', G_t, Ci, FFi);        // [m,p]
+    if (p === 1) {
+      using K_raw = np.divide(GCFFt, Cp);                          // scalar division
+      var K = np.multiply(mask_t, K_raw);                           // [1,1]×[m,1] broadcast
+    } else {
+      using CpInv = np.linalg.inv(Cp);                             // [p,p]
+      using K_raw = np.matmul(GCFFt, CpInv);                       // [m,p]
+      var K = np.multiply(mask_t, K_raw);                           // [1,1]×[m,p] broadcast
+    }
 
     // L = G - K·FF  [m,m]  (= G when NaN, since K=0)
-    using L = np.subtract(G_t, np.matmul(K, FFi));
+    using L = np.subtract(G_t, np.matmul(K, FFi));                  // [m,p]·[p,m] → [m,m]
 
     // Next state prediction: x_next = G·x + K·v  [m,1]
     // When NaN: x_next = G·x (no measurement update)
     const x_next = np.add(
       np.matmul(G_t, xi),
-      np.matmul(K, v)
+      np.matmul(K, v)                                               // [m,p]·[p,1] → [m,1]
     );
 
     // Next covariance: C_next depends on dtype + stabilization flags.
@@ -239,24 +239,20 @@ const dlmSmo = async (
     //
     // Float32 (Joseph form — numerically stable):
     //   C_next = L·C·L' + K·V²·K' + W  (+ sym)
-    //
-    // The Joseph form guarantees positive semi-definiteness by construction
-    // and avoids the implicit subtraction in G·C·L' that causes catastrophic
-    // cancellation for m > 2 in Float32.
-    //
-    // Symmetrization options (applied after the covariance formula):
-    //   default f32:  (C + C') / 2
-    //   cTriuSym f32: triu(C) + triu(C,1)'  — upper triangle authoritative
-    //   cTriuSym f64: triu(C) + triu(C,1)'  — mirrors MATLAB dlmsmo.m line 77
     let C_next: np.Array;
     {
-      // Compute raw forward covariance.
       // jax-js-lint: allow-non-using — sym branch takes ownership below
       let C_fwd_raw: np.Array;
       if (f32) {
         // Joseph form: L·C·L' + K·V²·K' + W
         using LCLt = np.einsum('ij,jk,lk->il', L, Ci, L);
-        using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));
+        let KV2Kt: np.Array;
+        if (p === 1) {
+          KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));     // scalar V² × KK'
+        } else {
+          KV2Kt = np.einsum('ij,jk,lk->il', K, V2i, K);               // [m,p]·[p,p]·[p,m]→[m,m]
+        }
+        using _kv2kt = KV2Kt;
         using sum1 = np.add(LCLt, KV2Kt);
         C_fwd_raw = np.add(sum1, W_t);
       } else {
@@ -267,28 +263,23 @@ const dlmSmo = async (
       // Apply symmetrization for f32 (always) or f64+cTriuSym.
       if (f32 || stabCTriuSym) {
         if (stabCTriuSym) {
-          // triu(C) + triu(C,1)': upper triangle authoritative, mirrored to lower.
-          // Matches MATLAB dlmsmo.m line 77. Works for both f32 and f64.
           using C_upper = np.triu(C_fwd_raw);
           using C_sup   = np.triu(C_fwd_raw, 1);
           using C_sup_t = np.transpose(C_sup);
           C_next = np.add(C_upper, C_sup_t);
         } else {
-          // f32 default: average both triangles (C + C') / 2
           using Ct      = np.transpose(C_fwd_raw);
           using sumBoth = np.add(C_fwd_raw, Ct);
           C_next = np.multiply(half, sumBoth);
         }
         C_fwd_raw.dispose();
       } else {
-        // f64 default: raw (no symmetrization)
         C_next = C_fwd_raw;
       }
     }
     
     return [
       { x: x_next, C: C_next },
-      // Pass FFi, Gt, and mask through so backward pass can reuse them
       { x_pred: xi, C_pred: Ci, K, v, Cp, FF: FFi, Gt: G_t, mask: mask_t } as ForwardY,
     ];
   };
@@ -312,15 +303,21 @@ const dlmSmo = async (
     // L = G - K·FF  [m,m]  (K=0 when NaN → L=G, propagating prior)
     using L = np.subtract(G_t, np.matmul(Ki, FFi));
 
-    // FF'·Cp⁻¹  [m,1] (scalar division valid for p=1)
+    // FF'·Cp⁻¹  [m,p]: p=1 uses scalar division, p>1 uses matrix inverse
     using FFt = np.transpose(FFi);
-    using FtCpInv = np.divide(FFt, Cpi);
+    if (p === 1) {
+      var FtCpInv = np.divide(FFt, Cpi);                   // [m,1] / [1,1]
+    } else {
+      using CpiInv = np.linalg.inv(Cpi);                   // [p,p]
+      var FtCpInv = np.matmul(FFt, CpiInv);                // [m,p]·[p,p] → [m,p]
+    }
+    using _FtCpInv = FtCpInv;
 
     // r_new = F'·Cp⁻¹·v + L'·r  [m,1]
     // vi is already 0 at NaN positions (zeroed in forwardStep), so
     // FtCpInv·vi contributes 0 automatically at gapped timesteps.
     const r_new = np.add(
-      np.multiply(FtCpInv, vi),
+      np.matmul(FtCpInv, vi),                              // [m,p]·[p,1] → [m,1]
       np.matmul(np.transpose(L), r)
     );
 
@@ -501,10 +498,21 @@ const dlmSmo = async (
     G_scan: np.Array, W_scan: np.Array,
     r0: np.Array, N0: np.Array
   ) => {
-    // Derive flat [n] inputs for diagnostics
-    using y_1d = np.squeeze(y_arr);      // [n] from [n,1,1]
-    using V2_flat = np.squeeze(V2_arr);  // [n]
-    using V_flat = np.sqrt(V2_flat);     // [n] observation noise std dev
+    // Derive flat [n*p] inputs for diagnostics (n*p = n when p=1)
+    using y_flat = np.reshape(y_arr, [n * p]);                    // [n*p]
+    let V2_flat: np.Array;
+    let V_flat: np.Array;
+    if (p === 1) {
+      V2_flat = np.squeeze(V2_arr);                               // [n]
+      V_flat = np.sqrt(V2_flat);                                  // [n]
+    } else {
+      // V2_arr is [n,p,p] diagonal — extract per-component variance
+      using V2_diag2d = np.einsum('nii->ni', V2_arr);            // [n,p] batch diagonal
+      V2_flat = np.reshape(V2_diag2d, [n * p]);                  // [n*p]
+      V_flat = np.sqrt(V2_flat);                                  // [n*p]
+    }
+    using _V2_flat = V2_flat;
+    using _V_flat = V_flat;
 
     // ─── Forward Kalman Filter ───
     // Two paths: sequential lax.scan (cpu/wasm) or parallel associativeScan (webgpu).
@@ -522,6 +530,7 @@ const dlmSmo = async (
     let C_smooth: np.Array;
 
     if (useSqrtAssocScan) {
+      if (p > 1) throw new Error('sqrt-assoc algorithm not yet supported for multivariate observations (p > 1)');
       // ─── Square-Root Parallel Forward Filter (Yaghoobi et al. 2022, arXiv:2207.00426) ───
       // Reformulates the 5-tuple associative scan in Cholesky factor space.
       // Covariance matrices C, J (forward) and L (backward) are replaced by their
@@ -994,12 +1003,24 @@ const dlmSmo = async (
       type ForwardElem = { A: np.Array; b: np.Array; C: np.Array; eta: np.Array; J: np.Array };
       type BackwardElem = { A: np.Array; b: np.Array; S: np.Array };
 
-      using is_nan = np.isnan(y_arr);                    // [n,1,1] bool
-      using zero_n11 = np.zerosLike(y_arr);              // [n,1,1]
-      using one_n11 = np.onesLike(y_arr);                // [n,1,1]
+      // All-or-nothing NaN mask: [n,1,1] bool (if ANY p-component is NaN, skip step)
+      let is_nan_n11: np.Array;
+      if (p === 1) {
+        is_nan_n11 = np.isnan(y_arr);                                              // [n,1,1]
+      } else {
+        // Sum over p: NaN propagates → [n,1,1]
+        using y_2d = np.reshape(y_arr, [n, p]);                                    // [n,p]
+        using y_rowsum = np.sum(y_2d, [1]);                                        // [n]
+        using y_3d = np.reshape(y_rowsum, [n, 1, 1]);                              // [n,1,1]
+        is_nan_n11 = np.isnan(y_3d);                                               // [n,1,1]
+      }
+      using is_nan = is_nan_n11;
+      using zero_np1 = np.zerosLike(y_arr);              // [n,p,1]
+      using one_n11 = np.ones([n, 1, 1], { dtype });     // [n,1,1]
+      using zero_n11 = np.zeros([n, 1, 1], { dtype });   // [n,1,1]
       // jax-js-lint: allow-non-using — stored in fwd.mask, disposed after backward pass
       const mask_arr = np.where(is_nan, zero_n11, one_n11); // [n,1,1]
-      using y_safe_arr = np.where(is_nan, zero_n11, y_arr); // [n,1,1]
+      using y_safe_arr = np.where(is_nan, zero_np1, y_arr); // [n,p,1] (broadcast [n,1,1] → [n,p,1])
 
       using I_eye = np.eye(stateSize, undefined, { dtype });
       using _I_eye_1mm = np.reshape(I_eye, [1, stateSize, stateSize]);
@@ -1038,21 +1059,35 @@ const dlmSmo = async (
       using W_arriving = np.concatenate([W_last, W_head_arr], 0);  // [n, m, m]
 
       // Per-step observed-element construction (Lemma 1, using arriving G/W)
-      using S_obs = np.add(np.einsum('nij,njk,nlk->nil', FF_scan, W_arriving, FF_scan), V2_arr); // [n,1,1]
-      using WFt = np.einsum('nij,nkj->nik', W_arriving, FF_scan);                               // [n,m,1]
-      using K_obs = np.divide(WFt, S_obs);                                                  // [n,m,1]
+      using S_obs = np.add(np.einsum('nij,njk,nlk->nil', FF_scan, W_arriving, FF_scan), V2_arr); // [n,p,p]
+      using WFt = np.einsum('nij,nkj->nik', W_arriving, FF_scan);                               // [n,m,p]
+      // K_obs = W·F'·S⁻¹: p=1 scalar division, p>1 batched matrix inverse
+      if (p === 1) {
+        var K_obs = np.divide(WFt, S_obs);                                                      // [n,m,1]
+      } else {
+        using S_inv = np.linalg.inv(S_obs);                                                      // [n,p,p]
+        var K_obs = np.einsum('nij,njk->nik', WFt, S_inv);                                      // [n,m,p]
+      }
+      using _K_obs = K_obs;
 
       using KF_obs = np.einsum('nij,njk->nik', K_obs, FF_scan);                             // [n,m,m]
       using ImKF_obs = np.subtract(I_exp, KF_obs);                                           // [n,m,m]
       using A_obs = np.einsum('nij,njk->nik', ImKF_obs, G_arriving);                         // [n,m,m]
       using C_obs = np.einsum('nij,njk->nik', ImKF_obs, W_arriving);                         // [n,m,m]
-      using b_obs = np.multiply(K_obs, y_safe_arr);                                         // [n,m,1]
+      using b_obs = np.einsum('nij,njk->nik', K_obs, y_safe_arr);                           // [n,m,1]
 
-      using Ft = np.einsum('nij->nji', FF_scan);                                             // [n,m,1]
-      using Ft_over_S = np.divide(Ft, S_obs);                                                // [n,m,1]
+      using Ft = np.einsum('nij->nji', FF_scan);                                             // [n,m,p]
+      // Ft_over_S = F'·S⁻¹: p=1 scalar division, p>1 batched matrix inverse
+      if (p === 1) {
+        var Ft_over_S = np.divide(Ft, S_obs);                                                // [n,m,1]
+      } else {
+        using S_inv2 = np.linalg.inv(S_obs);                                                 // [n,p,p]
+        var Ft_over_S = np.einsum('nij,njk->nik', Ft, S_inv2);                              // [n,m,p]
+      }
+      using _Ft_over_S = Ft_over_S;
       using Gt_batch = np.einsum('nij->nji', G_arriving);                                    // [n,m,m]
       using eta_obs_base = np.einsum('nij,njk->nik', Gt_batch, Ft_over_S);                   // [n,m,1]
-      using eta_obs = np.multiply(eta_obs_base, y_safe_arr);                                 // [n,m,1]
+      using eta_obs = np.einsum('nij,njk->nik', eta_obs_base, y_safe_arr);                  // [n,m,1]
       using FtF_over_S = np.einsum('nij,njk->nik', Ft_over_S, FF_scan);                      // [n,m,m]
       using J_obs = np.einsum('nij,njk,nkl->nil', Gt_batch, FtF_over_S, G_arriving);         // [n,m,m]
 
@@ -1086,17 +1121,25 @@ const dlmSmo = async (
       using C0_first = np.reshape(C0, [1, stateSize, stateSize]);
       using x0_first = np.reshape(x0, [1, stateSize, 1]);
 
-      using S1 = np.add(np.einsum('nij,njk,nlk->nil', F1, C0_first, F1), V2_1);          // [1,1,1]
-      using C0Ft1 = np.einsum('ij,nkj->nik', C0, F1);                                     // [1,m,1]
-      using K1_obs = np.divide(C0Ft1, S1);                                                // [1,m,1]
-      using K1 = np.multiply(mask1, K1_obs);                                              // [1,m,1]
+      using S1 = np.add(np.einsum('nij,njk,nlk->nil', F1, C0_first, F1), V2_1);          // [1,p,p]
+      using C0Ft1 = np.einsum('ij,nkj->nik', C0, F1);                                     // [1,m,p]
+      // K1_obs = C0·F'·S1⁻¹: p=1 scalar division, p>1 matrix inverse
+      if (p === 1) {
+        using K1_obs = np.divide(C0Ft1, S1);                                              // [1,m,1]
+        var K1 = np.multiply(mask1, K1_obs);                                              // [1,m,1]
+      } else {
+        using S1_inv = np.linalg.inv(S1);                                                 // [1,p,p]
+        using K1_obs = np.einsum('nij,njk->nik', C0Ft1, S1_inv);                         // [1,m,p]
+        var K1 = np.multiply(mask1, K1_obs);                                              // [1,m,p]
+      }
+      using _K1 = K1;
 
-      using Fx0_1 = np.einsum('nij,njk->nik', F1, x0_first);                              // [1,1,1]
-      using innov1 = np.subtract(y1, Fx0_1);                                              // [1,1,1]
-      using Kinnov1 = np.multiply(K1, innov1);                                            // [1,m,1]
+      using Fx0_1 = np.einsum('nij,njk->nik', F1, x0_first);                              // [1,p,1]
+      using innov1 = np.subtract(y1, Fx0_1);                                              // [1,p,1]
+      using Kinnov1 = np.einsum('nij,njk->nik', K1, innov1);                              // [1,m,1]
       const b1 = np.add(x0_first, Kinnov1);                                               // [1,m,1]
 
-      using K1S1 = np.multiply(K1, S1);                                                   // [1,m,1]
+      using K1S1 = np.einsum('nij,njk->nik', K1, S1);                                     // [1,m,p]
       using K1S1K1t = np.einsum('nij,nkj->nik', K1S1, K1);                                // [1,m,m]
       const C1 = np.subtract(C0_first, K1S1K1t);                                           // [1,m,m]
 
@@ -1255,22 +1298,29 @@ const dlmSmo = async (
       // jax-js-lint: allow-non-using — stored in fwd.C_pred, disposed by caller
       const C_pred_arr = np.concatenate([C0_1, C_filt_pred], 0);  // [n, m, m]
 
-      // v[t] = mask · (y - F·x_pred)  [n,1,1]
-      using Fx_pred = np.einsum('nij,njk->nik', FF_scan, x_pred_arr); // [n,1,1]
+      // v[t] = mask · (y - F·x_pred)  [n,p,1]
+      using Fx_pred = np.einsum('nij,njk->nik', FF_scan, x_pred_arr); // [n,p,1]
       using v_raw = np.subtract(y_safe_arr, Fx_pred);
       // jax-js-lint: allow-non-using — stored in fwd.v, disposed by caller
-      const v_arr = np.multiply(mask_arr, v_raw);         // [n,1,1]
+      const v_arr = np.multiply(mask_arr, v_raw);         // [n,p,1]
 
-      // Cp[t] = F·C_pred·F' + V²  [n,1,1]
+      // Cp[t] = F·C_pred·F' + V²  [n,p,p]
       using FCFt = np.einsum('nij,njk,nlk->nil', FF_scan, C_pred_arr, FF_scan);
       // jax-js-lint: allow-non-using — stored in fwd.Cp, disposed by caller
-      const Cp_arr = np.add(FCFt, V2_arr);                // [n,1,1]
+      const Cp_arr = np.add(FCFt, V2_arr);                // [n,p,p]
 
-      // K[t] = mask · G[t]·C_pred[t]·F[t]' / Cp[t]  [n,m,1]  (MATLAB convention for backward pass)
-      using GCFt = np.einsum('nij,njk,nlk->nil', G_scan, C_pred_arr, FF_scan); // [n,m,1]
-      using K_raw = np.divide(GCFt, Cp_arr);
-      // jax-js-lint: allow-non-using — stored in fwd.K, disposed by caller
-      const K_arr = np.multiply(mask_arr, K_raw);         // [n,m,1]
+      // K[t] = mask · G[t]·C_pred[t]·F[t]'·Cp[t]⁻¹  [n,m,p]  (MATLAB convention for backward pass)
+      using GCFt = np.einsum('nij,njk,nlk->nil', G_scan, C_pred_arr, FF_scan); // [n,m,p]
+      if (p === 1) {
+        using K_raw = np.divide(GCFt, Cp_arr);
+        // jax-js-lint: allow-non-using — stored in fwd.K, disposed by caller
+        var K_arr = np.multiply(mask_arr, K_raw);          // [n,m,1]
+      } else {
+        using Cp_inv = np.linalg.inv(Cp_arr);              // [n,p,p]
+        using K_raw = np.einsum('nij,njk->nik', GCFt, Cp_inv); // [n,m,p]
+        // jax-js-lint: allow-non-using — stored in fwd.K, disposed by caller
+        var K_arr = np.multiply(mask_arr, K_raw);          // [n,m,p]
+      }
 
       fwd = {
         x_pred: x_pred_arr, C_pred: C_pred_arr,
@@ -1409,60 +1459,112 @@ const dlmSmo = async (
 
     // ─── Observation-space diagnostics ───
 
-    // NaN observation mask [n]: 1.0 where observed, 0.0 where gapped.
-    // Squeezed from the [n,1,1] mask stored by forwardStep.
-    using mask_flat = np.squeeze(fwd.mask);   // [n]
+    // NaN observation mask: [n] (per-timestep, same for all p components)
+    using mask_n = np.squeeze(fwd.mask);                // [n] from [n,1,1]
+    // For p>1 diagnostics, expand to [n*p] (repeat each timestep mask p times)
+    let mask_flat: np.Array;
+    if (p === 1) {
+      mask_flat = np.add(mask_n, np.zerosLike(mask_n));  // [n] (copy to avoid alias)
+    } else {
+      using mask_n1 = np.reshape(mask_n, [n, 1]);        // [n,1]
+      using mask_np = np.tile(mask_n1, [1, p]);           // [n,p]
+      mask_flat = np.reshape(mask_np, [n * p]);           // [n*p]
+    }
+    using _mask_flat = mask_flat;
 
-    // yhat = FF @ xf: FF:[n,1,m] @ xf:[n,m,1] → [n,1,1] → [n]
+    // yhat = FF @ x_pred: [n,p,m] @ [n,m,1] → [n,p,1] → [n*p]
     using yhat_3d = np.matmul(FF_scan, fwd.x_pred);
-    const yhat = np.squeeze(yhat_3d);
+    const yhat = np.reshape(yhat_3d, [n * p]);
 
-    // ystd = sqrt(diag(FF @ C_smooth @ FF') + V²)
-    // einsum 'nij,njk,nlk->nil' but p=1, so result is [n,1,1] which we squeeze
-    using FCFt_3d = np.einsum('nij,njk,nlk->nil', FF_scan, C_smooth, FF_scan);
-    using FCFt_flat = np.squeeze(FCFt_3d);
-    const ystd = np.sqrt(np.add(FCFt_flat, V2_flat));
+    // ystd = sqrt(diag(FF @ C_smooth @ FF') + diag(V²))  [n*p]
+    using FCFt_3d = np.einsum('nij,njk,nlk->nil', FF_scan, C_smooth, FF_scan); // [n,p,p]
+    if (p === 1) {
+      using FCFt_sq = np.squeeze(FCFt_3d);                // [n]
+      var ystd = np.sqrt(np.add(FCFt_sq, V2_flat));       // [n]
+    } else {
+      using FCFt_diag = np.einsum('nii->ni', FCFt_3d);    // [n,p] batch diagonal
+      using FCFt_np = np.reshape(FCFt_diag, [n * p]);     // [n*p]
+      var ystd = np.sqrt(np.add(FCFt_np, V2_flat));        // [n*p]
+    }
 
-    // Innovations [n,1,1] → [n]
-    // v is already zeroed at NaN positions (K=0 in forwardStep when NaN)
-    const v_flat = np.squeeze(fwd.v);
-    const Cp_flat = np.squeeze(fwd.Cp);
+    // Innovations [n,p,1] → [n*p]
+    const v_flat = np.reshape(fwd.v, [n * p]);
+    // Cp: [n,p,p] for matrix, [n] for scalar (p=1)
+    if (p === 1) {
+      var Cp_out = np.squeeze(fwd.Cp);                    // [n]
+    } else {
+      // Keep as [n,p,p] (needed for lik, returned as-is)
+      var Cp_out = np.add(fwd.Cp, np.zerosLike(fwd.Cp));  // copy
+    }
 
-    // Dispose fwd.K, fwd.FF, fwd.Gt (seq only), fwd.mask (no longer needed after squeeze)
+    // Dispose forward arrays no longer needed
     fwd.K.dispose();
     fwd.FF.dispose();
     if (fwd.Gt) fwd.Gt.dispose();
     fwd.mask.dispose();
 
-    // y_safe: replace NaN with 0 for numerically safe reductions
-    using is_nan_y = np.isnan(y_1d);       // [n] bool
-    using _zeros_y = np.zerosLike(y_1d);   // [n]
-    using y_safe = np.where(is_nan_y, _zeros_y, y_1d);  // [n]
+    // y_safe: replace NaN with 0 for numerically safe reductions [n*p]
+    using is_nan_y = np.isnan(y_flat);                     // [n*p] bool
+    using _zeros_y = np.zerosLike(y_flat);                 // [n*p]
+    using y_safe = np.where(is_nan_y, _zeros_y, y_flat);   // [n*p]
 
-    // Residuals: naturally Nan at missing positions (y_1d has NaN there)
-    const resid0 = np.subtract(y_1d, yhat);    // [n]: NaN at missing obs
-    const resid  = np.divide(resid0, V_flat);  // [n]: NaN at missing obs
-    // Standardised prediction residuals: NaN at missing positions (matching MATLAB)
-    using resid2_raw = np.divide(v_flat, np.sqrt(Cp_flat));   // [n]: 0 at NaN pos
-    using nan_arr = np.full([n], NaN, { dtype });              // [n] all NaN
-    const resid2 = np.where(is_nan_y, nan_arr, resid2_raw);   // [n]: NaN at missing
+    // Residuals: NaN at missing positions [n*p]
+    const resid0 = np.subtract(y_flat, yhat);              // [n*p]: NaN at missing obs
+    const resid  = np.divide(resid0, V_flat);              // [n*p]: NaN at missing obs
+
+    // Standardised prediction residuals: NaN at missing positions [n*p]
+    if (p === 1) {
+      using Cp_flat_1d = np.squeeze(fwd.Cp);
+      using Cp_sqrt = np.sqrt(Cp_flat_1d);                // [n]
+      var resid2_raw = np.divide(v_flat, Cp_sqrt);        // [n]: 0 at NaN pos (v=0)
+    } else {
+      // For p>1: per-component standardize using diag(Cp)
+      using Cp_diag = np.einsum('nii->ni', fwd.Cp);      // [n,p] batch diagonal
+      using Cp_diag_flat = np.reshape(Cp_diag, [n * p]);  // [n*p]
+      using Cp_sqrt = np.sqrt(Cp_diag_flat);
+      var resid2_raw = np.divide(v_flat, Cp_sqrt);        // [n*p]
+    }
+    using _resid2_raw = resid2_raw;
+    using nan_arr = np.full([n * p], NaN, { dtype });
+    const resid2 = np.where(is_nan_y, nan_arr, resid2_raw);
 
     // NaN-safe scalar reductions — use mask_flat to exclude missing timesteps
-    using resid0_safe = np.subtract(y_safe, yhat);           // [n]: 0 at missing pos
-    using resid_safe  = np.divide(resid0_safe, V_flat);      // [n]: 0 at missing pos
-    const nobs = np.sum(mask_flat);                          // scalar: count of valid obs
+    using resid0_safe = np.subtract(y_safe, yhat);
+    using resid_safe  = np.divide(resid0_safe, V_flat);
+    const nobs = np.sum(mask_n);                          // scalar: count of valid timesteps
+
     const ssy  = np.sum(np.multiply(mask_flat, np.square(resid0_safe)));
-    const lik  = np.sum(np.multiply(mask_flat, np.add(
-      np.divide(np.square(v_flat), Cp_flat),
-      np.log(Cp_flat)
-    )));
+
+    // Likelihood: −2·log L  (scalar)
+    // p=1: sum(mask * (v²/Cp + log(Cp)))
+    // p>1: sum_t(mask_t * (v_t'·Cp_t⁻¹·v_t + log|det(Cp_t)|))
+    let lik: np.Array;
+    if (p === 1) {
+      using Cp_1d = np.squeeze(fwd.Cp);
+      lik = np.sum(np.multiply(mask_n, np.add(
+        np.divide(np.square(v_flat), Cp_1d),
+        np.log(Cp_1d)
+      )));
+    } else {
+      // Quadratic form v'·Cp⁻¹·v per timestep
+      using Cp_inv = np.linalg.inv(fwd.Cp);               // [n,p,p]
+      using v_3d = np.reshape(fwd.v, [n, p, 1]);          // [n,p,1]
+      using Cpinv_v = np.einsum('nij,njk->nik', Cp_inv, v_3d); // [n,p,1]
+      using vCpinv_v = np.einsum('nji,njk->ni', v_3d, Cpinv_v); // [n,1]
+      using quad = np.reshape(vCpinv_v, [n]);              // [n]
+      // Log determinant per timestep
+      const [slogdet_sign, slogdet_logabs] = np.linalg.slogdet(fwd.Cp); // [sign: [n], logabsdet: [n]]
+      using _sld_sign = slogdet_sign;
+      using _sld_logabs = slogdet_logabs;
+      using logdet = np.multiply(slogdet_sign, slogdet_logabs); // [n] (sign should be +1 for PD)
+      lik = np.sum(np.multiply(mask_n, np.add(quad, logdet)));
+    }
+
     const s2   = np.divide(
       np.sum(np.multiply(mask_flat, np.square(resid_safe))), nobs);
     const mse  = np.divide(
       np.sum(np.multiply(mask_flat, np.square(resid2_raw))), nobs);
-    // Sign-preserving guard: tiny epsilon prevents NaN when y contains exact
-    // zeros, but preserves sign (negative y → negative MAPE, matching MATLAB).
-    using _eps_mape = np.array(1e-30, { dtype });                                  // scalar
+    using _eps_mape = np.array(1e-30, { dtype });
     const mape = np.divide(
       np.sum(np.multiply(mask_flat,
         np.divide(np.abs(resid2_raw), np.add(y_safe, _eps_mape)))),
@@ -1473,7 +1575,7 @@ const dlmSmo = async (
       x: x_smooth, C: C_smooth,
       xf: fwd.x_pred, Cf: fwd.C_pred,
       yhat, ystd,
-      v: v_flat, Cp: Cp_flat,
+      v: v_flat, Cp: Cp_out,
       resid0, resid, resid2,
       ssy, lik, s2, mse, mape, nobs,
     };
@@ -1482,10 +1584,8 @@ const dlmSmo = async (
   // Run core — one jit wrapping both scans + all diagnostics
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, G_scan, W_scan, r0, N0);
 
-  if (FF_arr === undefined) FF_scan.dispose(); // we own it (created by np.tile)
-
   return tree.makeDisposable({
-    ...coreResult, m: stateSize,
+    ...coreResult, m: stateSize, p,
   }) as DlmSmoResult & Disposable;
 };
 
@@ -1516,7 +1616,7 @@ const dlmSmo = async (
  * @returns Complete model fit with smoothed estimates and diagnostics
  */
 export const dlmFit = async (
-  y: ArrayLike<number>,
+  y: ArrayLike<number> | number[][],
   opts: DlmFitOptions,
 ): Promise<DlmFitResult> => {
   const {
@@ -1528,23 +1628,34 @@ export const dlmFit = async (
   const forceAssocScan = algorithm === 'assoc' ? true : algorithm === 'scan' ? false : undefined;
   const forceSqrtAssocScan = algorithm === 'sqrt-assoc' ? true : undefined;
 
+  // Detect observation dimension p from opts.F (p>1) or default (p=1).
+  const obsF: number[][] | undefined = opts.F;  // [p, m_ext] observation matrix
+  const obsP = obsF ? obsF.length : 1;          // p: observation dimension
+
   // Build DlmOptions for dlmGenSys
   const genSysOpts: DlmOptions = {
     order, harmonics, seasonLength, fullSeasonal, arCoefficients, spline,
   };
 
-  const n = y.length;
+  // Determine n from y: flat array for p=1, n×p matrix for p>1
+  const n = obsP === 1 ? (y as ArrayLike<number>).length : (y as number[][]).length;
   const FA = getFloatArrayType(dtype);
 
-  // Convert input to TypedArray if needed
-  const yArr = y instanceof FA ? y : FA.from(y);
-  // Observation noise std dev — scalar or per-observation array
-  const V_std: InstanceType<typeof FA> = (() => {
-    if (typeof s === "number") return new FA(n).fill(s);
-    const arr = new FA(n);
-    for (let i = 0; i < n; i++) arr[i] = (s as ArrayLike<number>)[i];
-    return arr;
-  })();
+  // Convert y to flat TypedArray (p=1) or keep as number[][] (p>1)
+  let yArr: FloatArray;
+  let yMat: number[][] | undefined;
+  if (obsP === 1) {
+    const yFlat = y as ArrayLike<number>;
+    yArr = yFlat instanceof FA ? yFlat as FloatArray : FA.from(yFlat) as FloatArray;
+  } else {
+    yMat = y as number[][];
+    // Flatten for the result return
+    const flatArr = new FA(n * obsP);
+    for (let t = 0; t < n; t++) {
+      for (let j = 0; j < obsP; j++) flatArr[t * obsP + j] = yMat[t][j];
+    }
+    yArr = flatArr as FloatArray;
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Generate system matrices from options
@@ -1597,9 +1708,17 @@ export const dlmFit = async (
   }
 
   using G = np.array(G_data, { dtype });
-  // Base F (1×m_base) — used only for building FF_arr; not passed to dlmSmo directly
-  using F_base = np.array([sys.F], { dtype });
   using W = np.array(W_data, { dtype });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build observation matrix F for output and tensor construction.
+  // p=1: F = sys.F (1D array from dlmGenSys)
+  // p>1: F = opts.F (p×m matrix, user-provided)
+  // When covariates present: augmented with X columns per timestep.
+  // ─────────────────────────────────────────────────────────────────────────
+  const F_out: number[] | number[][] = obsP === 1 ? sys.F : obsF!;
+  // F_base: [p, m_base] as nested array
+  const F_base_data: number[][] = obsP === 1 ? [sys.F] : obsF!;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Build G_scan [n, m, m] and W_scan [n, m, m] for dlmSmo.
@@ -1648,16 +1767,74 @@ export const dlmFit = async (
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build time-varying FF_arr [n, 1, m] when covariates present.
-  // FF_arr[t] = [[F_base[0], F_base[1], ..., X[t,0], ..., X[t,q-1]]]
-  // When q=0, pass undefined so dlmSmo builds FF_scan from static F.
+  // Build pre-shaped tensors for dlmSmo:
+  //   y_arr    [n, p, 1]   observations
+  //   V2_arr   [n, p, p]   observation noise covariance (diagonal)
+  //   FF_scan  [n, p, m]   observation matrix (time-varying when covariates)
   // ─────────────────────────────────────────────────────────────────────────
-  let FF_arr: np.Array | undefined;
-  if (q > 0 && X) {
-    const FF_data: number[][][] = Array.from({ length: n }, (_, t) => [
-      [...sys.F, ...Array.from(X[t])]
-    ]);
-    FF_arr = np.array(FF_data, { dtype });
+  let y_arr: np.Array;
+  let V2_arr: np.Array;
+  let FF_scan_obs: np.Array;
+
+  if (obsP === 1) {
+    // Univariate: y [n,1,1], V2 [n,1,1], FF [n,1,m]
+    y_arr = np.array(Array.from(yArr!).map(yi => [[yi]]), { dtype });
+    // Observation noise: scalar or per-observation
+    const V_std_arr = typeof s === 'number'
+      ? new FA(n).fill(s)
+      : FA.from(s as ArrayLike<number>);
+    V2_arr = np.array(Array.from(V_std_arr).map(v => [[v * v]]), { dtype });
+    // FF_scan: time-varying (covariates) or static
+    if (q > 0 && X) {
+      const FF_data: number[][][] = Array.from({ length: n }, (_, t) => [
+        [...sys.F, ...Array.from(X[t])]
+      ]);
+      FF_scan_obs = np.array(FF_data, { dtype });
+    } else {
+      using F_3d = np.array([[sys.F]], { dtype });       // [1, 1, m_base]
+      FF_scan_obs = np.tile(F_3d, [n, 1, 1]);           // [n, 1, m_base]
+    }
+  } else {
+    // Multivariate (p>1): y [n,p,1], V2 [n,p,p], FF [n,p,m]
+    y_arr = np.array((yMat!).map(row => row.map(v => [v])), { dtype });  // [n,p,1]
+    // Build V2: [n,p,p] diagonal from obsStd
+    if (typeof s === 'number') {
+      // Scalar s → same variance s² for all components
+      const V2_t: number[][] = Array.from({ length: obsP }, (_, i) =>
+        Array.from({ length: obsP }, (_, j) => i === j ? s * s : 0));
+      const V2_data = Array.from({ length: n }, () => V2_t);
+      V2_arr = np.array(V2_data, { dtype });
+    } else if (Array.isArray(s) && Array.isArray((s as unknown[])[0])) {
+      // number[][] → per-component std dev matrix [p,p], same for all t
+      const sMat = s as number[][];
+      // Build V2 = sMat * sMat (element-wise squaring for diagonal)
+      const V2_t: number[][] = Array.from({ length: obsP }, (_, i) =>
+        Array.from({ length: obsP }, (_, j) => sMat[i][j] * sMat[i][j]));
+      const V2_data = Array.from({ length: n }, () => V2_t);
+      V2_arr = np.array(V2_data, { dtype });
+    } else {
+      // ArrayLike<number> → per-component std dev (length p), same for all t
+      const sArr = Array.from(s as ArrayLike<number>);
+      const V2_t: number[][] = Array.from({ length: obsP }, (_, i) =>
+        Array.from({ length: obsP }, (_, j) => i === j ? sArr[i] * sArr[i] : 0));
+      const V2_data = Array.from({ length: n }, () => V2_t);
+      V2_arr = np.array(V2_data, { dtype });
+    }
+    // FF_scan: p>1 observation matrix [n,p,m]
+    // Validate F dimensions
+    if (!obsF || obsF.length !== obsP) {
+      throw new Error(`opts.F must have ${obsP} rows for p=${obsP}`);
+    }
+    if (q > 0 && X) {
+      // Time-varying: augment each row of F with covariate columns
+      const FF_data: number[][][] = Array.from({ length: n }, (_, t) =>
+        obsF.map(row => [...row, ...Array.from(X[t])])
+      );
+      FF_scan_obs = np.array(FF_data, { dtype });
+    } else {
+      using F_3d = np.array([obsF], { dtype });            // [1, p, m_base]
+      FF_scan_obs = np.tile(F_3d, [n, 1, 1]);             // [n, p, m_base]
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1669,7 +1846,8 @@ export const dlmFit = async (
   let initSum = 0, initCount = 0;
   const count = Math.min(ns, n);
   for (let i = 0; i < count; i++) {
-    const v = Number(yArr[i]);
+    // For p>1, use mean of first component; for p=1, use scalar
+    const v = obsP === 1 ? Number(yArr![i]) : Number(yMat![i][0]);
     if (!isNaN(v)) { initSum += v; initCount++; }
   }
   // NaN-safe mean: use available observations; fall back to 0 if all missing
@@ -1690,7 +1868,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(yArr, F_base, V_std, x0_data, G_scan, W_scan, C0_data, m, dtype, FF_arr, forceAssocScan, stabilization, forceSqrtAssocScan);
+    using out1 = await dlmSmo(y_arr, V2_arr, x0_data, G_scan, W_scan, C0_data, m, obsP, dtype, FF_scan_obs, forceAssocScan, stabilization, forceSqrtAssocScan);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -1704,9 +1882,11 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(yArr, F_base, V_std, x0_updated, G_scan, W_scan, C0_scaled, m, dtype, FF_arr, forceAssocScan, stabilization, forceSqrtAssocScan);
+  const out2 = await dlmSmo(y_arr, V2_arr, x0_updated, G_scan, W_scan, C0_scaled, m, obsP, dtype, FF_scan_obs, forceAssocScan, stabilization, forceSqrtAssocScan);
 
-  FF_arr?.dispose();
+  FF_scan_obs.dispose();
+  y_arr.dispose();
+  V2_arr.dispose();
   G_scan.dispose();
   W_scan.dispose();
 
@@ -1763,10 +1943,12 @@ export const dlmFit = async (
     smoothed, filtered, smoothedCov, filteredCov, smoothedStd,
     // System matrices (plain arrays for easy serialization)
     G: G_data,
-    F: sys.F,
+    F: F_out,
     W: W_data,
     // Input data
-    y: yArr, obsNoise: V_std,
+    y: yArr!, obsNoise: obsP === 1
+      ? (() => { const a = new FA(n); if (typeof s === 'number') a.fill(s); else for (let i = 0; i < n; i++) a[i] = (s as ArrayLike<number>)[i]; return a; })()
+      : new FA(0), // placeholder for p>1 (obsNoise is per-component; full V2 captured in out2)
     // Initial state (after Pass 1 refinement)
     initialState: x0_updated.map(row => row[0]),
     initialCov: C0_scaled,
@@ -1779,7 +1961,7 @@ export const dlmFit = async (
     nobs,
     deviance, mse, mape,
     // Shape
-    n, m,
+    n, m, p: obsP,
   };
 };
 
@@ -1829,7 +2011,12 @@ export const dlmForecast = async (
   h: number,
   opts?: DlmForecastOptions,
 ): Promise<DlmForecastResult> => {
-  const { G: G_data, F: F_data, W: W_data } = fit;
+  if (fit.p && fit.p > 1) {
+    throw new Error('dlmForecast does not yet support multivariate observations (p > 1)');
+  }
+  const { G: G_data, W: W_data } = fit;
+  // F_data is always number[] when p=1 (p>1 throws above)
+  const F_data = fit.F as number[];
   const m = G_data.length;
   const q = fit.covariates && (fit.covariates as number[][])[0]?.length > 0
     ? (fit.covariates as number[][])[0].length
@@ -1998,6 +2185,7 @@ export const toMatlab = (result: DlmFitResult): DlmFitResultMatlab => {
     mape: result.mape,
     nobs: result.nobs,
     n, m,
+    p: result.p ?? 1,
     class: 'dlmfit',
   };
 };
