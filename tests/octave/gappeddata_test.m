@@ -82,7 +82,7 @@ inputs_A = struct( ...
   'nobs_expected',  nobs_expected ...
 );
 save_json(inputs_A, 'tests/gapped-in.json');
-save_json(out_A,    'tests/gappedout-m.json');
+save_json(out_A,    'tests/gapped-out-m.json');
 disp('  Saved tests/gapped-{in,out-m}.json');
 
 %% Test B: order=0 (local level only, m=1)

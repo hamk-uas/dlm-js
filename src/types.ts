@@ -158,9 +158,9 @@ export class CovMatrix {
  * All tensor outputs are np.Arrays returned directly from the JIT core.
  * Caller is responsible for reading (.data()) and disposing these arrays.
  *
- * For a model with state dimension m and n observations:
+ * For a model with state dimension m, observation dimension p, and n observations:
  * - State/covariance tensors are stacked: x [n,m,1], C [n,m,m]
- * - Observation-space diagnostics are [n] vectors
+ * - Observation-space diagnostics are [n*p] vectors (row-major)
  * - Scalar diagnostics are 0-d tensors
  *
  * @internal - Used only within the library implementation.
@@ -176,19 +176,19 @@ export interface DlmSmoResult {
   xf: np.Array;
   /** Filtered covariances [n, m, m] */
   Cf: np.Array;
-  /** Filter predictions yhat = F·xf [n] */
+  /** Filter predictions yhat = F·xf. [n] for p=1, [n*p] row-major for p>1. */
   yhat: np.Array;
-  /** Prediction standard deviations [n] */
+  /** Prediction standard deviations. [n] for p=1, [n*p] row-major for p>1. */
   ystd: np.Array;
-  /** Innovations [n] */
+  /** Innovations. [n] for p=1, [n*p] row-major for p>1. */
   v: np.Array;
-  /** Innovation covariances [n] */
+  /** Innovation covariances. [n] for p=1, [n*p*p] row-major for p>1. */
   Cp: np.Array;
-  /** Raw residuals [n] */
+  /** Raw residuals. [n] for p=1, [n*p] row-major for p>1. */
   resid0: np.Array;
-  /** Scaled residuals [n] */
+  /** Scaled residuals. [n] for p=1, [n*p] row-major for p>1. */
   resid: np.Array;
-  /** Standardized residuals [n] */
+  /** Standardized residuals. [n] for p=1, [n*p] row-major for p>1. */
   resid2: np.Array;
   /** Sum of squared raw residuals (scalar) */
   ssy: np.Array;
@@ -204,6 +204,8 @@ export interface DlmSmoResult {
   nobs: np.Array;
   /** State dimension */
   m: number;
+  /** Observation dimension */
+  p: number;
 }
 
 // ─── Public result types ────────────────────────────────────────────────────
@@ -268,8 +270,8 @@ export interface DlmFitResult {
 
   /** State transition matrix G (m × m) */
   G: number[][];
-  /** Observation vector F (length m) */
-  F: number[];
+  /** Observation matrix F. p=1: [m] row vector (backward compat). p>1: [p, m]. */
+  F: number[] | number[][];
   /** State noise covariance W (m × m) */
   W: number[][];
   /** Initial state mean (after first smoother pass). In MATLAB DLM, this is `x0`. */
@@ -289,6 +291,8 @@ export interface DlmFitResult {
   n: number;
   /** State dimension (m_base + q for covariates) */
   m: number;
+  /** Observation dimension (1 for univariate, >1 for multivariate) */
+  p: number;
 }
 
 /**
@@ -379,8 +383,8 @@ export interface DlmFitResultMatlab {
 
   /** State transition matrix */
   G: number[][];
-  /** Observation vector */
-  F: number[];
+  /** Observation matrix. p=1: [m] row vector (backward compat). p>1: [p, m]. */
+  F: number[] | number[][];
   /** State noise covariance */
   W: number[][];
   /** Observation noise std devs */
@@ -408,6 +412,8 @@ export interface DlmFitResultMatlab {
   n: number;
   /** State dimension */
   m: number;
+  /** Observation dimension */
+  p: number;
   /** Class identifier */
   class: 'dlmfit';
 }
@@ -531,8 +537,19 @@ export interface DlmStabilization {
 export interface DlmFitOptions {
   // ── Noise (required) ──
 
-  /** Observation noise std dev: scalar (all timesteps) or per-observation array (length n). */
-  obsStd: number | ArrayLike<number>;
+  /**
+   * Observation noise std dev(s).
+   *
+   * **Univariate (p=1)**:
+   * - `number`: same std for all timesteps.
+   * - `ArrayLike<number>` of length n: per-timestep observation noise.
+   *
+   * **Multivariate (p>1)**: inferred when `F` is provided.
+   * - `number`: same std for all series and timesteps → V² = s²·Iₚ.
+   * - `number[]` of length p: per-series → V²(t) = diag(s₀², …, sₚ₋₁²).
+   * - `number[][]` of shape [n, p]: per-timestep per-series.
+   */
+  obsStd: number | ArrayLike<number> | number[][];
   /** Process noise std devs (diagonal of √W). Length determines which states have noise. */
   processStd: number[];
 
@@ -550,6 +567,15 @@ export interface DlmFitOptions {
   arCoefficients?: number[];
   /** Spline mode for order=1: modifies W for integrated random walk. */
   spline?: boolean;
+
+  // ── Multivariate observations ──
+
+  /**
+   * Observation matrix F [p, m]. When provided, p is inferred from F.length
+   * (first dimension) and y must be 2D [n, p].
+   * When omitted, F is derived from dlmGenSys (p=1, univariate).
+   */
+  F?: number[][];
 
   // ── Covariates ──
 
