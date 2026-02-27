@@ -46,7 +46,7 @@ async function timedMle(
   options: Record<string, unknown>,
 ): Promise<{ elapsed: number; iterations: number; lik: number }> {
   // warm-up
-  const warmup = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
+  const warmup = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const, optimizer: 'adam' as const });
   if (warmup.elapsed > TIMEOUT_MS) {
     return { elapsed: Infinity, iterations: warmup.iterations, lik: warmup.deviance };
   }
@@ -54,7 +54,7 @@ async function timedMle(
   const times: number[] = [];
   let last = { elapsed: 0, iterations: 0, lik: 0 };
   for (let i = 0; i < RUNS; i++) {
-    const r = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const });
+    const r = await dlmMLE(y, { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const, optimizer: 'adam' as const });
     times.push(r.elapsed);
     last = { elapsed: r.elapsed, iterations: r.iterations, lik: r.deviance };
     if (r.elapsed > TIMEOUT_MS) {

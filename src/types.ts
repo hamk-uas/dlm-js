@@ -640,7 +640,7 @@ export interface DlmMleOptions {
   /** Adam hyperparameters. Default: b1=0.9, b2=0.9, eps=1e-8. */
   adamOpts?: { b1?: number; b2?: number; eps?: number };
   /**
-   * Optimizer selection. Default: `'adam'`.
+   * Optimizer selection. Default: `'natural'` for f64, `'adam'` for f32.
    * - `'adam'`: optax Adam (first-order, diagonal curvature approximation).
    * - `'natural'`: Newton / Fisher scoring (second-order, full Hessian).
    *   Solves `(H + λI)⁻¹ g` with adaptive Levenberg-Marquardt damping.

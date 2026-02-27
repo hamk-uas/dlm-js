@@ -136,6 +136,7 @@ for (const idx of sampleIndices) {
 
 const output = {
   variant: "webgpu",
+  optimizer: "adam",
   t, y, n, m,
   s_init: Math.exp(thetaHistory[0][0]),
   w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),

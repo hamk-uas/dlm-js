@@ -44,7 +44,7 @@ async function runBench(
     const t0 = performance.now();
     await dlmMLE(
       y,
-      { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const, checkpoint },
+      { ...options, maxIter: MAX_ITER, lr: LR, tol: 1e-6, dtype: 'f64' as const, optimizer: 'adam' as const, checkpoint },
     );
     if (r >= WARMUP_RUNS) times.push(performance.now() - t0);
   }

@@ -775,7 +775,10 @@ export const dlmMLE = async (
     algorithm, optimizer: optimizerChoice, naturalOpts,
     loss: lossOption,
   } = opts ?? {};
-  const useNatural = optimizerChoice === 'natural';
+  const dtype = parseDtype(opts?.dtype);
+  // Default optimizer: natural for f64 (fast second-order), Adam for f32 (FD Hessian too noisy)
+  const useNatural = optimizerChoice === 'natural' ||
+    (optimizerChoice === undefined && dtype === DType.Float64);
   const hessianMode = naturalOpts?.hessian ?? 'fd';
   const lmInit = naturalOpts?.lambdaInit ?? 0.1;
   const lmShrink = naturalOpts?.lambdaShrink ?? 0.5;
@@ -785,7 +788,6 @@ export const dlmMLE = async (
   const lr = opts?.lr ?? (useNatural ? 1.0 : 0.05);
   const maxIter = opts?.maxIter ?? (useNatural ? 50 : 200);
   const tol = opts?.tol ?? 1e-6;
-  const dtype = parseDtype(opts?.dtype);
   const forceAssocScan = algorithm === 'assoc' ? true : undefined;
   const options: DlmOptions = { order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr };
   const t0 = performance.now();

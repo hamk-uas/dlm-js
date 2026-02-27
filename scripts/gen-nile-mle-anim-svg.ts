@@ -30,6 +30,7 @@ const data = JSON.parse(readFileSync(inputPath, "utf8"));
 
 const {
   t, y, n,
+  optimizer = 'adam',
   elapsed: elapsedMs,
   jitMs = 0,
   iterations,
@@ -245,7 +246,7 @@ push(`<text x="14" y="${margin.top + plotH / 2}" text-anchor="middle" fill="#333
 
 // ── Title ──────────────────────────────────────────────────────────────────
 
-push(`<text x="${W / 2}" y="16" text-anchor="middle" fill="#333" font-size="14" font-weight="600">Nile demo — MLE (order=1, trend), ${iterations} iters, ${elapsedMs} ms, ${backendLabel}</text>`);
+push(`<text x="${W / 2}" y="16" text-anchor="middle" fill="#333" font-size="12" font-weight="600">Nile demo — MLE (order=1, trend), ${iterations} ${optimizer} iters, ${elapsedMs} ms, ${backendLabel}</text>`);
 
 // ── Legend ──────────────────────────────────────────────────────────────────
 

@@ -152,6 +152,7 @@ console.log(`  Final: s=${mle.obsStd.toFixed(4)}, arphi=${mle.arCoefficients?.[0
   // Save output
   const output = {
     variant: variantName,
+    optimizer: 'natural',
     t, y, n, m,
     s_init: Math.exp(thetaHistory[0][0]),
     w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),
