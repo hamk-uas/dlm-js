@@ -188,7 +188,7 @@ function generateBenchFullTable(): string {
         modelCells.push(b("—"), b("—"));
       } else if (r.warmMs == null) {
         // Timed out (firstMs > TIMEOUT_MS, no warm run completed)
-        modelCells.push(b(">5 s"), b("—"));
+        modelCells.push(b(">10 s"), b("—"));
       } else {
         modelCells.push(b(fmtMs(r.warmMs)), b(fmtRelErr(r.maxPctErr)));
       }

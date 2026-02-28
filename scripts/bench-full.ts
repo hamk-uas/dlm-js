@@ -30,7 +30,7 @@ const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const sidecarDir = resolve(root, "assets/timings");
 
 /** Hard timeout per dlmFit call — skip the combo if it exceeds this. */
-const TIMEOUT_MS = 5_000;
+const TIMEOUT_MS = 10_000;
 
 // ── Init WebGPU (needed before first webgpu call) ─────────────────────────
 
