@@ -111,7 +111,7 @@ export const DLM_MLE_KEYS: ReadonlySet<string> = new Set([
   'order', 'harmonics', 'seasonLength', 'fullSeasonal', 'arCoefficients', 'fitAr',
   'X', 'init', 'maxIter', 'lr', 'tol', 'obsStdFixed', 'callbacks', 'adamOpts',
   'optimizer', 'naturalOpts', 'loss',
-  'dtype', 'algorithm',
+  'dtype', 'algorithm', 'checkpoint',
 ]);
 
 /** Valid keys for {@link DlmMleOptions.init}. */
@@ -836,6 +836,15 @@ export interface DlmMleOptions {
   dtype?: DlmDtype;
   /** Algorithm selection. Default: auto-select from device/dtype. */
   algorithm?: DlmAlgorithm;
+  /**
+   * Gradient checkpointing for `lax.scan` backward pass.
+   * - `true`: √N segment checkpointing (O(√N) memory, ~2× compute).
+   * - `false` (default): store all N carries (O(N) memory, fastest backward pass).
+   * - number: explicit segment size.
+   *
+   * Only affects the sequential scan loss path; ignored for assocScan.
+   */
+  checkpoint?: boolean | number;
 }
 
 /**

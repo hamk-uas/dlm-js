@@ -780,7 +780,7 @@ export const dlmMLE = async (
     X, init,
     obsStdFixed: sFixed, callbacks, adamOpts,
     algorithm, optimizer: optimizerChoice, naturalOpts,
-    loss: lossOption,
+    loss: lossOption, checkpoint: checkpointOpt,
   } = opts ?? {};
   const dtype = parseDtype(opts?.dtype);
   // Default optimizer: natural for f64 (fast second-order), Adam for f32 (FD Hessian too noisy)
@@ -896,7 +896,7 @@ export const dlmMLE = async (
   // DLM dataset sizes (n ≲ few hundred), where carry memory is negligible.
   const kalmanLoss = useAssocScanLoss
     ? makeKalmanLossAssoc(F, G, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, mleMaskArr)
-    : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, false, mleMaskArr);
+    : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, checkpointOpt ?? false, mleMaskArr);
 
   // Custom loss wrapping (MAP / regularised objectives).
   // When a DlmLossFn is provided, it wraps the Kalman −2·logL so that

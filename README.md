@@ -13,7 +13,7 @@ A TypeScript Kalman filter + RTS smoother library using [jax-js-nonconsuming](ht
 
 ### Features at a glance
 - **Kalman filter & RTS smoother**: Sequential (`scan`), exact O(log N) parallel (`assoc`), and square-root parallel (`sqrt-assoc`) algorithms.
-- **Autodiff MLE**: Jointly estimate observation noise, process noise, and AR coefficients via `jit(valueAndGrad + Adam)`.
+- **Autodiff MLE & MAP**: Jointly estimate observation noise, process noise, and AR coefficients via `jit(valueAndGrad + Adam)`. MAP estimation with `dlmPrior` (Inverse-Gamma / Normal priors) or custom loss callbacks.
 - **Multiple backends**: Runs on CPU, WASM (recommended for speed), and WebGPU.
 - **Multivariate observations**: Vector-valued observations (p > 1) with full matrix algebra (inv, matmul, einsum, slogdet).
 - **Missing data & irregular timestamps**: Built-in support for NaN observations and arbitrary time steps.
@@ -254,7 +254,7 @@ const mleAR = await dlmMLE(
 console.log(mleAR.arCoefficients);  // estimated AR coefficients (e.g. [0.81])
 ```
 
-`dlmMLE` uses Adam with automatic differentiation (autodiff) to optimize the Kalman filter log-likelihood. The entire optimization step — forward filter + AD backward pass + Adam update — is compiled via `jit()` for speed. See [How MLE works](#how-mle-works) for technical details and [Parameter estimation: MATLAB DLM vs dlm-js](#parameter-estimation-maximum-likelihood-matlab-dlm-vs-dlm-js) for a detailed comparison.
+`dlmMLE` uses Adam with automatic differentiation (autodiff) to optimize the Kalman filter log-likelihood. The entire optimization step — forward filter + AD backward pass + Adam update — is compiled via `jit()` for speed. See [How MLE works](#how-mle-works) for technical details and [Parameter estimation: MATLAB DLM vs dlm-js](#parameter-estimation-mle--map-matlab-dlm-vs-dlm-js) for a detailed comparison.
 
 `dlmMLE` also supports missing data — the Kalman loss scan zeros K, v, and the log-likelihood contribution at NaN timesteps, so autodiff and Adam optimization work correctly through the gaps:
 
@@ -540,7 +540,7 @@ A scaling benchmark (Nile order=1, m=2) measures `dlmFit` at exponentially incre
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.2 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1902 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM occurs at N=3276800 with the 2 GB WASM memory limit — a signed 32-bit integer overflow in the page-count calculation (see `issues/jax-js-wasm-allocator-size-overflow.md`).
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.2 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1902 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM previously occurred at N=3276800 due to a signed 32-bit integer overflow in the page-count calculation — fixed upstream in jax-js-nonconsuming (bb126c6+a6d37da).
 
 2. **WebGPU cold timings include per-N JIT recompilation** (WebGPU `jit()` is not polymorphic in N). At small N the ~500 ms JIT overhead dominates; at large N the GPU arithmetic dominates. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). A 1024× increase from N=100 to N=102400 roughly triples the runtime (<!-- timing:scale:webgpu-f32:n100 -->541 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->1827 ms (cold)<!-- /timing -->).
 
@@ -575,7 +575,7 @@ Three findings:
 
 *Joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitAr: true`). WASM variants use natural gradient; WebGPU uses Adam (FD Hessian too noisy in f32 for 7 parameters). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85).*
 
-The Nile MLE demo estimates `obsStd` and `processStd` on the classic Nile dataset; the energy MLE demo jointly estimates `obsStd`, `processStd`, and AR coefficient `φ` on the synthetic energy model (`fitAr: true`). See [Parameter estimation (maximum likelihood): MATLAB DLM vs dlm-js](#parameter-estimation-maximum-likelihood-matlab-dlm-vs-dlm-js) for details.
+The Nile MLE demo estimates `obsStd` and `processStd` on the classic Nile dataset; the energy MLE demo jointly estimates `obsStd`, `processStd`, and AR coefficient `φ` on the synthetic energy model (`fitAr: true`). See [Parameter estimation (MLE & MAP): MATLAB DLM vs dlm-js](#parameter-estimation-mle--map-matlab-dlm-vs-dlm-js) for details.
 
 ### How MLE works
 
@@ -583,7 +583,7 @@ Noise parameters are optimized in log-space: $s = e^{\theta_s}$, $w_i = e^{\thet
 
 The entire optimization step is wrapped in a single `jit()` call. For Adam, this includes `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update; for natural gradient, the `jit(valueAndGrad(loss))` call is reused for both the gradient and finite-difference Hessian evaluations. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iterations (~<!-- timing:mle-bench:nile-order1:elapsed -->3318 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:nile-order1:elapsed -->2142 ms<!-- /timing -->) with the natural gradient optimizer.
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iterations (~<!-- timing:mle-bench:nile-order1:elapsed -->3259 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:nile-order1:elapsed -->2117 ms<!-- /timing -->) with the natural gradient optimizer.
 
 **Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
@@ -734,9 +734,9 @@ const mle = await dlmMLE(y, {
 });
 ```
 
-### Parameter estimation (maximum likelihood): MATLAB DLM vs dlm-js
+### Parameter estimation (MLE & MAP): MATLAB DLM vs dlm-js
 
-This comparison focuses on the univariate MLE workflow ($p=1$). For the original MATLAB DLM, see the [tutorial](https://mjlaine.github.io/dlm/dlmtut.html) and [source](https://github.com/mjlaine/dlm).
+This comparison focuses on the univariate estimation workflow ($p=1$). `dlmMLE` supports both pure MLE (default) and MAP estimation via the `loss` option — see [MAP estimation](#map-estimation-custom-loss--priors) for API details. For the original MATLAB DLM, see the [tutorial](https://mjlaine.github.io/dlm/dlmtut.html) and [source](https://github.com/mjlaine/dlm).
 
 #### Objective function
 
@@ -767,21 +767,26 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Gradient computation** | **Autodiff** via `valueAndGrad()` + reverse-mode AD through `lax.scan` | **None** — derivative-free |
 | **Typical run budget** | Adam: 200 iterations; natural: 50 iterations | 400 function evaluations (`options.maxfuneval`) |
 | **Compilation** | `jit()`-traced optimization step (forward filter + AD + parameter update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
-| **WASM performance** | Adam: ~<!-- timing:ckpt:nile:false-s -->2.4 s<!-- /timing --> for 60 iters (Nile, n=100, m=2, `checkpoint: false`); natural: ~1.5 s for 5 iters | N/A |
+| **WASM performance** | Adam: ~<!-- timing:ckpt:nile:false-s -->2.3 s<!-- /timing --> for 60 iters (Nile, n=100, m=2, `checkpoint: false`); natural: ~1.5 s for 5 iters | N/A |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it robust on non-smooth surfaces but expensive as parameter dimension grows. Adam uses first-order gradients; natural gradient uses second-order curvature (Hessian) for faster convergence on smooth objectives like the DLM log-likelihood. See [Optimizers](#optimizers) for equations and algorithmic details.
 
-##### MLE vs MCMC: different objectives
+##### MLE, MAP, and MCMC: three estimation approaches
 
-Pure MLE minimises $-2 \log L$ without any prior on $W$. On real data such as satellite ozone measurements, this can produce degenerate solutions — e.g. most seasonal noise variances collapse to near-zero while one or two grow large — because the likelihood surface has a wide, nearly flat ridge. MATLAB MCMC uses a normal prior on $\log W$ entries that keeps them symmetric and away from zero, yielding a posterior mean at much higher $-2\log L$ but visually smoother, better-regularised results.
+Pure MLE minimises $-2 \log L$ without any prior on $W$. On real data such as satellite ozone measurements, this can produce degenerate solutions — e.g. most seasonal noise variances collapse to near-zero while one or two grow large — because the likelihood surface has a wide, nearly flat ridge.
 
-| Point | dlm-js MLE | MATLAB MCMC |
-|-------|------------|------------|
-| Ozone $-2\log L$ at MATLAB posterior W | — | 435.6 |
-| Ozone $-2\log L$ at MLE optimum | 203.8 | — |
-| Ozone trend shape | Same global trend, but seasonal W values degenerate | Smooth, symmetric seasonal noise |
+**MAP estimation** (dlm-js `loss` option) adds prior penalties to the likelihood, regularising the solution without the cost of full posterior sampling. dlm-js provides `dlmPrior` for MATLAB DLM-style Inverse-Gamma priors on variances and Normal priors on AR coefficients (matching `dlmGibbsDIG` conventions), or accepts a custom callback for arbitrary penalties. The entire chain — Kalman loss + prior penalty + AD backward pass + optimizer update — is compiled in a single `jit()` call. The result separates `deviance` (pure $-2\log L$) from `priorPenalty` for diagnostics.
 
-If MCMC-like regularisation is needed, use MAP estimation via the `loss` option — either `dlmPrior({ obsVar: ..., processVar: ... })` for MATLAB DLM-style Inverse-Gamma priors, or a custom callback for arbitrary penalties. See [MAP estimation](#map-estimation-custom-loss--priors).
+**MCMC** (MATLAB DLM only) uses a normal prior on $\log W$ entries and produces a full posterior chain with credible intervals, yielding a posterior mean at much higher $-2\log L$ but visually smoother, better-regularised results.
+
+| Point | dlm-js MLE | dlm-js MAP | MATLAB MCMC |
+|-------|------------|------------|------------|
+| Ozone $-2\log L$ at MATLAB posterior W | — | — | 435.6 |
+| Ozone $-2\log L$ at MLE optimum | 203.8 | — | — |
+| Regularisation | None | Prior penalty on $W$, optional on $s$ and $\phi$ | Full posterior via MCMC |
+| Output | Point estimate | Point estimate + `priorPenalty` decomposition | Full chain + credible intervals |
+
+See [MAP estimation](#map-estimation-custom-loss--priors) for API details and code examples.
 
 #### Benchmark: same machine, same data
 
@@ -789,11 +794,11 @@ All timings measured on the same machine: <!-- computed:static("machine")-->Inte
 
 | Model | $n$ | $m$ | params | dlm-js Adam (wasm) | dlm-js natural (wasm) | Octave `fminsearch` | $-2\log L$ (Adam) | $-2\log L$ (natural) | $-2\log L$ (Octave) |
 |-------|---|---|--------|--------------------|-----------------------|---------------------|-------------------|----------------------|---------------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:mle-bench:nile-order1:elapsed -->3318 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->2142 ms<!-- /timing --> | <!-- computed:static("octave-nile-order1-elapsed-ms") + " ms" -->2814 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-order1-lik") -->1104.6<!-- /computed --> |
-| Nile, order=1, fit w only | 100 | 2 | 2 | <!-- timing:mle-bench:nile-wonly:elapsed -->3314 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:elapsed -->1835 ms<!-- /timing --> | <!-- computed:static("octave-nile-w-only-elapsed-ms") + " ms" -->1614 ms<!-- /computed --> | <!-- timing:mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-w-only-lik") -->1104.7<!-- /computed --> |
-| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->2405 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->1363 ms<!-- /timing --> | <!-- computed:static("octave-nile-order0-elapsed-ms") + " ms" -->607 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- computed:static("octave-nile-order0-lik") -->1095.8<!-- /computed --> |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->5558 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->4121 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->5718 ms<!-- /timing --> | <!-- timing:nat-mle-bench:energy:elapsed -->6419 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | <!-- timing:nat-mle-bench:energy:lik -->443.1<!-- /timing --> | — |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:mle-bench:nile-order1:elapsed -->3259 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->2117 ms<!-- /timing --> | <!-- computed:static("octave-nile-order1-elapsed-ms") + " ms" -->2814 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-order1-lik") -->1104.6<!-- /computed --> |
+| Nile, order=1, fit w only | 100 | 2 | 2 | <!-- timing:mle-bench:nile-wonly:elapsed -->3088 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:elapsed -->1733 ms<!-- /timing --> | <!-- computed:static("octave-nile-w-only-elapsed-ms") + " ms" -->1614 ms<!-- /computed --> | <!-- timing:mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-w-only-lik") -->1104.7<!-- /computed --> |
+| Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->2277 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->1336 ms<!-- /timing --> | <!-- computed:static("octave-nile-order0-elapsed-ms") + " ms" -->607 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- computed:static("octave-nile-order0-lik") -->1095.8<!-- /computed --> |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->4964 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->4068 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->5718 ms<!-- /timing --> | <!-- timing:nat-mle-bench:energy:elapsed -->5614 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | <!-- timing:nat-mle-bench:energy:lik -->443.1<!-- /timing --> | — |
 
 Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w only) dlm-js timings are from `pnpm run bench:mle`; Energy Adam timings are from `collect-energy-mle-frames.ts` (includes frame extraction overhead), Energy natural gradient from `bench:mle`. All dlm-js timings are single fresh-run wall-clock times including JIT overhead.
 
@@ -801,7 +806,7 @@ Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w 
 - **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("mle-bench:nile-order1:elapsed") ? "faster" : "slower" -->faster<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
 - **Likelihood values:** All optimizers converge to very similar $-2\log L$ values on Nile (Adam vs Octave difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
 - **Natural gradient:** Uses second-order curvature (FD Hessian + Levenberg-Marquardt damping) and converges in fewer iterations (≤50 vs 300 for Adam), but each iteration is more expensive due to per-parameter finite-difference Hessian evaluations.
-- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.6 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->20<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->4.1 s<!-- /timing -->).
+- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->5.0 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->20<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->4.1 s<!-- /timing -->).
 - **Joint $s+w$ fitting:** dlm-js can fit both $s$ and $w$ jointly, or fix $s$ via `obsStdFixed` (matching MATLAB DLM's `fitv=0`).
 
 ##### Gradient checkpointing
@@ -812,15 +817,15 @@ Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w 
 
 | Dataset | n | m | `checkpoint: false` ($n$, warm) | `checkpoint: true` ($\sqrt{n}$, warm) | speedup |
 |---------|---|---|-------------------------------|---------------------------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->2351 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->2380 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->+1%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2942 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2978 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->+1%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->2302 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->2294 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->0%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->2848 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->2918 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->+2%<!-- /timing --> |
 
 
 #### MCMC (MATLAB DLM only)
 
 The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 simulations, log-normal priors, full posterior chain with credible intervals, and disturbance smoother for Gibbs-style state sampling.
 
-**dlm-js has no MCMC equivalent** — `dlmMLE` returns a point estimate only. Possible future directions:
+**dlm-js has no MCMC equivalent** — `dlmMLE` returns a point estimate (MLE or MAP), not a posterior chain. For regularisation without MCMC, use MAP estimation with `dlmPrior` or a custom `loss` callback — see [MAP estimation](#map-estimation-custom-loss--priors). Possible future directions:
 - Hessian at the MLE optimum for approximate confidence intervals
 - Stochastic gradient MCMC (e.g., SGLD) using the existing AD infrastructure
 
@@ -836,6 +841,8 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 | Fit process noise `processStd` | ✅ | ✅ |
 | Fit AR coefficients `arCoefficients` | ✅ (`fitAr: true`) | ✅ |
 | Tie W parameters (`winds`) | ❌ (each W entry independent) | ✅ |
+| MAP estimation (priors) | ✅ (`dlmPrior` factory: IG on variances, Normal on AR; or custom `loss` callback) | ⚠️ (priors used in MCMC, not in `fminsearch` MLE) |
+| Prior penalty decomposition | ✅ (`deviance` + `priorPenalty` in result) | ❌ |
 | Custom cost function | ✅ (`loss` option: custom callback or `dlmPrior` factory) | ✅ (`options.fitfun`) |
 | MCMC posterior sampling | ❌ | ✅ (Adaptive Metropolis via `mcmcrun`) |
 | State sampling for Gibbs | ❌ | ✅ (disturbance smoother) |
@@ -852,10 +859,11 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 3. **WASM backend** — runs in Node.js and the browser without native dependencies.
 4. **Potentially more robust as dimension grows** — gradient-based optimization can remain practical in settings where derivative-free simplex methods become expensive or unstable.
 5. **Joint AR coefficient estimation** — `fitAr: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
+6. **Built-in MAP estimation** — `dlmPrior` factory provides MATLAB DLM-style Inverse-Gamma priors on variances and Normal priors on AR coefficients (matching `dlmGibbsDIG` conventions), compiled end-to-end in a single `jit()` call. Alternatively, a custom `loss` callback can implement arbitrary penalties. See [MAP estimation](#map-estimation-custom-loss--priors).
 
 #### What MATLAB DLM does that dlm-js doesn't (yet)
 
-1. **MCMC posterior sampling** — full Bayesian uncertainty quantification with priors.
+1. **MCMC posterior sampling** — full posterior chain with credible intervals. dlm-js supports priors (via MAP), but returns a point estimate rather than a full Bayesian posterior.
 2. **Parameter tying** (`winds`) — reduces optimization dimension for structured models.
 3. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
 
@@ -921,6 +929,9 @@ This generates Octave reference outputs:
 - `tests/niledemo-out-m.json` (from `niledemo.m` — pre-existing MATLAB DLM demo)
 - `tests/{order0,order2,seasonal,trig,trigar,level,energy,ar2}-out-m.json` (from `gensys_tests.m` — generated for this project)
 - `tests/kaisaniemi-out-m.json` (from `kaisaniemi_demo.m` — Kaisaniemi seasonal demo)
+- `tests/ozone-out-m.json` (from `ozonedemo.m` — ozone seasonal demo)
+- `tests/{gapped,gapped-order0}-out-m.json` (from `gappeddata_test.m` — NaN gapped-data tests)
+- `tests/{multivariate,multivariate-order0,multivariate-gapped,multivariate-ar2}-out-m.json` (from `multivariate_demo.m` — p=2 vector observations)
 
 It will also generate test input files unless they already exist.
 
@@ -938,7 +949,7 @@ or
 pnpm run test:node
 ```
 
-This runs `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, and `ozone.test.ts` against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs 13 test suites (268 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, and `options.test.ts` — against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 
