@@ -495,7 +495,7 @@ Each forward step takes the carry $(x_{t|t-1}, U_{t|t-1}, D_{t|t-1})$ — the pr
 
 $$C_{t|t-1} = U_{t|t-1} \, \text{diag}(D_{t|t-1}) \, U_{t|t-1}^\top$$
 
-This is emitted as $\texttt{C\_pred}$ for the backward smoother.
+This is emitted as $\mathtt{C\_pred}$ for the backward smoother.
 
 **2. Innovation.** $v_t = y_t - F \, x_{t|t-1}$.
 
@@ -529,7 +529,7 @@ The output $U^*, D^*$ satisfies $U^* \, \text{diag}(D^*) \, (U^*)^\top = G \, C_
 
 **6. Carry and outputs.** The updated carry is $(x_{t+1|t}, U^*, D^*)$. For the backward smoother:
 
-$$\texttt{x\_pred} = x_{t|t-1}, \quad \texttt{C\_pred} = U \, D \, U^\top, \quad \texttt{K} = G \, K_{\text{Bierman}}, \quad \texttt{v} = v_t, \quad \texttt{Cp} = \alpha_{\text{final}}$$
+$$\mathtt{x\_pred} = x_{t|t-1}, \quad \mathtt{C\_pred} = U \, D \, U^\top, \quad \mathtt{K} = G \, K_{\text{Bierman}}, \quad \mathtt{v} = v_t, \quad \mathtt{Cp} = \alpha_{\text{final}}$$
 
 ##### Backward smoother
 
@@ -752,7 +752,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 Both optimizers can be understood as instances of **steepest descent under a norm** (Bernstein & Newhouse 2024). Given a loss $\ell(\theta)$ with gradient $g = \nabla_\theta \ell$ and a norm $\|\cdot\|$ on the parameter space, the optimal update minimizing a quadratic model is:
 
-$$\Delta\theta^* = \argmin_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
+$$\Delta\theta^* = \operatorname{arg\,min}_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
 
 where $\|g\|^\dagger$ is the dual norm and $\mathcal{D}_{\|\cdot\|}$ is the *duality map* — it converts the gradient (a member of the dual space) into a primal-space update direction. The choice of norm determines the geometry:
 
