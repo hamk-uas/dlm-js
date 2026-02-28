@@ -579,7 +579,7 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 | **webgpu** | **f32** | **assoc** | **built-in** | **369 ms** | **4.74e-6** | **449 ms** | **5.01e-3** | **646 ms** | **0.03** | **487 ms** | **0.21** | **508 ms** | **4.87e-4** |
 |  |  | scan | joseph | 615 ms | 1.06e-6 | 886 ms | 6.34e-5 | 1110 ms | 9.85e-3 | 1225 ms | 1.06e-3 | 1103 ms | 2.56e-5 |
 |  |  | scan | joseph+triu | 871 ms | 1.06e-6 | 896 ms | 6.34e-5 | 1172 ms | 0.03 | 1237 ms | 2.88e-3 | 1063 ms | 8.20e-5 |
-|  |  | ud | built-in | 1059 ms | 1.06e-6 | 1750 ms | 7.70e-4 | 3799 ms | 9.20e-3 | 0 ms | 0 | 2143 ms | 4.61e-5 |
+|  |  | ud | built-in | 1059 ms | 1.06e-6 | 1750 ms | 7.70e-4 | 3799 ms | 9.20e-3 | >5 s | — | 2143 ms | 4.61e-5 |
 <!-- /generated -->
 
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
@@ -1042,7 +1042,7 @@ or
 pnpm run test:node
 ```
 
-This runs 13 test suites (268 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, and `options.test.ts` — against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs 14 test suites (316 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, `ud.test.ts`, and `options.test.ts` — against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 
