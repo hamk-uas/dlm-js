@@ -96,13 +96,14 @@ const numFrames = frames.length;
 const jitEndFrac = jitDuration / totalDuration;
 const trainEndFrac = animDuration / totalDuration;
 
-// Main plot: hold f_0 during JIT phase, then jump to f_i as sparkline reveals it.
-// keyTimes: length numFrames+1.  values: length numFrames+1.
-const numSparkSegments = Math.max(1, numFrames - 2);
+// Main plot: hold frame0 during JIT phase, then animate N frames, then hold.
+// keyTimes: length numFrames+2.  values: length numFrames+2.
 const mainKeyTimes: string = [
   (0).toFixed(4),
-  ...Array.from({ length: Math.max(0, numFrames - 1) }, (_, i) => {
-    const kt = jitEndFrac + (i / numSparkSegments) * (trainEndFrac - jitEndFrac);
+  ...Array.from({ length: numFrames }, (_, i) => {
+    const kt = numFrames === 1
+      ? jitEndFrac
+      : jitEndFrac + (i / numFrames) * (trainEndFrac - jitEndFrac);
     return kt.toFixed(4);
   }),
   (1).toFixed(4),
@@ -110,27 +111,33 @@ const mainKeyTimes: string = [
 
 // ── Pre-compute polyline points and band paths per frame ───────────────────
 
-// buildAnimPolylineValues returns N+1 items: [f_0, f_1, ..., f_N-1, f_N-1]
-// This aligns perfectly with the N+1 keys in mainKeyTimes.
-const polylineValues = buildAnimPolylineValues(
+// Values arrays are extended with a JIT-phase entry: [frame0(JIT hold), frame0..frameN-1(training), frameN-1(hold)]
+// buildAnimPolylineValues returns N+1 items; prepend frame0 → N+2 to match mainKeyTimes.
+
+const _trainingPolyValues = buildAnimPolylineValues(
   frames.map((f: any) => f.level as number[]), t, sx, sy,
 );
+const polylineValues = [_trainingPolyValues[0], ..._trainingPolyValues];
 
 // State uncertainty band (narrow, more opaque)
-const stateBandValues = buildAnimBandValues(
+const _trainingStateBandValues = buildAnimBandValues(
   frames.map((f: any) => ({
     upper: f.level.map((v: number, i: number) => v + 2 * f.std[i]),
     lower: f.level.map((v: number, i: number) => v - 2 * f.std[i]),
-  })), t, sx, sy,
+  })),
+  t, sx, sy,
 );
+const stateBandValues = [_trainingStateBandValues[0], ..._trainingStateBandValues];
 
-// Observation prediction band (wide, transparent, includes obs noise)
-const obsBandValues = buildAnimBandValues(
+// Observation prediction band (wider = includes obs noise, lighter fill)
+const _trainingObsBandValues = buildAnimBandValues(
   frames.map((f: any) => ({
-    upper: f.level.map((v: number, i: number) => v + 2 * Math.sqrt(f.std[i] ** 2 + Math.exp(f.w[0]))),
-    lower: f.level.map((v: number, i: number) => v - 2 * Math.sqrt(f.std[i] ** 2 + Math.exp(f.w[0]))),
-  })), t, sx, sy,
+    upper: f.level.map((v: number, i: number) => v + 2 * f.ystd[i]),
+    lower: f.level.map((v: number, i: number) => v - 2 * f.ystd[i]),
+  })),
+  t, sx, sy,
 );
+const obsBandValues = [_trainingObsBandValues[0], ..._trainingObsBandValues];
 
 // ── Loss sparkline (drawn in legend area) ──────────────────────────────────
 
