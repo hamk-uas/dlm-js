@@ -1076,8 +1076,6 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 ## TODO
 
 * Float32 backward-smoother stabilization — experimental `DlmStabilization` flags already implemented (`cEps` gives −29% max error); next steps: evaluate log-Cholesky / modified-Cholesky parameterizations, consider making `cEps` the f32 default, or collapse the 7-flag interface to a simpler enum before documenting
-* ~~Square-root parallel smoother~~ — **implemented** as `algorithm: 'sqrt-assoc'` (see [sqrt-assoc section](#square-root-parallel-smoother-sqrt-assoc)). Uses proper QR-based `tria()` and `lax.linalg.triangularSolve` — works for all state dimensions including fullSeasonal m=13.
-* ~~Multivariate observations (p > 1)~~ — **implemented** in `dlmFit` / `dlmSmo`. Pass `y: number[][]` (n × p) and `F: number[][]` (p × m) in `DlmFitOptions`. Branches on `p === 1` at trace time (zero overhead for scalar case). Supports `scan` and `assoc` algorithms; `sqrt-assoc`, `ud`, and `dlmForecast` throw for p > 1. MLE (`dlmMLE`) currently p = 1 only.
 * Test the built library (in `dist/`)
 * MCMC parameter estimation — depends on Marko Laine's `mcmcrun` toolbox; would require porting or replacing the MCMC engine
 * State sampling (disturbance smoother) — blocked on MCMC
