@@ -1,7 +1,7 @@
 import { DType, numpy as np, lax, jit, valueAndGrad, hessian as adHessian, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray, DlmMleOptions } from "./types";
-import { getFloatArrayType, parseDtype } from "./types";
+import { getFloatArrayType, parseDtype, checkUnknownKeys, DLM_MLE_KEYS, DLM_MLE_INIT_KEYS, DLM_MLE_CALLBACKS_KEYS, DLM_MLE_ADAM_KEYS, DLM_MLE_NATURAL_KEYS } from "./types";
 import { dlmGenSys, findArInds } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
@@ -768,6 +768,13 @@ export const dlmMLE = async (
   y: ArrayLike<number>,
   opts?: DlmMleOptions,
 ): Promise<DlmMleResult> => {
+  if (opts) {
+    checkUnknownKeys(opts as unknown as Record<string, unknown>, DLM_MLE_KEYS, 'dlmMLE');
+    if (opts.init) checkUnknownKeys(opts.init as unknown as Record<string, unknown>, DLM_MLE_INIT_KEYS, 'dlmMLE (init)');
+    if (opts.callbacks) checkUnknownKeys(opts.callbacks as unknown as Record<string, unknown>, DLM_MLE_CALLBACKS_KEYS, 'dlmMLE (callbacks)');
+    if (opts.adamOpts) checkUnknownKeys(opts.adamOpts as unknown as Record<string, unknown>, DLM_MLE_ADAM_KEYS, 'dlmMLE (adamOpts)');
+    if (opts.naturalOpts) checkUnknownKeys(opts.naturalOpts as unknown as Record<string, unknown>, DLM_MLE_NATURAL_KEYS, 'dlmMLE (naturalOpts)');
+  }
   const {
     order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr,
     X, init,
@@ -1083,10 +1090,10 @@ export const dlmMLE = async (
       ? Array.from({ length: nar }, (_, i) => thetaData[wOff + m + i])
       : undefined;
 
-    const fitOptions: DlmOptions = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
+    const { fitAr: _fa1, ...fitOpts1 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
     const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
     const fit = await dlmFit(yArr, {
-      obsStd: sForFit, processStd: w_opt, ...fitOptions,
+      obsStd: sForFit, processStd: w_opt, ...fitOpts1,
       X, dtype: opts?.dtype, algorithm: opts?.algorithm,
     });
 
@@ -1236,13 +1243,13 @@ export const dlmMLE = async (
     : undefined;
 
   // Run full dlmFit with optimized parameters (including fitted arCoefficients if applicable)
-  const fitOptions: DlmOptions = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
+  const { fitAr: _fa2, ...fitOpts2 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
   // When s was fixed, pass the original sFixed array to dlmFit; otherwise use scalar s_opt
   const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
   const fit = await dlmFit(yArr, {
     obsStd: sForFit,
     processStd: w_opt,
-    ...fitOptions,
+    ...fitOpts2,
     X,
     dtype: opts?.dtype,
     algorithm: opts?.algorithm,

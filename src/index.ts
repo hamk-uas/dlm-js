@@ -3,6 +3,7 @@ import type { DlmSmoResult, FloatArray } from "./types";
 import {
   getFloatArrayType, parseDtype,
   StateMatrix, CovMatrix,
+  checkUnknownKeys, DLM_FIT_KEYS, DLM_STABILIZATION_KEYS, DLM_FORECAST_KEYS,
 } from "./types";
 import type {
   DlmFitResult, DlmForecastResult, DlmTensorResult,
@@ -1619,6 +1620,10 @@ export const dlmFit = async (
   y: ArrayLike<number> | number[][],
   opts: DlmFitOptions,
 ): Promise<DlmFitResult> => {
+  checkUnknownKeys(opts as unknown as Record<string, unknown>, DLM_FIT_KEYS, 'dlmFit');
+  if (opts.stabilization) {
+    checkUnknownKeys(opts.stabilization as unknown as Record<string, unknown>, DLM_STABILIZATION_KEYS, 'dlmFit (stabilization)');
+  }
   const {
     obsStd: s, processStd: w,
     order, harmonics, seasonLength, fullSeasonal, arCoefficients, spline,
@@ -2011,6 +2016,9 @@ export const dlmForecast = async (
   h: number,
   opts?: DlmForecastOptions,
 ): Promise<DlmForecastResult> => {
+  if (opts) {
+    checkUnknownKeys(opts as unknown as Record<string, unknown>, DLM_FORECAST_KEYS, 'dlmForecast');
+  }
   if (fit.p && fit.p > 1) {
     throw new Error('dlmForecast does not yet support multivariate observations (p > 1)');
   }

@@ -9,6 +9,7 @@
  */
 import { numpy as np } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmLossFn, DlmParamMeta } from "./types";
+import { checkUnknownKeys, DLM_PRIOR_KEYS } from "./types";
 
 /**
  * Inverse-Gamma(shape, rate) prior specification for a variance parameter.
@@ -106,6 +107,7 @@ export interface DlmPriorSpec {
  * ```
  */
 export function dlmPrior(spec: DlmPriorSpec): DlmLossFn {
+  checkUnknownKeys(spec as unknown as Record<string, unknown>, DLM_PRIOR_KEYS, 'dlmPrior');
   // Pre-validate at factory time
   if (spec.obsVar) {
     if (spec.obsVar.shape <= 0 || spec.obsVar.rate <= 0)

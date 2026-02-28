@@ -57,6 +57,98 @@ export function getFloatArrayType(dtype: DType): FloatArrayConstructor {
   return dtype === DType.Float32 ? Float32Array : Float64Array;
 }
 
+// ─── Option validation ──────────────────────────────────────────────────────
+
+/** MATLAB DLM → dlm-js name mapping for helpful error messages. */
+const MATLAB_HINTS: Record<string, string> = {
+  trig: 'harmonics',
+  ns: 'seasonLength',
+  fullseas: 'fullSeasonal',
+  arphi: 'arCoefficients',
+  fitar: 'fitAr',
+  sfixed: 'obsStdFixed',
+  sFixed: 'obsStdFixed',
+};
+
+/**
+ * Throw if `opts` contains keys not in `validKeys`.
+ * Prevents silent typos and MATLAB-name mismatches (e.g. `trig` vs `harmonics`).
+ */
+export function checkUnknownKeys(
+  opts: Record<string, unknown>,
+  validKeys: ReadonlySet<string>,
+  fnName: string,
+): void {
+  for (const key of Object.keys(opts)) {
+    if (!validKeys.has(key)) {
+      const hint = MATLAB_HINTS[key] ?? MATLAB_HINTS[key.toLowerCase()];
+      const suffix = hint
+        ? ` (MATLAB DLM name — use '${hint}' instead)`
+        : '';
+      throw new Error(
+        `${fnName}: unknown option '${key}'${suffix}. Valid options: ${[...validKeys].join(', ')}`,
+      );
+    }
+  }
+}
+
+/** Valid keys for {@link DlmFitOptions}. */
+export const DLM_FIT_KEYS: ReadonlySet<string> = new Set([
+  'obsStd', 'processStd',
+  'order', 'harmonics', 'seasonLength', 'fullSeasonal', 'arCoefficients', 'spline',
+  'F', 'X', 'timestamps',
+  'dtype', 'algorithm', 'stabilization',
+]);
+
+/** Valid keys for {@link DlmStabilization}. */
+export const DLM_STABILIZATION_KEYS: ReadonlySet<string> = new Set([
+  'nSym', 'nDiag', 'nDiagAbs', 'nLeak',
+  'cDiag', 'cEps', 'cDiagAbs', 'cTriuSym', 'cSmoAbsDiag',
+]);
+
+/** Valid keys for {@link DlmMleOptions}. */
+export const DLM_MLE_KEYS: ReadonlySet<string> = new Set([
+  'order', 'harmonics', 'seasonLength', 'fullSeasonal', 'arCoefficients', 'fitAr',
+  'X', 'init', 'maxIter', 'lr', 'tol', 'obsStdFixed', 'callbacks', 'adamOpts',
+  'optimizer', 'naturalOpts', 'loss',
+  'dtype', 'algorithm',
+]);
+
+/** Valid keys for {@link DlmMleOptions.init}. */
+export const DLM_MLE_INIT_KEYS: ReadonlySet<string> = new Set([
+  'obsStd', 'processStd', 'arCoefficients',
+]);
+
+/** Valid keys for {@link DlmMleOptions.callbacks}. */
+export const DLM_MLE_CALLBACKS_KEYS: ReadonlySet<string> = new Set([
+  'onInit', 'onIteration',
+]);
+
+/** Valid keys for {@link DlmMleOptions.adamOpts}. */
+export const DLM_MLE_ADAM_KEYS: ReadonlySet<string> = new Set([
+  'b1', 'b2', 'eps',
+]);
+
+/** Valid keys for {@link DlmMleOptions.naturalOpts}. */
+export const DLM_MLE_NATURAL_KEYS: ReadonlySet<string> = new Set([
+  'hessian', 'lambdaInit', 'lambdaShrink', 'lambdaGrow', 'fdStep',
+]);
+
+/** Valid keys for {@link DlmForecastOptions}. */
+export const DLM_FORECAST_KEYS: ReadonlySet<string> = new Set([
+  'dtype', 'X',
+]);
+
+/** Valid keys for {@link DlmOptions} (dlmGenSys). */
+export const DLM_GENSYS_KEYS: ReadonlySet<string> = new Set([
+  'order', 'fullSeasonal', 'harmonics', 'seasonLength', 'arCoefficients', 'spline', 'fitAr',
+]);
+
+/** Valid keys for {@link DlmPriorSpec}. */
+export const DLM_PRIOR_KEYS: ReadonlySet<string> = new Set([
+  'obsVar', 'processVar', 'arCoef',
+]);
+
 // ─── StateMatrix & CovMatrix ────────────────────────────────────────────────
 
 /**

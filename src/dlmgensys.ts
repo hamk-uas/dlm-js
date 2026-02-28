@@ -10,6 +10,8 @@
  * @returns System matrices G (m×m) and F (1×m), plus state dimension m
  */
 
+import { checkUnknownKeys, DLM_GENSYS_KEYS } from "./types";
+
 /** DLM model configuration options */
 export interface DlmOptions {
   /** Polynomial trend order: 0 = level, 1 = level+slope, 2 = quadratic (default: 1) */
@@ -161,6 +163,7 @@ function stackMatrices(a: number[][], b: number[][]): number[][] {
 }
 
 export function dlmGenSys(options: DlmOptions = {}): DlmSystem {
+  checkUnknownKeys(options as unknown as Record<string, unknown>, DLM_GENSYS_KEYS, 'dlmGenSys');
   const order = options.order ?? 1;
   const harmonics = options.harmonics ?? 0;
   const seasonLength = options.seasonLength ?? 12;
@@ -342,6 +345,7 @@ export function dlmGenSysTV(
   timestamps: number[],
   processStd: number[],
 ): DlmSystemTV {
+  checkUnknownKeys(options as unknown as Record<string, unknown>, DLM_GENSYS_KEYS, 'dlmGenSysTV');
   const order = options.order ?? 1;
   const harmonics = options.harmonics ?? 0;
   const seasonLength = options.seasonLength ?? 12;
