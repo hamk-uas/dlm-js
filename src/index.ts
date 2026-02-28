@@ -692,15 +692,12 @@ const dlmSmo = async (
     // MWGS processes columns j=0..m-1, orthogonalizing and extracting the
     // unit lower-triangular factor U_next and positive diagonal D_next.
 
-    // Factor W_t via Cholesky → LDL
-    using W_sym = np.multiply(half, np.add(W_t, np.transpose(W_t)));
-    using W_reg = np.add(W_sym, stab_cEps_I);                       // ε for Cholesky only
-    using L_W = np.linalg.cholesky(W_reg);
-    using L_Wd = np.einsum('ii->i', L_W);                           // [m] diagonal
-    using L_Wdi = np.reciprocal(L_Wd);
-    using L_Wdim = np.multiply(np.reshape(L_Wdi, [1, m]), stab_I_eye);
-    using L_W_unit_raw = np.matmul(L_W, L_Wdim);                    // unit lower-tri
-    using D_W = np.multiply(L_Wd, L_Wd);                            // [m] diagonal
+    // Decompose W_t for the augmented MWGS matrix.
+    // W = L_W · diag(D_W) · L_W'.  For diagonal W (all dlmGenSys models):
+    //   L_W = I, D_W = diag(W_t).
+    // This avoids Cholesky(W + ε·I) which contaminates the time update with
+    // accumulated ε when W has zero diagonal elements (e.g. w[0]=0).
+    using D_W = np.einsum('ii->i', W_t);                            // [m] diagonal of W_t
 
     // Form B = G · U_filt (Bierman-updated U)
     using GU_filt = np.matmul(G_t, U_bar);                          // [m,m]
@@ -709,7 +706,7 @@ const dlmSmo = async (
     // MWGS working copies (deflated during the loop)
     // jax-js-lint: allow-non-using — accumulator-swap in MWGS loop
     let B_work = np.add(GU_filt, zeros_mm);                         // [m,m] clone
-    let L_work = np.add(L_W_unit_raw, zeros_mm);                    // [m,m] clone
+    let L_work = np.add(stab_I_eye, zeros_mm);                      // [m,m] identity (diagonal W)
 
     // Output accumulators
     // jax-js-lint: allow-non-using — accumulated in MWGS loop

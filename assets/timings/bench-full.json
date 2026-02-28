@@ -8,8 +8,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 290.305142,
-      "warmMs": 239.40614599999992,
+      "firstMs": 293.94171200000005,
+      "warmMs": 235.61412799999994,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -22,8 +22,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 210.059299,
-      "warmMs": 210.36913300000003,
+      "firstMs": 207.70409399999994,
+      "warmMs": 223.95148700000004,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -36,8 +36,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 182.17711799999984,
-      "warmMs": 150.7098649999998,
+      "firstMs": 192.31918799999994,
+      "warmMs": 157.8891390000001,
       "stable": true,
       "maxAbsErr": 5.118863555253483e-9,
       "maxPctErr": 4.873912250773534e-10
@@ -50,8 +50,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 229.28610700000013,
-      "warmMs": 212.6640980000002,
+      "firstMs": 230.93309,
+      "warmMs": 211.7685610000001,
       "stable": true,
       "maxAbsErr": 1.5916157281026244e-12,
       "maxPctErr": 1.819268236679251e-13
@@ -64,11 +64,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 275.8561569999997,
-      "warmMs": 277.3280460000001,
+      "firstMs": 393.3582580000002,
+      "warmMs": 380.3601309999999,
       "stable": true,
-      "maxAbsErr": 1.1368683772161603e-13,
-      "maxPctErr": 1.734694432165283e-14
+      "maxAbsErr": 2.5011104298755527e-12,
+      "maxPctErr": 1.3028528792759433e-12
     },
     {
       "model": "Nile, order=0",
@@ -78,8 +78,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 225.79519800000025,
-      "warmMs": 217.68230700000004,
+      "firstMs": 220.44175499999983,
+      "warmMs": 219.19401100000005,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00009927985510129371
@@ -92,8 +92,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 260.80051000000003,
-      "warmMs": 249.36133399999972,
+      "firstMs": 256.3753450000004,
+      "warmMs": 253.63705500000015,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00009927985510129371
@@ -106,8 +106,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 144.51509799999985,
-      "warmMs": 146.46805300000005,
+      "firstMs": 142.51721300000008,
+      "warmMs": 148.74837500000012,
       "stable": true,
       "maxAbsErr": 0.004929106836243591,
       "maxPctErr": 0.0004742033186195521
@@ -120,8 +120,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 213.84517099999994,
-      "warmMs": 219.39712299999974,
+      "firstMs": 212.94864300000017,
+      "warmMs": 207.78934299999946,
       "stable": true,
       "maxAbsErr": 0.00020143199276390078,
       "maxPctErr": 0.00002911234851436964
@@ -134,11 +134,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 248.1185859999996,
-      "warmMs": 243.60637099999985,
+      "firstMs": 372.6018759999997,
+      "warmMs": 363.84813399999985,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
-      "maxPctErr": 0.00009927985510129371
+      "maxPctErr": 0.00010625637079699816
     },
     {
       "model": "Nile, order=0",
@@ -148,8 +148,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 55.52090899999985,
-      "warmMs": 25.182756000000154,
+      "firstMs": 45.16347399999995,
+      "warmMs": 25.737694999999803,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -162,8 +162,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 24.021380000000136,
-      "warmMs": 19.99931699999979,
+      "firstMs": 23.46620400000029,
+      "warmMs": 20.687330000000657,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -176,8 +176,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 99.28604399999949,
-      "warmMs": 81.0438379999996,
+      "firstMs": 124.93991300000016,
+      "warmMs": 80.66296899999998,
       "stable": true,
       "maxAbsErr": 5.118863555253483e-9,
       "maxPctErr": 4.873912250773534e-10
@@ -190,8 +190,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 158.73004000000037,
-      "warmMs": 126.46179200000006,
+      "firstMs": 158.00610999999935,
+      "warmMs": 119.8814910000001,
       "stable": true,
       "maxAbsErr": 1.5916157281026244e-12,
       "maxPctErr": 1.819268236679251e-13
@@ -204,11 +204,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 34.15369499999997,
-      "warmMs": 26.64447100000052,
+      "firstMs": 36.82079800000065,
+      "warmMs": 31.04715699999997,
       "stable": true,
-      "maxAbsErr": 1.1368683772161603e-13,
-      "maxPctErr": 1.734694432165283e-14
+      "maxAbsErr": 2.5011104298755527e-12,
+      "maxPctErr": 1.3028528792759433e-12
     },
     {
       "model": "Nile, order=0",
@@ -218,8 +218,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 29.211291999999958,
-      "warmMs": 20.876811999999518,
+      "firstMs": 29.408363000000463,
+      "warmMs": 20.403299999999945,
       "stable": true,
       "maxAbsErr": 0.0001519166751222656,
       "maxPctErr": 0.00010625637079699816
@@ -232,8 +232,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 26.234316000000035,
-      "warmMs": 28.35542699999951,
+      "firstMs": 27.22511299999951,
+      "warmMs": 22.616863999999623,
       "stable": true,
       "maxAbsErr": 0.0001519166751222656,
       "maxPctErr": 0.00010625637079699816
@@ -246,8 +246,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 95.7128789999997,
-      "warmMs": 71.94816399999945,
+      "firstMs": 92.6322769999997,
+      "warmMs": 73.0630799999999,
       "stable": true,
       "maxAbsErr": 0.004929106836243591,
       "maxPctErr": 0.0004742033186195521
@@ -260,8 +260,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 148.68938799999978,
-      "warmMs": 115.506351,
+      "firstMs": 148.37993600000027,
+      "warmMs": 117.96364100000028,
       "stable": true,
       "maxAbsErr": 0.00020143199276390078,
       "maxPctErr": 0.00002911234851436964
@@ -274,10 +274,10 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 28.334791000000223,
-      "warmMs": 24.382982999999513,
+      "firstMs": 34.09034299999985,
+      "warmMs": 28.776170999999522,
       "stable": true,
-      "maxAbsErr": 0.0001519166751222656,
+      "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00010625637079699816
     },
     {
@@ -288,8 +288,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 568.9759959999992,
-      "warmMs": 584.3435760000002,
+      "firstMs": 592.996623,
+      "warmMs": 614.9317680000004,
       "stable": true,
       "maxAbsErr": 0.0001519166751222656,
       "maxPctErr": 0.00010625637079699816
@@ -302,8 +302,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 402.72641699999986,
-      "warmMs": 359.5595289999992,
+      "firstMs": 416.6990539999997,
+      "warmMs": 368.8625410000004,
       "stable": true,
       "maxAbsErr": 0.004929106836243591,
       "maxPctErr": 0.0004742033186195521
@@ -316,10 +316,10 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 734.1961860000001,
-      "warmMs": 765.083009,
+      "firstMs": 1107.5108879999989,
+      "warmMs": 1059.3532209999994,
       "stable": true,
-      "maxAbsErr": 0.0001519166751222656,
+      "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00010625637079699816
     },
     {
@@ -330,8 +330,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 774.5314059999982,
-      "warmMs": 807.6172190000016,
+      "firstMs": 823.4855399999997,
+      "warmMs": 870.592963000001,
       "stable": true,
       "maxAbsErr": 0.0001519166751222656,
       "maxPctErr": 0.00010625637079699816
@@ -344,8 +344,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 442.7323559999986,
-      "warmMs": 433.0306499999988,
+      "firstMs": 443.4108729999989,
+      "warmMs": 439.7025389999999,
       "stable": true,
       "maxAbsErr": 6.679101716144942e-13,
       "maxPctErr": 4.7754214358181386e-11
@@ -358,8 +358,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 352.38176199999907,
-      "warmMs": 346.82284900000013,
+      "firstMs": 350.6451500000003,
+      "warmMs": 348.38110400000005,
       "stable": true,
       "maxAbsErr": 2.3419488570652902e-11,
       "maxPctErr": 1.4032392219096375e-9
@@ -372,8 +372,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 324.3532830000004,
-      "warmMs": 323.7501620000003,
+      "firstMs": 333.5890039999995,
+      "warmMs": 329.24675000000025,
       "stable": true,
       "maxAbsErr": 2.890374162234366e-9,
       "maxPctErr": 4.360714157389197e-7
@@ -386,8 +386,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 470.8144379999994,
-      "warmMs": 458.9823090000009,
+      "firstMs": 455.9638040000009,
+      "warmMs": 457.34402000000046,
       "stable": true,
       "maxAbsErr": 2281.44640425218,
       "maxPctErr": 5976.157846809211
@@ -400,11 +400,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 501.0025139999998,
-      "warmMs": 494.96707199999946,
+      "firstMs": 900.0936790000014,
+      "warmMs": 917.4733400000005,
       "stable": true,
-      "maxAbsErr": 6.465938895416912e-13,
-      "maxPctErr": 4.408081325370589e-11
+      "maxAbsErr": 1.3096723705530167e-10,
+      "maxPctErr": 1.4326264307454416e-10
     },
     {
       "model": "Nile, order=1",
@@ -414,8 +414,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 396.352116,
-      "warmMs": 398.6863949999988,
+      "firstMs": 416.68205300000045,
+      "warmMs": 414.558562000002,
       "stable": true,
       "maxAbsErr": 0.0015982297661594203,
       "maxPctErr": 0.022522675753179146
@@ -428,8 +428,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 460.1728039999998,
-      "warmMs": 498.9456849999988,
+      "firstMs": 465.9970109999995,
+      "warmMs": 456.42639599999893,
       "stable": true,
       "maxAbsErr": 0.0014761594536594203,
       "maxPctErr": 0.01094211222176302
@@ -442,8 +442,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 324.7633559999995,
-      "warmMs": 326.80258200000026,
+      "firstMs": 326.9595109999973,
+      "warmMs": 322.81563000000097,
       "stable": true,
       "maxAbsErr": 0.002974687524329056,
       "maxPctErr": 0.3932809098863647
@@ -456,8 +456,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 445.27765,
-      "warmMs": 444.0796819999996,
+      "firstMs": 442.236955999997,
+      "warmMs": 442.6117200000008,
       "stable": true,
       "maxAbsErr": 2281.4461483056302,
       "maxPctErr": 5977.372928677012
@@ -470,11 +470,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 473.73087999999916,
-      "warmMs": 477.0716399999983,
+      "firstMs": 872.2482060000002,
+      "warmMs": 887.7398840000023,
       "stable": true,
-      "maxAbsErr": 0.0017203000786594203,
-      "maxPctErr": 0.050913306189870416
+      "maxAbsErr": 0.0011099485161594203,
+      "maxPctErr": 0.07479471565633466
     },
     {
       "model": "Nile, order=1",
@@ -484,8 +484,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 33.13836699999956,
-      "warmMs": 27.179055000000517,
+      "firstMs": 34.59737600000153,
+      "warmMs": 25.64486400000169,
       "stable": true,
       "maxAbsErr": 6.679101716144942e-13,
       "maxPctErr": 4.7754214358181386e-11
@@ -498,8 +498,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 24.688478000000032,
-      "warmMs": 22.890744000000268,
+      "firstMs": 26.033190000001923,
+      "warmMs": 21.778140000002168,
       "stable": true,
       "maxAbsErr": 2.3419488570652902e-11,
       "maxPctErr": 1.4032392219096375e-9
@@ -512,8 +512,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 167.7250570000033,
-      "warmMs": 97.7815359999986,
+      "firstMs": 164.68041300000186,
+      "warmMs": 140.5734969999976,
       "stable": true,
       "maxAbsErr": 2.890374162234366e-9,
       "maxPctErr": 4.360714157389197e-7
@@ -526,8 +526,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 219.354632999999,
-      "warmMs": 136.50343799999973,
+      "firstMs": 252.57602000000043,
+      "warmMs": 153.12040400000114,
       "stable": true,
       "maxAbsErr": 8.753886504564434e-12,
       "maxPctErr": 6.835778544885667e-10
@@ -540,11 +540,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 37.09835999999996,
-      "warmMs": 31.943639999997686,
+      "firstMs": 57.22287800000049,
+      "warmMs": 49.24829399999726,
       "stable": true,
-      "maxAbsErr": 6.465938895416912e-13,
-      "maxPctErr": 4.408081325370589e-11
+      "maxAbsErr": 1.3096723705530167e-10,
+      "maxPctErr": 1.4326264307454416e-10
     },
     {
       "model": "Nile, order=1",
@@ -554,8 +554,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 29.978558000002522,
-      "warmMs": 24.102065999999468,
+      "firstMs": 30.63828300000023,
+      "warmMs": 23.509400000002643,
       "stable": true,
       "maxAbsErr": 0.0017203000786594203,
       "maxPctErr": 0.025866709191557667
@@ -568,8 +568,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 31.897578000000067,
-      "warmMs": 27.64748999999938,
+      "firstMs": 32.56941699999879,
+      "warmMs": 28.052090000001044,
       "stable": true,
       "maxAbsErr": 0.0025521608588405797,
       "maxPctErr": 0.07109694902926925
@@ -582,8 +582,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 156.45453899999848,
-      "warmMs": 98.33309500000178,
+      "firstMs": 159.97991700000057,
+      "warmMs": 101.7544170000001,
       "stable": true,
       "maxAbsErr": 0.002889966806606026,
       "maxPctErr": 0.453082013505184
@@ -596,8 +596,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 213.8759310000023,
-      "warmMs": 135.89474899999914,
+      "firstMs": 217.52799000000232,
+      "warmMs": 145.70778100000098,
       "stable": true,
       "maxAbsErr": 0.006876723135746943,
       "maxPctErr": 0.13421577103848334
@@ -610,11 +610,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 35.25723099999959,
-      "warmMs": 30.27399300000252,
+      "firstMs": 56.83109600000171,
+      "warmMs": 46.320738000002166,
       "stable": true,
-      "maxAbsErr": 0.0017203000786594203,
-      "maxPctErr": 0.07602730453202315
+      "maxAbsErr": 0.0013540891411594203,
+      "maxPctErr": 0.07964289856737601
     },
     {
       "model": "Nile, order=1",
@@ -624,8 +624,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 904.7625120000012,
-      "warmMs": 874.1998679999997,
+      "firstMs": 912.4611199999999,
+      "warmMs": 885.7928680000005,
       "stable": true,
       "maxAbsErr": 0.0018423703911594203,
       "maxPctErr": 0.006340180027912529
@@ -638,8 +638,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 535.6669470000015,
-      "warmMs": 438.3424959999975,
+      "firstMs": 547.5485320000007,
+      "warmMs": 449.4653709999984,
       "stable": true,
       "maxAbsErr": 0.002852617211829056,
       "maxPctErr": 0.5007626598463999
@@ -652,11 +652,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1010.7351139999992,
-      "warmMs": 975.4982859999982,
+      "firstMs": 1907.0572889999967,
+      "warmMs": 1749.5838089999997,
       "stable": true,
-      "maxAbsErr": 0.0017203000786594203,
-      "maxPctErr": 0.04282957748014682
+      "maxAbsErr": 0.0020865110161594203,
+      "maxPctErr": 0.07701337563257393
     },
     {
       "model": "Nile, order=1",
@@ -666,8 +666,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 874.9967680000009,
-      "warmMs": 882.7110769999999,
+      "firstMs": 886.727469999998,
+      "warmMs": 895.9715140000008,
       "stable": true,
       "maxAbsErr": 0.0017203000786594203,
       "maxPctErr": 0.006340180027912529
@@ -680,8 +680,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 554.7086369999997,
-      "warmMs": 537.3754769999978,
+      "firstMs": 553.5473880000027,
+      "warmMs": 543.2205719999984,
       "stable": true,
       "maxAbsErr": 2.347277927583491e-11,
       "maxPctErr": 4.198139088237142e-9
@@ -694,8 +694,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 444.909044,
-      "warmMs": 444.57412900000054,
+      "firstMs": 450.30251800000406,
+      "warmMs": 445.323040999996,
       "stable": true,
       "maxAbsErr": 1.020907802740112e-10,
       "maxPctErr": 5.8536961187600494e-8
@@ -708,8 +708,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1251.6358189999992,
-      "warmMs": 1264.888117999999,
+      "firstMs": 1266.3902020000023,
+      "warmMs": 1279.6054230000009,
       "stable": true,
       "maxAbsErr": 2.1720314435924593e-10,
       "maxPctErr": 0.0000031658559748747426
@@ -722,8 +722,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 1309.5880209999996,
-      "warmMs": 1302.5184569999983,
+      "firstMs": 1310.1533159999963,
+      "warmMs": 1312.8898010000048,
       "stable": true,
       "maxAbsErr": 1.7189086844800467,
       "maxPctErr": 69789.40126844535
@@ -736,11 +736,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 625.9945530000041,
-      "warmMs": 672.2977059999976,
+      "firstMs": 1757.1508900000044,
+      "warmMs": 1739.385884999996,
       "stable": true,
-      "maxAbsErr": 1.1381118270037405e-11,
-      "maxPctErr": 2.035528767847387e-9
+      "maxAbsErr": 0.00002240543830644981,
+      "maxPctErr": 0.004007243677370074
     },
     {
       "model": "Kaisaniemi, trig",
@@ -750,8 +750,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 511.8863350000029,
-      "warmMs": 509.451939999999,
+      "firstMs": 520.877757000002,
+      "warmMs": 525.5370020000046,
       "stable": true,
       "maxAbsErr": 0.0016354655964656573,
       "maxPctErr": 0.29250528739295756
@@ -764,8 +764,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 579.5673519999982,
-      "warmMs": 576.6065449999951,
+      "firstMs": 571.8972379999977,
+      "warmMs": 578.6247509999957,
       "stable": true,
       "maxAbsErr": 0.005019750620575358,
       "maxPctErr": 0.8977893519041108
@@ -778,8 +778,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1274.4516760000042,
-      "warmMs": 1269.2999259999997,
+      "firstMs": 1285.4141240000026,
+      "warmMs": 1311.6193490000005,
       "stable": true,
       "maxAbsErr": 0.00022220026767616474,
       "maxPctErr": 3.0815281295169528
@@ -792,8 +792,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 1436.6444189999966,
-      "warmMs": 1340.0330350000004,
+      "firstMs": 1335.069245999999,
+      "warmMs": 1365.2130210000032,
       "stable": true,
       "maxAbsErr": 1.7065336568542335,
       "maxPctErr": 69885.89537092562
@@ -806,11 +806,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 585.572623,
-      "warmMs": 586.8633359999949,
+      "firstMs": 1751.0537320000003,
+      "warmMs": 1743.117600999998,
       "stable": true,
-      "maxAbsErr": 0.0012210941059871416,
-      "maxPctErr": 0.3440561156290407
+      "maxAbsErr": 0.01164570805862386,
+      "maxPctErr": 2.0828510180487827
     },
     {
       "model": "Kaisaniemi, trig",
@@ -820,8 +820,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 35.91707999999926,
-      "warmMs": 26.821431999997003,
+      "firstMs": 36.16206900000543,
+      "warmMs": 27.483296999998856,
       "stable": true,
       "maxAbsErr": 2.347277927583491e-11,
       "maxPctErr": 4.198139088237142e-9
@@ -834,8 +834,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 25.93322900000203,
-      "warmMs": 23.690324000002875,
+      "firstMs": 25.48865400000068,
+      "warmMs": 23.190337,
       "stable": true,
       "maxAbsErr": 1.020907802740112e-10,
       "maxPctErr": 5.8536961187600494e-8
@@ -848,8 +848,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 319.1422210000019,
-      "warmMs": 242.75216299999738,
+      "firstMs": 308.5962639999998,
+      "warmMs": 222.40198200000304,
       "stable": true,
       "maxAbsErr": 2.1720314435924593e-10,
       "maxPctErr": 0.0000031658559748747426
@@ -862,8 +862,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 287.14248300000327,
-      "warmMs": 188.0513770000034,
+      "firstMs": 288.6722860000009,
+      "warmMs": 171.2457429999995,
       "stable": true,
       "maxAbsErr": 2.919287034330864e-8,
       "maxPctErr": 0.00020319154761949147
@@ -876,11 +876,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 38.795618999996805,
-      "warmMs": 32.88429999999789,
+      "firstMs": 90.62634299999627,
+      "warmMs": 75.93673699999636,
       "stable": true,
-      "maxAbsErr": 1.1381118270037405e-11,
-      "maxPctErr": 2.035528767847387e-9
+      "maxAbsErr": 0.00002240543830644981,
+      "maxPctErr": 0.004007243677370074
     },
     {
       "model": "Kaisaniemi, trig",
@@ -890,8 +890,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 34.56582999999955,
-      "warmMs": 27.060864999999467,
+      "firstMs": 34.042592999998305,
+      "warmMs": 26.052655999999843,
       "stable": true,
       "maxAbsErr": 0.007103834126739095,
       "maxPctErr": 1.2705305738770716
@@ -904,8 +904,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 32.973095000001194,
-      "warmMs": 27.901864000006753,
+      "firstMs": 32.364618000006885,
+      "warmMs": 28.24756100000377,
       "stable": true,
       "maxAbsErr": 0.009934034373016765,
       "maxPctErr": 1.776715808348589
@@ -918,8 +918,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 293.63317599999573,
-      "warmMs": 206.14843600000313,
+      "firstMs": 313.15051900000253,
+      "warmMs": 226.0473559999955,
       "stable": true,
       "maxAbsErr": 0.00020560811999370543,
       "maxPctErr": 2.8122685871673223
@@ -932,8 +932,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 250.8083500000066,
-      "warmMs": 167.7390379999997,
+      "firstMs": 324.226201999998,
+      "warmMs": 165.87422499999957,
       "stable": true,
       "maxAbsErr": 0.028630647633819173,
       "maxPctErr": 199.41661109278934
@@ -946,11 +946,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 38.48229999999603,
-      "warmMs": 29.679439999999886,
+      "firstMs": 96.63910500000202,
+      "warmMs": 71.2628179999956,
       "stable": true,
-      "maxAbsErr": 0.0005668735249324541,
-      "maxPctErr": 0.3440561156290407
+      "maxAbsErr": 0.0012983417256160479,
+      "maxPctErr": 0.3739693306366412
     },
     {
       "model": "Kaisaniemi, trig",
@@ -960,8 +960,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1022.3864869999961,
-      "warmMs": 989.9056249999994,
+      "firstMs": 1174.1973149999976,
+      "warmMs": 1109.5284329999995,
       "stable": true,
       "maxAbsErr": 0.005507078196258952,
       "maxPctErr": 0.9849485638666817
@@ -974,8 +974,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 786.4459169999973,
-      "warmMs": 624.1043290000016,
+      "firstMs": 807.2837999999974,
+      "warmMs": 646.4264850000036,
       "stable": true,
       "maxAbsErr": 0.00020543003425199657,
       "maxPctErr": 2.857145177558927
@@ -988,11 +988,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1188.4989329999953,
-      "warmMs": 1157.4167989999987,
+      "firstMs": 3847.9364889999997,
+      "warmMs": 3799.1926699999967,
       "stable": true,
-      "maxAbsErr": 0.0007909869892879229,
-      "maxPctErr": 0.26669327528288983
+      "maxAbsErr": 0.005141649220733235,
+      "maxPctErr": 0.9195910853976393
     },
     {
       "model": "Kaisaniemi, trig",
@@ -1002,8 +1002,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 1015.5816310000009,
-      "warmMs": 1097.8577220000006,
+      "firstMs": 1115.0743249999941,
+      "warmMs": 1172.1023279999936,
       "stable": true,
       "maxAbsErr": 0.016699399973602702,
       "maxPctErr": 2.986710817472814
@@ -1016,8 +1016,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 607.9533949999968,
-      "warmMs": 601.755541999999,
+      "firstMs": 632.4069940000045,
+      "warmMs": 607.5789169999916,
       "stable": true,
       "maxAbsErr": 9.312373094871873e-11,
       "maxPctErr": 1.1857512427397484e-9
@@ -1030,8 +1030,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 492.60949999999866,
-      "warmMs": 491.6315519999989,
+      "firstMs": 508.3187200000102,
+      "warmMs": 494.1114489999891,
       "stable": true,
       "maxAbsErr": 2.0783602394658374e-8,
       "maxPctErr": 0.0001061799306652662
@@ -1044,8 +1044,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1741.0617639999982,
-      "warmMs": 1749.0448189999952,
+      "firstMs": 1790.6285820000048,
+      "warmMs": 1774.3669979999977,
       "stable": true,
       "maxAbsErr": 4.783942131325603e-10,
       "maxPctErr": 0.000021738046890974354
@@ -1058,8 +1058,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 2241.7756359999985,
-      "warmMs": 2411.212857999999,
+      "firstMs": 2209.5315899999987,
+      "warmMs": 2203.649283000006,
       "stable": true,
       "maxAbsErr": 82.38603890942896,
       "maxPctErr": 267399.65565694706
@@ -1072,11 +1072,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 697.7401499999978,
-      "warmMs": 683.6253810000053,
+      "firstMs": 2204.907196,
+      "warmMs": 2200.302091999998,
       "stable": true,
-      "maxAbsErr": 4.902744876744691e-11,
-      "maxPctErr": 1.060335245911506e-9
+      "maxAbsErr": 1.5029272049105202e-8,
+      "maxPctErr": 1.5630613568196307e-8
     },
     {
       "model": "Energy, trig+AR",
@@ -1086,8 +1086,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 561.6461830000044,
-      "warmMs": 571.6975679999887,
+      "firstMs": 582.9288510000042,
+      "warmMs": 561.2046039999987,
       "stable": true,
       "maxAbsErr": 0.005832999008077877,
       "maxPctErr": 0.06176282934887255
@@ -1100,8 +1100,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 639.350243000008,
-      "warmMs": 641.8052909999969,
+      "firstMs": 646.2234080000053,
+      "warmMs": 635.8931390000071,
       "stable": true,
       "maxAbsErr": 0.010860116226297123,
       "maxPctErr": 0.14075741660771865
@@ -1114,8 +1114,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1771.9174409999978,
-      "warmMs": 1775.505090999999,
+      "firstMs": 1783.1290969999973,
+      "warmMs": 1774.581165999989,
       "stable": true,
       "maxAbsErr": 0.0009592481008837694,
       "maxPctErr": 19.556383614536983
@@ -1128,8 +1128,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 2245.1307069999893,
-      "warmMs": 2202.158813999995,
+      "firstMs": 2187.523276000007,
+      "warmMs": 2253.9353439999977,
       "stable": true,
       "maxAbsErr": 82.37805989424625,
       "maxPctErr": 267396.7299346932
@@ -1142,11 +1142,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 649.0339299999905,
-      "warmMs": 654.122279999996,
+      "firstMs": 2223.2789210000046,
+      "warmMs": 2182.8204359999945,
       "stable": true,
-      "maxAbsErr": 0.012897818344015377,
-      "maxPctErr": 0.11516113793633166
+      "maxAbsErr": 0.0072072710155808295,
+      "maxPctErr": 0.1017592563900333
     },
     {
       "model": "Energy, trig+AR",
@@ -1156,8 +1156,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 38.86550699999498,
-      "warmMs": 28.271473000000697,
+      "firstMs": 42.79374799999641,
+      "warmMs": 28.189334000009694,
       "stable": true,
       "maxAbsErr": 9.312373094871873e-11,
       "maxPctErr": 1.1857512427397484e-9
@@ -1170,8 +1170,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 27.542700999998488,
-      "warmMs": 23.429518000004464,
+      "firstMs": 27.560860999990837,
+      "warmMs": 23.868706000008387,
       "stable": true,
       "maxAbsErr": 2.0783602394658374e-8,
       "maxPctErr": 0.0001061799306652662
@@ -1184,8 +1184,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 182.47666200000094,
-      "warmMs": 104.79285300000629,
+      "firstMs": 189.34304000000702,
+      "warmMs": 117.10652799998934,
       "stable": true,
       "maxAbsErr": 4.783942131325603e-10,
       "maxPctErr": 0.000021738046890974354
@@ -1198,8 +1198,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 327.8764919999958,
-      "warmMs": 190.8728320000082,
+      "firstMs": 504.2842609999934,
+      "warmMs": 225.01527499999793,
       "stable": true,
       "maxAbsErr": 4.0969894143927377e-11,
       "maxPctErr": 3.097775121657593e-8
@@ -1212,11 +1212,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 40.52997600000526,
-      "warmMs": 33.41753600000811,
+      "firstMs": 109.30378900001233,
+      "warmMs": 88.44516600000497,
       "stable": true,
-      "maxAbsErr": 4.902744876744691e-11,
-      "maxPctErr": 1.060335245911506e-9
+      "maxAbsErr": 1.5029272049105202e-8,
+      "maxPctErr": 1.5630613568196307e-8
     },
     {
       "model": "Energy, trig+AR",
@@ -1226,8 +1226,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 33.94320699998934,
-      "warmMs": 24.35543399999733,
+      "firstMs": 34.402608000003966,
+      "warmMs": 25.509625000006054,
       "stable": true,
       "maxAbsErr": 0.03965345118723462,
       "maxPctErr": 0.20755760674147616
@@ -1240,8 +1240,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 32.95107700000517,
-      "warmMs": 28.456124999996973,
+      "firstMs": 32.276783000008436,
+      "warmMs": 27.232835999995586,
       "stable": true,
       "maxAbsErr": 0.03512159083567212,
       "maxPctErr": 0.1341042969997659
@@ -1254,8 +1254,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 174.91250700000091,
-      "warmMs": 102.88257200000226,
+      "firstMs": 177.1965060000075,
+      "warmMs": 104.22042900000815,
       "stable": true,
       "maxAbsErr": 0.002250224751614738,
       "maxPctErr": 21.870162871400858
@@ -1268,8 +1268,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 254.36926500000118,
-      "warmMs": 178.4224719999911,
+      "firstMs": 278.92390700000396,
+      "warmMs": 196.12454600000638,
       "stable": true,
       "maxAbsErr": 0.005743348775752111,
       "maxPctErr": 2.937572285475041
@@ -1282,11 +1282,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 36.66182399999525,
-      "warmMs": 30.54560599999968,
+      "firstMs": 107.929461000007,
+      "warmMs": 89.20938199998636,
       "stable": true,
-      "maxAbsErr": 0.016063363296609623,
-      "maxPctErr": 0.2392833608539279
+      "maxAbsErr": 0.016764995014604267,
+      "maxPctErr": 0.1304842019928146
     },
     {
       "model": "Energy, trig+AR",
@@ -1296,8 +1296,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1217.2458279999992,
-      "warmMs": 1183.4395479999948,
+      "firstMs": 1253.1625150000036,
+      "warmMs": 1225.145227000001,
       "stable": true,
       "maxAbsErr": 0.011357647351060152,
       "maxPctErr": 0.10589020332202367
@@ -1310,8 +1310,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 642.7585980000003,
-      "warmMs": 468.89352399999916,
+      "firstMs": 675.4965210000082,
+      "warmMs": 486.7061810000014,
       "stable": true,
       "maxAbsErr": 0.0027966435156798752,
       "maxPctErr": 20.517397750324363
@@ -1324,11 +1324,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1382.7367599999998,
-      "warmMs": 1364.8933809999871,
+      "firstMs": 5176.843578999993,
+      "warmMs": null,
       "stable": true,
-      "maxAbsErr": 0.005573245702592544,
-      "maxPctErr": 0.04340786820936722
+      "maxAbsErr": null,
+      "maxPctErr": null
     },
     {
       "model": "Energy, trig+AR",
@@ -1338,8 +1338,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 1187.8815249999898,
-      "warmMs": 1185.8654630000092,
+      "firstMs": 1252.1567989999894,
+      "warmMs": 1236.9913110000052,
       "stable": true,
       "maxAbsErr": 0.028064400894265873,
       "maxPctErr": 0.2882522340150681
@@ -1352,8 +1352,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 434.1716790000064,
-      "warmMs": 440.1178489999875,
+      "firstMs": 490.7221000000136,
+      "warmMs": 476.871312999996,
       "stable": true,
       "maxAbsErr": 2.6716406864579767e-12,
       "maxPctErr": 2.5170474256836218e-11
@@ -1366,8 +1366,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 361.17750499999966,
-      "warmMs": 356.0285509999958,
+      "firstMs": 386.62355200000457,
+      "warmMs": 402.9115369999927,
       "stable": true,
       "maxAbsErr": 2.8819613362429664e-11,
       "maxPctErr": 1.034994793870109e-10
@@ -1380,8 +1380,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 324.17506499998854,
-      "warmMs": 331.585282,
+      "firstMs": 374.6490330000088,
+      "warmMs": 410.82055400000536,
       "stable": true,
       "maxAbsErr": 1.3317944080881716e-8,
       "maxPctErr": 1.2923291205551946e-7
@@ -1394,8 +1394,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 457.51390900000115,
-      "warmMs": 460.64969500000007,
+      "firstMs": 463.59412700000394,
+      "warmMs": 462.69481699999596,
       "stable": true,
       "maxAbsErr": 2256.2307433212036,
       "maxPctErr": 26423.41387978053
@@ -1408,11 +1408,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 508.09101499999815,
-      "warmMs": 512.3777739999932,
+      "firstMs": 912.9126660000038,
+      "warmMs": 903.1097010000085,
       "stable": true,
-      "maxAbsErr": 5.9117155615240335e-12,
-      "maxPctErr": 5.992970061151481e-12
+      "maxAbsErr": 1.1027623258996755e-10,
+      "maxPctErr": 1.0155298485835127e-11
     },
     {
       "model": "Gapped, order=1",
@@ -1422,8 +1422,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 415.60762200001045,
-      "warmMs": 413.38140700000804,
+      "firstMs": 416.85006599999906,
+      "warmMs": 417.98652700000093,
       "stable": true,
       "maxAbsErr": 0.0006934263308266964,
       "maxPctErr": 0.0017446908741565448
@@ -1436,8 +1436,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 463.0602450000006,
-      "warmMs": 464.649362000011,
+      "firstMs": 472.41881399998965,
+      "warmMs": 463.8845969999966,
       "stable": true,
       "maxAbsErr": 0.0006934263308266964,
       "maxPctErr": 0.013980602365928015
@@ -1450,8 +1450,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 330.2062770000048,
-      "warmMs": 326.6695790000085,
+      "firstMs": 332.47015799999645,
+      "warmMs": 329.572840000008,
       "stable": true,
       "maxAbsErr": 0.01289843051077355,
       "maxPctErr": 0.15071222817916965
@@ -1464,8 +1464,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 456.97645399998873,
-      "warmMs": 446.3620280000032,
+      "firstMs": 470.1077649999934,
+      "warmMs": 462.4041020000004,
       "stable": true,
       "maxAbsErr": 2256.2308615348657,
       "maxPctErr": 26423.422739174333
@@ -1478,11 +1478,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 479.3825680000009,
-      "warmMs": 473.9025099999999,
+      "firstMs": 895.0169150000002,
+      "warmMs": 919.0328600000066,
       "stable": true,
-      "maxAbsErr": 0.0006934263308266964,
-      "maxPctErr": 0.014976001362582982
+      "maxAbsErr": 0.0006361324985846295,
+      "maxPctErr": 0.0027295773431309416
     },
     {
       "model": "Gapped, order=1",
@@ -1492,8 +1492,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 27.153734000006807,
-      "warmMs": 26.594392999992124,
+      "firstMs": 29.22251099999994,
+      "warmMs": 27.807742999997572,
       "stable": true,
       "maxAbsErr": 2.6716406864579767e-12,
       "maxPctErr": 2.5170474256836218e-11
@@ -1506,8 +1506,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 23.577017999996315,
-      "warmMs": 21.777484999998705,
+      "firstMs": 22.609141000008094,
+      "warmMs": 23.864199000003282,
       "stable": true,
       "maxAbsErr": 2.8819613362429664e-11,
       "maxPctErr": 1.034994793870109e-10
@@ -1520,8 +1520,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 98.18083199999819,
-      "warmMs": 98.10840800000005,
+      "firstMs": 100.47906700000749,
+      "warmMs": 101.92562100000214,
       "stable": true,
       "maxAbsErr": 1.3317944080881716e-8,
       "maxPctErr": 1.2923291205551946e-7
@@ -1534,8 +1534,8 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 139.7902400000021,
-      "warmMs": 141.29879800000344,
+      "firstMs": 145.77647899999283,
+      "warmMs": 150.51154200000747,
       "stable": true,
       "maxAbsErr": 1.1482370609883219e-11,
       "maxPctErr": 6.783292987965832e-11
@@ -1548,11 +1548,11 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 33.1786870000069,
-      "warmMs": 32.41075500000443,
+      "firstMs": 55.339600999999675,
+      "warmMs": 52.83889800000179,
       "stable": true,
-      "maxAbsErr": 5.9117155615240335e-12,
-      "maxPctErr": 5.992970061151481e-12
+      "maxAbsErr": 1.1027623258996755e-10,
+      "maxPctErr": 1.0155298485835127e-11
     },
     {
       "model": "Gapped, order=1",
@@ -1562,8 +1562,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 25.37281200000143,
-      "warmMs": 23.406222999998135,
+      "firstMs": 26.08847999999125,
+      "warmMs": 24.390995999987354,
       "stable": true,
       "maxAbsErr": 0.0010596633377986109,
       "maxPctErr": 0.013196348610987736
@@ -1576,8 +1576,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 27.784958000003826,
-      "warmMs": 27.60540499999479,
+      "firstMs": 28.976926999996067,
+      "warmMs": 28.446171999996295,
       "stable": true,
       "maxAbsErr": 0.0006863412256734591,
       "maxPctErr": 0.024779173299336467
@@ -1590,8 +1590,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 104.26436600000306,
-      "warmMs": 101.08504600000742,
+      "firstMs": 107.32828000000154,
+      "warmMs": 99.04687900000135,
       "stable": true,
       "maxAbsErr": 0.0129060599053048,
       "maxPctErr": 0.11919125995176232
@@ -1604,8 +1604,8 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 136.38515899999766,
-      "warmMs": 141.56524000001082,
+      "firstMs": 145.16283400000248,
+      "warmMs": 148.27908800001023,
       "stable": true,
       "maxAbsErr": 0.004958802163173459,
       "maxPctErr": 0.0038252509454327166
@@ -1618,11 +1618,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 32.58437500000582,
-      "warmMs": 29.823014000008698,
+      "firstMs": 51.780469000004814,
+      "warmMs": 48.581256999998004,
       "stable": true,
-      "maxAbsErr": 0.0007601749365804267,
-      "maxPctErr": 0.017691183891275542
+      "maxAbsErr": 0.0009489376743658795,
+      "maxPctErr": 0.0014109002480807806
     },
     {
       "model": "Gapped, order=1",
@@ -1632,8 +1632,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1039.1114720000041,
-      "warmMs": 1095.0962870000076,
+      "firstMs": 1110.0756899999978,
+      "warmMs": 1102.722993000003,
       "stable": true,
       "maxAbsErr": 0.006630792419173304,
       "maxPctErr": 0.0025631932928492345
@@ -1646,8 +1646,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 476.4640350000118,
-      "warmMs": 484.43114899999637,
+      "firstMs": 498.8953160000092,
+      "warmMs": 507.65614300000016,
       "stable": true,
       "maxAbsErr": 0.01183031527639855,
       "maxPctErr": 0.048719021895654455
@@ -1660,11 +1660,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1385.8424230000091,
-      "warmMs": 1462.9827070000028,
+      "firstMs": 2139.687917999996,
+      "warmMs": 2143.454979000002,
       "stable": true,
-      "maxAbsErr": 0.006630792419173304,
-      "maxPctErr": 0.005635338050537871
+      "maxAbsErr": 0.0032128236691733036,
+      "maxPctErr": 0.0046095656187231365
     },
     {
       "model": "Gapped, order=1",
@@ -1674,8 +1674,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 1518.6215499999962,
-      "warmMs": 1373.4668079999974,
+      "firstMs": 1082.5357579999836,
+      "warmMs": 1062.5046169999987,
       "stable": true,
       "maxAbsErr": 0.006630792419173304,
       "maxPctErr": 0.008199702549434223

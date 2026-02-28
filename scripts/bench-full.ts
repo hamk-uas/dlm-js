@@ -245,7 +245,11 @@ interface TimingResult {
 }
 
 async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
-  defaultDevice(combo.backend);
+  try {
+    defaultDevice(combo.backend);
+  } catch {
+    return { firstMs: NaN, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
+  }
   const { y, s, w, options } = model;
 
   const { ref, m, n } = refMap[model.label];

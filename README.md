@@ -558,28 +558,28 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 <!-- generated:bench-full-table -->
 | backend | dtype | algorithm | stab | Nile o=0 | rel err | Nile o=1 | rel err | Kaisaniemi | rel err | Energy | rel err | Gapped | rel err |
 |---------|-------|-----------|------|-------|------|-------|------|-------|------|-------|------|-------|------|
-| **cpu** | **f64** | **scan** | **triu** | **239 ms** | **1.73e-16** | **433 ms** | **4.78e-13** | **537 ms** | **4.20e-11** | **602 ms** | **1.19e-11** | **440 ms** | **2.52e-13** |
-|  |  | scan | off | 210 ms | 1.73e-16 | 347 ms | 1.40e-11 | 445 ms | 5.85e-10 | 492 ms | 1.06e-6 | 356 ms | 1.03e-12 |
-|  |  | assoc | built-in | 151 ms | 4.87e-12 | 324 ms | 4.36e-9 | 1265 ms | 3.17e-8 | 1749 ms | 2.17e-7 | 332 ms | 1.29e-9 |
-|  |  | ud | built-in | 277 ms | 1.73e-16 | 495 ms | 4.41e-13 | 672 ms | 2.04e-11 | 684 ms | 1.06e-11 | 512 ms | 5.99e-14 |
-|  | **f32** | **scan** | **joseph** | **218 ms** | **9.93e-7** | **399 ms** | **2.25e-4** | **509 ms** | **2.93e-3** | **572 ms** | **6.18e-4** | **413 ms** | **1.74e-5** |
-|  |  | scan | joseph+triu | 249 ms | 9.93e-7 | 499 ms | 1.09e-4 | 577 ms | 8.98e-3 | 642 ms | 1.41e-3 | 465 ms | 1.40e-4 |
-|  |  | assoc | built-in | 146 ms | 4.74e-6 | 327 ms | 3.93e-3 | 1269 ms | 0.03 | 1776 ms | 0.20 | 327 ms | 1.51e-3 |
-|  |  | ud | built-in | 244 ms | 9.93e-7 | 477 ms | 5.09e-4 | 587 ms | 3.44e-3 | 654 ms | 1.15e-3 | 474 ms | 1.50e-4 |
-| **wasm** | **f64** | **scan** | **triu** | **25 ms** | **1.73e-16** | **27 ms** | **4.78e-13** | **27 ms** | **4.20e-11** | **28 ms** | **1.19e-11** | **27 ms** | **2.52e-13** |
-|  |  | scan | off | 20 ms | 1.73e-16 | 23 ms | 1.40e-11 | 24 ms | 5.85e-10 | 23 ms | 1.06e-6 | 22 ms | 1.03e-12 |
-|  |  | assoc | built-in | 81 ms | 4.87e-12 | 98 ms | 4.36e-9 | 243 ms | 3.17e-8 | 105 ms | 2.17e-7 | 98 ms | 1.29e-9 |
-|  |  | sqrt-assoc | built-in | 126 ms | 1.82e-15 | 137 ms | 6.84e-12 | 188 ms | 2.03e-6 | 191 ms | 3.10e-10 | 141 ms | 6.78e-13 |
-|  |  | ud | built-in | 27 ms | 1.73e-16 | 32 ms | 4.41e-13 | 33 ms | 2.04e-11 | 33 ms | 1.06e-11 | 32 ms | 5.99e-14 |
-|  | **f32** | **scan** | **joseph** | **21 ms** | **1.06e-6** | **24 ms** | **2.59e-4** | **27 ms** | **0.01** | **24 ms** | **2.08e-3** | **23 ms** | **1.32e-4** |
-|  |  | scan | joseph+triu | 28 ms | 1.06e-6 | 28 ms | 7.11e-4 | 28 ms | 0.02 | 28 ms | 1.34e-3 | 28 ms | 2.48e-4 |
-|  |  | assoc | built-in | 72 ms | 4.74e-6 | 98 ms | 4.53e-3 | 206 ms | 0.03 | 103 ms | 0.22 | 101 ms | 1.19e-3 |
-|  |  | sqrt-assoc | built-in | 116 ms | 2.91e-7 | 136 ms | 1.34e-3 | 168 ms | 1.99 | 178 ms | 0.03 | 142 ms | 3.83e-5 |
-|  |  | ud | built-in | 24 ms | 1.06e-6 | 30 ms | 7.60e-4 | 30 ms | 3.44e-3 | 31 ms | 2.39e-3 | 30 ms | 1.77e-4 |
-| **webgpu** | **f32** | **assoc** | **built-in** | **360 ms** | **4.74e-6** | **438 ms** | **5.01e-3** | **624 ms** | **0.03** | **469 ms** | **0.21** | **484 ms** | **4.87e-4** |
-|  |  | scan | joseph | 584 ms | 1.06e-6 | 874 ms | 6.34e-5 | 990 ms | 9.85e-3 | 1183 ms | 1.06e-3 | 1095 ms | 2.56e-5 |
-|  |  | scan | joseph+triu | 808 ms | 1.06e-6 | 883 ms | 6.34e-5 | 1098 ms | 0.03 | 1186 ms | 2.88e-3 | 1373 ms | 8.20e-5 |
-|  |  | ud | built-in | 765 ms | 1.06e-6 | 975 ms | 4.28e-4 | 1157 ms | 2.67e-3 | 1365 ms | 4.34e-4 | 1463 ms | 5.64e-5 |
+| **cpu** | **f64** | **scan** | **triu** | **236 ms** | **1.73e-16** | **440 ms** | **4.78e-13** | **543 ms** | **4.20e-11** | **608 ms** | **1.19e-11** | **477 ms** | **2.52e-13** |
+|  |  | scan | off | 224 ms | 1.73e-16 | 348 ms | 1.40e-11 | 445 ms | 5.85e-10 | 494 ms | 1.06e-6 | 403 ms | 1.03e-12 |
+|  |  | assoc | built-in | 158 ms | 4.87e-12 | 329 ms | 4.36e-9 | 1280 ms | 3.17e-8 | 1774 ms | 2.17e-7 | 411 ms | 1.29e-9 |
+|  |  | ud | built-in | 380 ms | 1.30e-14 | 917 ms | 1.43e-12 | 1739 ms | 4.01e-5 | 2200 ms | 1.56e-10 | 903 ms | 1.02e-13 |
+|  | **f32** | **scan** | **joseph** | **219 ms** | **9.93e-7** | **415 ms** | **2.25e-4** | **526 ms** | **2.93e-3** | **561 ms** | **6.18e-4** | **418 ms** | **1.74e-5** |
+|  |  | scan | joseph+triu | 254 ms | 9.93e-7 | 456 ms | 1.09e-4 | 579 ms | 8.98e-3 | 636 ms | 1.41e-3 | 464 ms | 1.40e-4 |
+|  |  | assoc | built-in | 149 ms | 4.74e-6 | 323 ms | 3.93e-3 | 1312 ms | 0.03 | 1775 ms | 0.20 | 330 ms | 1.51e-3 |
+|  |  | ud | built-in | 364 ms | 1.06e-6 | 888 ms | 7.48e-4 | 1743 ms | 0.02 | 2183 ms | 1.02e-3 | 919 ms | 2.73e-5 |
+| **wasm** | **f64** | **scan** | **triu** | **26 ms** | **1.73e-16** | **26 ms** | **4.78e-13** | **27 ms** | **4.20e-11** | **28 ms** | **1.19e-11** | **28 ms** | **2.52e-13** |
+|  |  | scan | off | 21 ms | 1.73e-16 | 22 ms | 1.40e-11 | 23 ms | 5.85e-10 | 24 ms | 1.06e-6 | 24 ms | 1.03e-12 |
+|  |  | assoc | built-in | 81 ms | 4.87e-12 | 141 ms | 4.36e-9 | 222 ms | 3.17e-8 | 117 ms | 2.17e-7 | 102 ms | 1.29e-9 |
+|  |  | sqrt-assoc | built-in | 120 ms | 1.82e-15 | 153 ms | 6.84e-12 | 171 ms | 2.03e-6 | 225 ms | 3.10e-10 | 151 ms | 6.78e-13 |
+|  |  | ud | built-in | 31 ms | 1.30e-14 | 49 ms | 1.43e-12 | 76 ms | 4.01e-5 | 88 ms | 1.56e-10 | 53 ms | 1.02e-13 |
+|  | **f32** | **scan** | **joseph** | **20 ms** | **1.06e-6** | **24 ms** | **2.59e-4** | **26 ms** | **0.01** | **26 ms** | **2.08e-3** | **24 ms** | **1.32e-4** |
+|  |  | scan | joseph+triu | 23 ms | 1.06e-6 | 28 ms | 7.11e-4 | 28 ms | 0.02 | 27 ms | 1.34e-3 | 28 ms | 2.48e-4 |
+|  |  | assoc | built-in | 73 ms | 4.74e-6 | 102 ms | 4.53e-3 | 226 ms | 0.03 | 104 ms | 0.22 | 99 ms | 1.19e-3 |
+|  |  | sqrt-assoc | built-in | 118 ms | 2.91e-7 | 146 ms | 1.34e-3 | 166 ms | 1.99 | 196 ms | 0.03 | 148 ms | 3.83e-5 |
+|  |  | ud | built-in | 29 ms | 1.06e-6 | 46 ms | 7.96e-4 | 71 ms | 3.74e-3 | 89 ms | 1.30e-3 | 49 ms | 1.41e-5 |
+| **webgpu** | **f32** | **assoc** | **built-in** | **369 ms** | **4.74e-6** | **449 ms** | **5.01e-3** | **646 ms** | **0.03** | **487 ms** | **0.21** | **508 ms** | **4.87e-4** |
+|  |  | scan | joseph | 615 ms | 1.06e-6 | 886 ms | 6.34e-5 | 1110 ms | 9.85e-3 | 1225 ms | 1.06e-3 | 1103 ms | 2.56e-5 |
+|  |  | scan | joseph+triu | 871 ms | 1.06e-6 | 896 ms | 6.34e-5 | 1172 ms | 0.03 | 1237 ms | 2.88e-3 | 1063 ms | 8.20e-5 |
+|  |  | ud | built-in | 1059 ms | 1.06e-6 | 1750 ms | 7.70e-4 | 3799 ms | 9.20e-3 | 0 ms | 0 | 2143 ms | 4.61e-5 |
 <!-- /generated -->
 
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
