@@ -27,7 +27,8 @@ const n = tDatenum.length;
 const y: number[] = input.y;
 const s: number = input.s;
 const w: number[] = input.w;
-const options = input.options;
+// kaisaniemi-in.json stores MATLAB option names (trig → harmonics)
+const options = { order: input.options.order ?? 1, harmonics: input.options.trig ?? 1, seasonLength: 12 };
 
 const variant = process.argv[2] === 'assoc' ? 'assoc' : 'scan';
 const isAssoc = variant === 'assoc';
