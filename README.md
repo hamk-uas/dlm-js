@@ -401,6 +401,11 @@ $$C_{\text{filt}} = (I - K F) \, C_{\text{pred}} \, (I - K F)^\top + K \, V^2 \,
 
 This is algebraically equivalent but numerically more stable — it guarantees a positive semi-definite result even with rounding. Combined with explicit symmetrization (`(C + C') / 2`), this prevents the covariance from going non-positive-definite for m ≤ 2. Without Joseph form, Float32 + scan is numerically unstable for m ≥ 4. Float32 is still skipped in tests for m > 2 even with Joseph form, due to accumulated rounding in the smoother.
 
+**Approaches attempted and rejected:**
+
+- **Diagonal preconditioning** — Rescale the state space by $D = \text{diag}(\sqrt{|\text{diag}(C_0)|} + \epsilon)$ so the filter operates on a better-conditioned system, then untransform the results. Improved joseph+triu precision 2–5× for polynomial models (m ≤ 2), but **degraded** m = 1 models by ~85× and catastrophically broke trigonometric/seasonal models (max |Δ|% > 300,000%) because diagonal scaling distorts the rotation blocks in non-triangular G matrices. Reverted.
+- **Iterative refinement** — Re-run the smoother using the smoothed state x[0] and covariance C[0] as the initial state for each additional pass. Three C₀ strategies tested (×100, ×1, x₀-only). All variants were consistently 5–4,550× **worse** across all five benchmark models. The Float32 precision bottleneck is per-timestep rounding accumulation in the forward/backward recursions, not initialization quality — the existing two-pass scheme (diffuse prior → refined) already handles initialization optimally. Reverted.
+
 **MATLAB DLM comparison:** The `dlmsmo.m` reference uses the standard covariance update formula (not Joseph form), combined with explicit `triu + triu'` symmetrization after each filter step (line 77) and `abs(diag(C))` diagonal correction on smoother output (line 114). The improved match seen in the benchmark between dlm-js+joseph/f64 and the Octave reference (9.38e-11 vs 3.78e-8 max |Δ| for f64 without joseph) is not a coincidence — both approaches enforce numerical stability in similar ways, pushing both implementations toward the same stable numerical attractor.
 
 ### assoc algorithm
