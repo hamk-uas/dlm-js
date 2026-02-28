@@ -461,7 +461,7 @@ The [6] reference implementation (JAX, [EEA-sensors/sqrt-parallel-smoothers](htt
 
 #### UD factorization (`ud`)
 
-`algorithm: 'ud'` replaces the dense covariance matrix $C$ with its $U D U^\top$ factorization (Bierman 1977), where $U$ is unit triangular and $D$ is a positive diagonal vector. The Bierman measurement update processes each state component via a scalar column loop, updating $D$ and $U$ in-place without ever forming or inverting a full covariance matrix. This avoids the condition-number squaring inherent in the Joseph form ($L C L^\top$ squares the condition number of $C$) and keeps $D$ positive by construction (each $d_j$ is a ratio of positive $\alpha$ values).
+`algorithm: 'ud'` replaces the dense covariance matrix $C$ with its $U D U^\top$ factorization (Bierman 1977; Thornton 1976), where $U$ is unit triangular and $D$ is a positive diagonal vector. The **Bierman measurement update** processes each state component via a scalar column loop, updating $D$ and $U$ in-place without ever forming or inverting a full covariance matrix. The **Thornton time update** (modified weighted Gram-Schmidt) propagates the UD factors through the prediction step directly — no Cholesky re-factorization or epsilon regularization is needed at any stage. Together, these two algorithms maintain the UD factorization purely in factor space, avoiding condition-number squaring and guaranteeing positive-definite $D$ by construction.
 
 The UD path uses sequential `lax.scan` for the forward filter (like `scan`) and reuses the standard RTS backward smoother unchanged. It targets the same use case as `scan` with Joseph form — **Float32 stabilization** — but aims for lower numerical error by avoiding the $O(m^2)$ outer products that amplify rounding.
 
@@ -475,17 +475,19 @@ const result = await dlmFit(y, {
 });
 ```
 
-##### Forward step (predict + Bierman update)
+##### Forward step (Bierman measurement + Thornton time update)
 
-Each forward step takes the carry $(x_{t|t-1}, U_{t|t-1}, D_{t|t-1}, C_{t|t-1})$ — the predicted state, UD factors, and true predicted covariance — and observation $y_t$, producing the updated carry plus diagnostic outputs for the backward smoother.
+Each forward step takes the carry $(x_{t|t-1}, U_{t|t-1}, D_{t|t-1})$ — the predicted state and its UD factors — and observation $y_t$, producing the updated carry plus diagnostic outputs for the backward smoother.
 
-**1. Use predicted covariance.** The carry provides the true predicted covariance $C_{t|t-1}$ directly — no $U D U^\top$ reconstruction needed. The carry's UD factors encode $C_{t|t-1} + \varepsilon I$ (from Cholesky regularization in the previous step), but $C_{t|t-1}$ itself is exact, avoiding epsilon accumulation in backward smoother outputs.
+**1. Reconstruct $C_{t|t-1}$.** Since the Thornton time update maintains exact UD factors (no epsilon), the predicted covariance is reconstructed as:
 
-Innovation and innovation covariance use the true $C_{t|t-1}$:
+$$C_{t|t-1} = U_{t|t-1} \, \text{diag}(D_{t|t-1}) \, U_{t|t-1}^\top$$
 
-$$v_t = y_t - F \, x_{t|t-1}, \qquad C_p^{(t)} = F \, C_{t|t-1} \, F^\top + V^2$$
+This is emitted as $\texttt{C\_pred}$ for the backward smoother.
 
-**2. Bierman measurement update (scalar observation, $p=1$).** Clone the carry's $U_{t|t-1}, D_{t|t-1}$ as working arrays. Define $f = U^\top H^\top$ and $g = D \odot f$ (element-wise). Initialize $\alpha_0 = V^2$. For $j = m{-}1$ down to $0$:
+**2. Innovation.** $v_t = y_t - F \, x_{t|t-1}$.
+
+**3. Bierman measurement update (scalar observation, $p=1$).** Clone the carry's $U_{t|t-1}, D_{t|t-1}$ as working arrays. Define $f = U^\top H^\top$ and $g = D \odot f$ (element-wise). Initialize $\alpha_0 = V^2$. For $j = m{-}1$ down to $0$:
 
 $$\alpha_{j}^{\text{new}} = \alpha_{j}^{\text{old}} + f_j \, g_j$$
 
@@ -493,43 +495,44 @@ $$d_j^+ = d_j \cdot \frac{\alpha_j^{\text{old}}}{\alpha_j^{\text{new}}}, \qquad 
 
 $$\bar{U}_{i,j}^+ = \bar{U}_{i,j} + \lambda_j \, g_i \quad (i > j), \qquad g_i^+ = g_i + \bar{U}_{i,j} \, g_j \quad (i > j)$$
 
-After the loop, $\alpha_{m-1}^{\text{new}} = C_p^{(t)}$ and the Kalman gain is $K_{\text{Bierman}} = g / C_p^{(t)}$.
+After the loop, $\alpha_{\text{final}} = C_p^{(t)}$ (innovation covariance) and the Kalman gain is $K_{\text{Bierman}} = g_{\text{final}} / \alpha_{\text{final}} = C_{t|t-1} F^\top / C_p^{(t)}$.
 
 > **Note:** The classical Bierman/Thornton presentation uses unit *upper*-triangular $U$. We use unit *lower*-triangular because `np.linalg.cholesky` returns lower-triangular $L$, making $C = L_{\text{unit}} \, D \, L_{\text{unit}}^\top$ the natural factorization without any transpose. The column-loop direction is reversed accordingly ($j = m{-}1$ down to $0$).
 
-**3. State update.** $x_{t|t} = x_{t|t-1} + K_{\text{Bierman}} \, v_t$.
+**4. State update.** $x_{t|t} = x_{t|t-1} + K_{\text{Bierman}} \, v_t$, then $x_{t+1|t} = G \, x_{t|t}$.
 
-**4. Predict for next carry.** Reconstruct $C_{t|t}$ from the Bierman-updated factors $U_t^+, D_t^+$, then compute the one-step-ahead prediction:
+**5. Thornton time update (modified weighted Gram-Schmidt).** Given the Bierman-updated factors $U_t^+, D_t^+$ and process noise $W_t$:
 
-$$C_{t|t} = U_t^+ \, \text{diag}(D_t^+) \, (U_t^+)^\top$$
+1. Factor $W_t = L_W \, D_W \, L_W^\top$ via Cholesky → LDL (one-time per step on the well-conditioned user-specified $W$).
+2. Form the augmented matrix $B = G \, U_t^+$ and its companion $L = L_W$, with weight vectors $D_t^+$ and $D_W$.
+3. MWGS: for $j = 0, \ldots, m{-}1$:
 
-$$x_{t+1|t} = G \, x_{t|t}, \qquad C_{t+1|t} = \tfrac{1}{2}\bigl(G \, C_{t|t} \, G^\top + W + (G \, C_{t|t} \, G^\top + W)^\top\bigr)$$
+$$d_j^* = \sum_k {D_t^+}_k \, B_{j,k}^2 + \sum_k {D_W}_k \, L_{j,k}^2$$
 
-**5. Re-factor for next carry.** Decompose $C_{t+1|t} + \varepsilon I$ via Cholesky → LDL:
+$$U_{i,j}^* = \left(\sum_k {D_t^+}_k \, B_{i,k} \, B_{j,k} + \sum_k {D_W}_k \, L_{i,k} \, L_{j,k}\right) / d_j^* \quad (i > j)$$
 
-$$C_{t+1|t} + \varepsilon I = L \, L^\top = L_{\text{unit}} \, \text{diag}(d^2) \, L_{\text{unit}}^\top$$
+$$B_{i,k} \leftarrow B_{i,k} - U_{i,j}^* \, B_{j,k}, \qquad L_{i,k} \leftarrow L_{i,k} - U_{i,j}^* \, L_{j,k} \quad (i > j)$$
 
-The $\varepsilon I$ is added *only* for Cholesky stability — the true $C_{t+1|t}$ (without $\varepsilon$) is stored in the carry's `C_true` field. This prevents epsilon from accumulating across timesteps into the backward smoother's covariance outputs.
+The output $U^*, D^*$ satisfies $U^* \, \text{diag}(D^*) \, (U^*)^\top = G \, C_{t|t} \, G^\top + W_t = C_{t+1|t}$.
 
-**6. Carry and outputs.** The updated carry is $(x_{t+1|t}, U_{t+1|t}, D_{t+1|t}, C_{t+1|t})$. For the backward smoother, the step emits:
+**6. Carry and outputs.** The updated carry is $(x_{t+1|t}, U^*, D^*)$. For the backward smoother:
 
-$$\texttt{x\_pred} = x_{t|t-1}, \quad \texttt{C\_pred} = C_{t|t-1}, \quad \texttt{K} = G \, C_{t|t-1} \, F^\top / C_p^{(t)}, \quad \texttt{v} = v_t, \quad \texttt{Cp} = C_p^{(t)}$$
-
-The key insight: the standard `forwardStep` carry **is** the predicted state/covariance $(x_{t|t-1}, C_{t|t-1})$, and emits $\texttt{x\_pred} = x_{\text{carry}}$, $\texttt{C\_pred} = C_{\text{carry}}$. The UD path matches this exactly: it emits the carry's true $C_{t|t-1}$ (without epsilon) and the carry's $x_{t|t-1}$. The backward RTS smoother reuses unchanged.
+$$\texttt{x\_pred} = x_{t|t-1}, \quad \texttt{C\_pred} = U \, D \, U^\top, \quad \texttt{K} = G \, K_{\text{Bierman}}, \quad \texttt{v} = v_t, \quad \texttt{Cp} = \alpha_{\text{final}}$$
 
 ##### Backward smoother
 
-The backward pass is the standard sequential RTS smoother (same function as the `scan` path), operating on the $(x_{\text{pred}}, C_{\text{pred}}, K, v, C_p)$ sequence emitted by the UD forward pass. No modification is needed — the UD forward step emits the true predicted covariance $C_{t|t-1}$ (without epsilon) via the `C_true` carry field, making the output identical to the standard carry convention.
+The backward pass is the standard sequential RTS smoother (same function as the `scan` path), operating on the $(x_{\text{pred}}, C_{\text{pred}}, K, v, C_p)$ sequence emitted by the UD forward pass. Since the Thornton time update maintains exact UD factors (no epsilon), the reconstructed $C_{t|t-1}$ is the true predicted covariance.
 
 ##### Design choices
 
 | Aspect | Choice | Rationale |
 |--------|--------|----------|
 | Factorization convention | Unit lower-triangular $U$ | Cholesky gives lower-tri $L$ natively; avoids transpose |
-| Time update | Cholesky → LDL re-factorization of $C_{t+1|t} + \varepsilon I$ | Simpler than Thornton's $O(m^2)$ square-root time update; re-factorization is $O(m^3/3)$ via Cholesky. Epsilon only for Cholesky, not stored in `C_true` |
-| Epsilon isolation | `C_true` carry field stores exact $C_{t|t-1}$ | Prevents $\varepsilon I$ from accumulating across $n$ timesteps into backward smoother covariances |
-| Column loop order | $j = m{-}1$ down to $0$ | Lower-tri: free entries at $i > j$; reverse order ensures $g_j$ is unmodified when used in $\alpha$ update |
-| Backward smoother gain $K$ | Predicted-convention $K = G \bar{C}_t F' / C_p$ | Same convention as standard carry: $x_{pred} = \bar{x}_t$, $C_{pred} = \bar{C}_t$ |
+| Measurement update | Bierman column loop ($j = m{-}1$ down to $0$) | Scalar-observation processing; produces gain $K$ and $C_p$ as byproducts |
+| Time update | Thornton MWGS on augmented $[G U_{\text{filt}}, L_W]$ | Propagates UD factors directly; no Cholesky re-factorization of $C$; no epsilon needed |
+| $W$ factorization | Cholesky → LDL of $W_t$ each step | $W$ is user-specified process noise (well-conditioned); one-time cost per step |
+| Column loop order | $j = m{-}1$ down to $0$ (Bierman), $j = 0$ to $m{-}1$ (Thornton) | Lower-tri convention: free entries at $i > j$ |
+| Backward smoother gain $K$ | $K = G \, K_{\text{Bierman}}$ | Predicted-convention gain from Bierman's exact $C_{\text{pred}} F' / C_p$ |
 | NaN masking | $f \leftarrow 0$ when observation is NaN | Entire Bierman loop becomes a no-op: $D, U$ unchanged, $K = 0$ |
 | Scope | $p = 1$ only | Bierman's column loop is scalar-observation-specific; $p > 1$ would need a different formulation |
 
@@ -537,11 +540,11 @@ The backward pass is the standard sequential RTS smoother (same function as the 
 
 - **$p > 1$**: UD factorization currently supports scalar observations only ($p = 1$). Throws for multivariate observations.
 - **MLE**: Not yet wired into `dlmMLE`. Use `algorithm: 'scan'` or `'assoc'` for MLE.
-- **Time update**: Uses Cholesky → LDL re-factorization rather than the Thornton square-root time update. This is $O(m^3/3)$ per step — same complexity as the standard path. The Cholesky input is regularized with $\varepsilon I$, but the true covariance (without $\varepsilon$) is carried separately to avoid accumulation. A future Thornton implementation could eliminate the Cholesky roundtrip entirely.
 
 ##### References
 
 - Bierman, G. J. (1977). *Factorization Methods for Discrete Sequential Estimation*. Academic Press.
+- Thornton, C. L. (1976). *Triangular Covariance Factorizations for Kalman Filtering*. Ph.D. Thesis, UCLA. NASA Tech. Memo. 33-798.
 - Grewal, M. S. & Andrews, A. P. (2001). *Kalman Filtering: Theory and Practice Using MATLAB*. Wiley. Algorithm 6.1.
 
 ### Backend performance

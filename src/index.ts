@@ -493,20 +493,24 @@ const dlmSmo = async (
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // UD (Bierman) Forward Filter
+  // UD (Bierman/Thornton) Forward Filter
   //
-  // Factors covariance C = U·D·U' where U is unit upper-triangular and D is
+  // Factors covariance C = U·D·U' where U is unit lower-triangular and D is
   // a positive diagonal vector.  The Bierman measurement update processes
-  // observation components via an unrolled column loop (j = 0..m-1), avoiding
+  // observation components via an unrolled column loop (j = m-1..0), avoiding
   // the O(m³) matrix products that square the condition number in the Joseph
   // form.  D stays positive by construction (ratio of positive alphas).
   //
-  // Time update: reconstruct C from UD, predict C_bar = G·C·G' + W, then
-  // decompose back to UD via Cholesky → LDL.  (The Thornton time update
-  // could replace this for even better precision but adds complexity.)
+  // Time update: Thornton modified weighted Gram-Schmidt (MWGS) propagates
+  // the UD factors directly — no Cholesky roundtrip.  Given Bierman-updated
+  // U_filt, D_filt and transition G, noise W, it factors:
+  //   C_{t+1|t} = G·U_filt·D_filt·(G·U_filt)' + W
+  // by orthogonalizing the augmented [G·U_filt, L_W] matrix with weights
+  // [D_filt, D_W].  No epsilon regularization needed since factors stay
+  // accurate.  C_true carry field is eliminated.
   //
   // Reference: Bierman (1977), "Factorization Methods for Discrete Sequential
-  // Estimation"; Grewal & Andrews (2001), Algorithm 6.1.
+  // Estimation", Ch. 6; Grewal & Andrews (2001), Algorithm 6.1.
   // ─────────────────────────────────────────────────────────────────────────
 
   // Precomputed one-hot vectors and column masks for the Bierman inner loop.
@@ -528,13 +532,13 @@ const dlmSmo = async (
     }
   }
 
-  type UDForwardCarry = { x: np.Array; U: np.Array; D: np.Array; C_true: np.Array };
+  type UDForwardCarry = { x: np.Array; U: np.Array; D: np.Array };
 
   const forwardStepUD = (
     carry: UDForwardCarry,
     inp: ForwardX
   ): [UDForwardCarry, ForwardY] => {
-    const { x: x_pred, U: Ui, D: Di, C_true: C_pred } = carry;
+    const { x: x_pred, U: Ui, D: Di } = carry;
     const { y: yi, V2: V2i, FF: FFi, Gt: G_t, Wt: W_t } = inp;
     const m = stateSize;
 
@@ -543,15 +547,17 @@ const dlmSmo = async (
     const mask_t = np.where(is_nan_11, zero_11, const_one_11);     // [1,1]: 0 or 1
     using y_safe = np.where(is_nan_11, np.zerosLike(yi), yi);       // [1,1]: 0 if NaN
 
-    // C_pred is the TRUE predicted covariance from the carry (no epsilon).
-    // The carry's U,D encode C_pred + eps (from Cholesky regularization),
-    // but C_true avoids epsilon accumulation in backward smoother outputs.
+    // ── Reconstruct C_pred = U·diag(D)·U' for backward smoother output ──
+    // With Thornton time update, U,D are the exact factors of C_pred (no ε).
+    using D_diag = np.multiply(np.reshape(Di, [1, m]), stab_I_eye); // [m,m]
+    using UD_mat = np.matmul(Ui, D_diag);                           // [m,m]
+    using C_pred_raw = np.matmul(UD_mat, np.transpose(Ui));         // [m,m]
+    // Symmetrize: (C + C') / 2  (floating-point rounding may introduce asymmetry)
+    using C_pred_t = np.transpose(C_pred_raw);
+    using C_pred_sum = np.add(C_pred_raw, C_pred_t);
+    const C_pred = np.multiply(half, C_pred_sum);                    // [m,m]
 
     // ── Clone carry's U,D as Bierman working arrays ──
-    // The carry already holds (U_{t|t-1}, D_{t|t-1}) — the exact LDL factors
-    // Bierman needs.  Cloning avoids a pointless C_pred→Cholesky→LDL roundtrip
-    // that lost strict PSD on the CPU backend (different matmul accumulation
-    // ordering vs WASM caused Cholesky to produce NaN for m ≥ 2).
     // Clone needed: accumulator-swap in the Bierman loop disposes old values.
     // jax-js-lint: allow-non-using — Bierman loop mutates U_bar/D_bar below
     let U_bar = np.add(Ui, zeros_mm);                               // [m,m] clone
@@ -561,12 +567,6 @@ const dlmSmo = async (
     using Fx_pred = np.matmul(FFi, x_pred);                         // [1,1]
     using v_raw = np.subtract(y_safe, Fx_pred);
     const v = np.multiply(mask_t, v_raw);                            // [1,1]
-
-    // Innovation covariance: Cp = F·C_pred·F' + V2
-    const Cp = np.add(
-      np.einsum('ij,jk,lk->il', FFi, C_pred, FFi),                 // [1,1]
-      V2i
-    );
 
     // ── Bierman measurement update (p=1 scalar observation) ──
     // U_bar is unit LOWER-triangular: C_pred = U·D·U'.
@@ -658,83 +658,129 @@ const dlmSmo = async (
       g_vec.dispose();
       g_vec = g_new;
     }
-    alpha.dispose();
+
+    // ── Gains and innovation covariance from Bierman loop ──
+    // alpha_final = V² + F·U·D·U'·F' = Cp (innovation covariance)
+    const Cp = np.reshape(alpha, [1, 1]);                            // [1,1]
+
+    // Bierman gain: K_bierman = g_final / alpha = C_pred·F'/Cp  [m,1]
+    // With Thornton maintaining exact U,D (no ε), this is exact.
+    using K_bierman = np.reshape(
+      np.divide(g_vec, alpha),                                       // [m]
+      [m, 1]                                                         // [m,1]
+    );
     g_vec.dispose();
 
-    // Filtered gain: K_filt = C_pred · F' / Cp  [m,1]
-    // Computed from C_pred (exact, no epsilon) for consistent numerator/denominator.
-    // The Bierman loop's g_vec encodes (C_pred + ε)·F' via U·D·U', but Cp uses
-    // C_pred (no ε).  Dividing (C+ε)·F' by F·C·F'+V² introduces O(ε/Cp)
-    // per-step gain bias that accumulates through forward and backward passes.
-    using CpredFt = np.matmul(C_pred, np.transpose(FFi));           // [m,1]
-    using K_filt = np.divide(CpredFt, Cp);                          // [m,1]
-
-    // Filtered state: x_filt = x_pred + K_filt · v  = x_{t|t}
-    using x_filt = np.add(x_pred, np.matmul(K_filt, v));            // [m,1]
-
-    // ── Predict for next carry ──
-    // Dispose Bierman factors (time update uses C_pred directly — see below)
-    U_bar.dispose();
-    D_bar.dispose();
+    // Filtered state: x_filt = x_pred + K_bierman · v  = x_{t|t}
+    using x_filt = np.add(x_pred, np.matmul(K_bierman, v));         // [m,1]
 
     // x_{t+1|t} = G · x_{t|t}
     const x_next_pred = np.matmul(G_t, x_filt);                     // [m,1]
 
     // Predicted-convention gain for the backward RTS smoother:
-    // K = mask · G · K_filt = mask · G · C_pred · F' / Cp  [m,1]
-    using K_G_Kfilt = np.matmul(G_t, K_filt);                       // [m,1]
-    const K = np.multiply(mask_t, K_G_Kfilt);                       // [m,1] (0 when NaN)
+    // K = mask · G · K_bierman = mask · G · C_pred · F' / Cp  [m,1]
+    using K_G = np.matmul(G_t, K_bierman);                          // [m,1]
+    const K = np.multiply(mask_t, K_G);                              // [m,1] (0 when NaN)
 
-    // L = G - K·F  [m,m]  (= G when NaN, since K=0)
-    using L_mat = np.subtract(G_t, np.matmul(K, FFi));              // [m,m]
+    // ── Thornton time update (modified weighted Gram-Schmidt) ──
+    // Factors C_{t+1|t} = G·C_filt·G' + W directly in UD form.
+    //
+    // Augmented decomposition:
+    //   C_{t+1|t} = [G·U_filt, L_W] · diag(D_filt, D_W) · [G·U_filt, L_W]'
+    // where W = L_W·D_W·L_W' (LDL from Cholesky).
+    //
+    // MWGS processes columns j=0..m-1, orthogonalizing and extracting the
+    // unit lower-triangular factor U_next and positive diagonal D_next.
 
-    // C_{t+1|t}: standard DLM prediction formula using C_pred (exact, from carry).
-    // Avoids Cholesky-roundtrip error from Bierman C_filt (which encodes C_pred+ε):
-    // the old G·C_filt·G'+W path squared condition number and accumulated ε through
-    // the Cholesky→LDL→Bierman→reconstruct chain at every step.
-    // jax-js-lint: allow-non-using — sym branch takes ownership below
-    let C_fwd_raw: np.Array;
-    if (f32) {
-      // Joseph form: L·C·L' + K·V²·K' + W
-      using LCLt = np.einsum('ij,jk,lk->il', L_mat, C_pred, L_mat);
-      using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));
-      using sum1 = np.add(LCLt, KV2Kt);
-      C_fwd_raw = np.add(sum1, W_t);
-    } else {
-      // Standard: G·C·L' + W (matches MATLAB dlmsmo.m)
-      C_fwd_raw = np.add(np.einsum('ij,jk,lk->il', G_t, C_pred, L_mat), W_t);
-    }
+    // Factor W_t via Cholesky → LDL
+    using W_sym = np.multiply(half, np.add(W_t, np.transpose(W_t)));
+    using W_reg = np.add(W_sym, stab_cEps_I);                       // ε for Cholesky only
+    using L_W = np.linalg.cholesky(W_reg);
+    using L_Wd = np.einsum('ii->i', L_W);                           // [m] diagonal
+    using L_Wdi = np.reciprocal(L_Wd);
+    using L_Wdim = np.multiply(np.reshape(L_Wdi, [1, m]), stab_I_eye);
+    using L_W_unit_raw = np.matmul(L_W, L_Wdim);                    // unit lower-tri
+    using D_W = np.multiply(L_Wd, L_Wd);                            // [m] diagonal
 
-    // Apply symmetrization for f32 (always) or f64+cTriuSym.
-    let C_next_true: np.Array;
-    if (f32 || stabCTriuSym) {
-      if (stabCTriuSym) {
-        using C_upper = np.triu(C_fwd_raw);
-        using C_sup   = np.triu(C_fwd_raw, 1);
-        using C_sup_t = np.transpose(C_sup);
-        C_next_true = np.add(C_upper, C_sup_t);
-      } else {
-        using Ct      = np.transpose(C_fwd_raw);
-        using sumBoth = np.add(C_fwd_raw, Ct);
-        C_next_true = np.multiply(half, sumBoth);
+    // Form B = G · U_filt (Bierman-updated U)
+    using GU_filt = np.matmul(G_t, U_bar);                          // [m,m]
+    U_bar.dispose();
+
+    // MWGS working copies (deflated during the loop)
+    // jax-js-lint: allow-non-using — accumulator-swap in MWGS loop
+    let B_work = np.add(GU_filt, zeros_mm);                         // [m,m] clone
+    let L_work = np.add(L_W_unit_raw, zeros_mm);                    // [m,m] clone
+
+    // Output accumulators
+    // jax-js-lint: allow-non-using — accumulated in MWGS loop
+    let U_next = np.add(stab_I_eye, zeros_mm);                      // identity (unit diag)
+    let D_next = np.add(Di, zeros_m);                                // placeholder, overwritten
+
+    for (let j = 0; j < m; j++) {
+      // Extract row j from B_work and L_work: [m]
+      using b_j = np.einsum('ij,i->j', B_work, ud_oneHot[j]);      // [m]
+      using l_j = np.einsum('ij,i->j', L_work, ud_oneHot[j]);      // [m]
+
+      // D_next[j] = Σ_k D_filt[k]·b_j[k]² + Σ_k D_W[k]·l_j[k]²
+      using b_sq = np.multiply(b_j, b_j);
+      using l_sq = np.multiply(l_j, l_j);
+      using term_B = np.sum(np.multiply(D_bar, b_sq));              // scalar
+      using term_L = np.sum(np.multiply(D_W, l_sq));                // scalar
+      using d_j_val = np.add(term_B, term_L);                       // scalar
+
+      // Scatter d_j into D_next at position j
+      {
+        using d_old = np.sum(np.multiply(D_next, ud_oneHot[j]));    // scalar
+        using delta_d = np.subtract(d_j_val, d_old);
+        // jax-js-lint: allow-non-using — accumulator-swap: D_next updated
+        const D_new = np.add(D_next, np.multiply(delta_d, ud_oneHot[j]));
+        D_next.dispose();
+        D_next = D_new;
       }
-      C_fwd_raw.dispose();
-    } else {
-      C_next_true = C_fwd_raw;
-    }
 
-    // Factor C_{t+1|t} via Cholesky → LDL for next carry
-    // Add epsilon ONLY for Cholesky stability; C_next_true (no eps) goes to carry
-    using C_for_chol = np.add(C_next_true, stab_cEps_I);
-    using L_next = np.linalg.cholesky(C_for_chol);
-    using Ld_next = np.einsum('ii->i', L_next);
-    using Ldi_next = np.reciprocal(Ld_next);
-    using Ldim_next = np.multiply(np.reshape(Ldi_next, [1, m]), stab_I_eye);
-    const U_next = np.matmul(L_next, Ldim_next);
-    const D_next = np.multiply(Ld_next, Ld_next);
+      // Compute u_{i,j} for all i > j (weighted inner products / d_j)
+      // scores[i] = Σ_k D_filt[k]·B[i,k]·b_j[k] + Σ_k D_W[k]·L[i,k]·l_j[k]
+      using wb_j = np.multiply(D_bar, b_j);                         // [m] weighted
+      using wl_j = np.multiply(D_W, l_j);                           // [m] weighted
+      using scores_B = np.matmul(B_work, np.reshape(wb_j, [m, 1]));// [m,1]
+      using scores_L = np.matmul(L_work, np.reshape(wl_j, [m, 1]));// [m,1]
+      using scores = np.add(scores_B, scores_L);                    // [m,1]
+      using u_col_raw = np.divide(scores, np.reshape(d_j_val, [1, 1])); // [m,1]
+      // Mask: only rows i > j
+      using u_col = np.multiply(
+        u_col_raw,
+        np.reshape(ud_gtMask[j], [m, 1])
+      );                                                             // [m,1]
+
+      // Set U_next column j (sub-diagonal entries)
+      using u_rank1 = np.matmul(u_col, ud_oneHotRow[j]);            // [m,m]
+      // jax-js-lint: allow-non-using — accumulator-swap: U_next updated
+      const U_next_new = np.add(U_next, u_rank1);
+      U_next.dispose();
+      U_next = U_next_new;
+
+      // Deflate B_work: B[i,:] -= u_{i,j} · b_j  for all i > j
+      using b_j_row = np.reshape(b_j, [1, m]);                      // [1,m]
+      using deflate_B = np.matmul(u_col, b_j_row);                  // [m,m]
+      // jax-js-lint: allow-non-using — accumulator-swap: B_work deflated
+      const B_new = np.subtract(B_work, deflate_B);
+      B_work.dispose();
+      B_work = B_new;
+
+      // Deflate L_work: L[i,:] -= u_{i,j} · l_j  for all i > j
+      using l_j_row = np.reshape(l_j, [1, m]);                      // [1,m]
+      using deflate_L = np.matmul(u_col, l_j_row);                  // [m,m]
+      // jax-js-lint: allow-non-using — accumulator-swap: L_work deflated
+      const L_new = np.subtract(L_work, deflate_L);
+      L_work.dispose();
+      L_work = L_new;
+    }
+    B_work.dispose();
+    L_work.dispose();
+    D_bar.dispose();
 
     return [
-      { x: x_next_pred, U: U_next, D: D_next, C_true: C_next_true },
+      { x: x_next_pred, U: U_next, D: D_next },
       { x_pred, C_pred, K, v, Cp, FF: FFi, Gt: G_t, mask: mask_t } as ForwardY,
     ];
   };
@@ -1692,7 +1738,7 @@ const dlmSmo = async (
       // eslint-disable-next-line jax-js/require-scan-result-dispose
       const [udCarry, udSeq] = lax.scan(
         forwardStepUD,
-        { x: x0, U: U0_init, D: D0_init, C_true: C0 },
+        { x: x0, U: U0_init, D: D0_init },
         { y: y_arr, V2: V2_arr, FF: FF_scan, Gt: G_scan, Wt: W_scan }
       );
       tree.dispose(udCarry);
