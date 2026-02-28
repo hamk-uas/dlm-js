@@ -387,7 +387,18 @@ All demos can be regenerated locally with `pnpm run gen:svg`. The `assoc` and `w
   <img alt="Multivariate demo (associative scan)" src="assets/multivariate-demo-assoc.svg" width="100%" />
 </p>
 
-*Two sensors observing the same local linear trend state (order=1, m=2, p=2). Each panel shows one sensor's observations with the shared smoothed level ± 2σ bands. Sensor 2 has higher observation noise — the smoother correctly down-weights it. Both `scan` and `assoc` algorithms support p > 1; `sqrt-assoc` and `dlmForecast` throw for p > 1. Validated against Octave reference (`multivariate.test.ts`: 48 tests — order=1, order=0, gapped, order=1+AR(2) × scan/assoc × all backends).*
+*Two sensors observing the same local linear trend state (order=1, m=2, p=2). Each panel shows one sensor's observations with the shared smoothed level ± 2σ bands. Sensor 2 has higher observation noise — the smoother correctly down-weights it. Both `scan` and `assoc` algorithms support p > 1; `sqrt-assoc`, `ud`, and `dlmForecast` throw for p > 1. Validated against Octave reference (`multivariate.test.ts`: 48 tests — order=1, order=0, gapped, order=1+AR(2) × scan/assoc × all backends).*
+
+#### Algorithm compatibility
+
+| Feature | `scan` | `assoc` | `sqrt-assoc` | `ud` |
+|---------|--------|---------|--------------|------|
+| Multivariate ($p > 1$) | ✅ | ✅ | ❌ throws | ❌ throws |
+| `dlmMLE` | ✅ | ✅ | ❌ not wired | ❌ not wired |
+| `dlmForecast` | ✅ | ✅ | ✅ | ✅ |
+| Float32 stabilization | Joseph form (auto) | built-in | built-in (Cholesky) | built-in (UD factors) |
+| Parallel ($O(\log N)$) | ❌ sequential | ✅ | ✅ | ❌ sequential |
+| Default backend | cpu, wasm | webgpu | — (explicit) | — (explicit) |
 
 ### scan algorithm
 
@@ -457,6 +468,7 @@ The [6] reference implementation (JAX, [EEA-sensors/sqrt-parallel-smoothers](htt
 
 ##### Known limitations
 
+- **$p > 1$**: Throws for multivariate observations. The Cholesky-factor composition assumes scalar $\Psi_{11}$.
 - **MLE**: The sqrt-assoc path is not yet wired into `dlmMLE` / `makeKalmanLoss`. Use `algorithm: 'scan'` or `'assoc'` for MLE.
 
 #### UD factorization (`ud`)
@@ -1065,7 +1077,7 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 
 * Float32 backward-smoother stabilization — experimental `DlmStabilization` flags already implemented (`cEps` gives −29% max error); next steps: evaluate log-Cholesky / modified-Cholesky parameterizations, consider making `cEps` the f32 default, or collapse the 7-flag interface to a simpler enum before documenting
 * ~~Square-root parallel smoother~~ — **implemented** as `algorithm: 'sqrt-assoc'` (see [sqrt-assoc section](#square-root-parallel-smoother-sqrt-assoc)). Uses proper QR-based `tria()` and `lax.linalg.triangularSolve` — works for all state dimensions including fullSeasonal m=13.
-* ~~Multivariate observations (p > 1)~~ — **implemented** in `dlmFit` / `dlmSmo`. Pass `y: number[][]` (n × p) and `F: number[][]` (p × m) in `DlmFitOptions`. Branches on `p === 1` at trace time (zero overhead for scalar case). Supports `scan` and `assoc` algorithms; `sqrt-assoc` and `dlmForecast` throw for p > 1. MLE (`dlmMLE`) currently p = 1 only.
+* ~~Multivariate observations (p > 1)~~ — **implemented** in `dlmFit` / `dlmSmo`. Pass `y: number[][]` (n × p) and `F: number[][]` (p × m) in `DlmFitOptions`. Branches on `p === 1` at trace time (zero overhead for scalar case). Supports `scan` and `assoc` algorithms; `sqrt-assoc`, `ud`, and `dlmForecast` throw for p > 1. MLE (`dlmMLE`) currently p = 1 only.
 * Test the built library (in `dist/`)
 * MCMC parameter estimation — depends on Marko Laine's `mcmcrun` toolbox; would require porting or replacing the MCMC engine
 * State sampling (disturbance smoother) — blocked on MCMC
