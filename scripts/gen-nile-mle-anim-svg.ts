@@ -103,7 +103,7 @@ const mainKeyTimes: string = [
   ...Array.from({ length: numFrames }, (_, i) => {
     const kt = numFrames === 1
       ? jitEndFrac
-      : jitEndFrac + (i / (numFrames - 1)) * (trainEndFrac - jitEndFrac);
+      : jitEndFrac + (i / numFrames) * (trainEndFrac - jitEndFrac);
     return kt.toFixed(4);
   }),
   (1).toFixed(4),
@@ -281,11 +281,8 @@ push(`<text x="${legX + 24}" y="${legY + 65}" dominant-baseline="middle" fill="#
 
 // JIT label + separator (rendered on top of jit fill rect)
 if (jitBarW > 0) {
-  // "jit" text: fades in during JIT phase, stays visible
-  push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
-  push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${(jitEndFrac * 0.5).toFixed(4)};${jitEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
-  push(`  jit`);
-  push(`</text>`);
+  // "jit" label — always visible
+  push(`<text x="${r(sparkX + jitBarW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7">jit</text>`);
   // Separator between jit and training sections
   push(`<line x1="${r(sparkX_train)}" y1="${sparkY}" x2="${r(sparkX_train)}" y2="${sparkY + sparkH}" stroke="#d1d5db" stroke-width="0.5" stroke-dasharray="2,2"/>`);
 }
@@ -319,11 +316,8 @@ const trainMs = Math.round(trainDuration * 1000);
 push(`<text x="${r(sparkX_train)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">0</text>`);
 push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">iters</text>`);
 push(`<text x="${r(sparkX_train + trainSparkW)}" y="${sparkAxisY}" text-anchor="middle" fill="#999" font-size="7">${iterations}</text>`);
-// "train Xms" label overlaid on center of loss sparkline, fades in at end of JIT phase
-push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7" opacity="0">`);
-push(`  <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;${jitEndFrac.toFixed(4)};${trainEndFrac.toFixed(4)};1" dur="${r(totalDuration)}s" repeatCount="indefinite"/>`);
-push(`  train ${trainMs}ms`);
-push(`</text>`);
+// "train Xms" label — always visible
+push(`<text x="${r(sparkX_train + trainSparkW / 2)}" y="${r(sparkY + sparkH / 2)}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="7">train ${trainMs}ms</text>`);
 
 push(`</svg>`);
 
