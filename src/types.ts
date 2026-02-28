@@ -13,7 +13,7 @@ export type FloatArrayConstructor = typeof Float32Array | typeof Float64Array;
 export type DlmDtype = 'f32' | 'f64';
 
 /** Algorithm selection for the Kalman filter/smoother */
-export type DlmAlgorithm = 'scan' | 'assoc' | 'sqrt-assoc';
+export type DlmAlgorithm = 'scan' | 'assoc' | 'sqrt-assoc' | 'ud';
 
 /**
  * Describes the layout of the `params` vector passed to {@link DlmLossFn}.

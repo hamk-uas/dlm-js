@@ -459,37 +459,127 @@ The [6] reference implementation (JAX, [EEA-sensors/sqrt-parallel-smoothers](htt
 
 - **MLE**: The sqrt-assoc path is not yet wired into `dlmMLE` / `makeKalmanLoss`. Use `algorithm: 'scan'` or `'assoc'` for MLE.
 
+#### UD factorization (`ud`)
+
+`algorithm: 'ud'` replaces the dense covariance matrix $C$ with its $U D U^\top$ factorization (Bierman 1977), where $U$ is unit triangular and $D$ is a positive diagonal vector. The Bierman measurement update processes each state component via a scalar column loop, updating $D$ and $U$ in-place without ever forming or inverting a full covariance matrix. This avoids the condition-number squaring inherent in the Joseph form ($L C L^\top$ squares the condition number of $C$) and keeps $D$ positive by construction (each $d_j$ is a ratio of positive $\alpha$ values).
+
+The UD path uses sequential `lax.scan` for the forward filter (like `scan`) and reuses the standard RTS backward smoother unchanged. It targets the same use case as `scan` with Joseph form — **Float32 stabilization** — but aims for lower numerical error by avoiding the $O(m^2)$ outer products that amplify rounding.
+
+```ts
+const result = await dlmFit(y, {
+  obsStd: 120,
+  processStd: [40, 10],
+  order: 1,
+  dtype: 'f32',
+  algorithm: 'ud',
+});
+```
+
+##### Forward step (predict + Bierman update)
+
+Each forward step takes the carry $(x_{t|t-1}, U_{t|t-1}, D_{t|t-1}, C_{t|t-1})$ — the predicted state, UD factors, and true predicted covariance — and observation $y_t$, producing the updated carry plus diagnostic outputs for the backward smoother.
+
+**1. Use predicted covariance.** The carry provides the true predicted covariance $C_{t|t-1}$ directly — no $U D U^\top$ reconstruction needed. The carry's UD factors encode $C_{t|t-1} + \varepsilon I$ (from Cholesky regularization in the previous step), but $C_{t|t-1}$ itself is exact, avoiding epsilon accumulation in backward smoother outputs.
+
+Innovation and innovation covariance use the true $C_{t|t-1}$:
+
+$$v_t = y_t - F \, x_{t|t-1}, \qquad C_p^{(t)} = F \, C_{t|t-1} \, F^\top + V^2$$
+
+**2. Bierman measurement update (scalar observation, $p=1$).** Clone the carry's $U_{t|t-1}, D_{t|t-1}$ as working arrays. Define $f = U^\top H^\top$ and $g = D \odot f$ (element-wise). Initialize $\alpha_0 = V^2$. For $j = m{-}1$ down to $0$:
+
+$$\alpha_{j}^{\text{new}} = \alpha_{j}^{\text{old}} + f_j \, g_j$$
+
+$$d_j^+ = d_j \cdot \frac{\alpha_j^{\text{old}}}{\alpha_j^{\text{new}}}, \qquad \lambda_j = -\frac{f_j}{\alpha_j^{\text{old}}}$$
+
+$$\bar{U}_{i,j}^+ = \bar{U}_{i,j} + \lambda_j \, g_i \quad (i > j), \qquad g_i^+ = g_i + \bar{U}_{i,j} \, g_j \quad (i > j)$$
+
+After the loop, $\alpha_{m-1}^{\text{new}} = C_p^{(t)}$ and the Kalman gain is $K_{\text{Bierman}} = g / C_p^{(t)}$.
+
+> **Note:** The classical Bierman/Thornton presentation uses unit *upper*-triangular $U$. We use unit *lower*-triangular because `np.linalg.cholesky` returns lower-triangular $L$, making $C = L_{\text{unit}} \, D \, L_{\text{unit}}^\top$ the natural factorization without any transpose. The column-loop direction is reversed accordingly ($j = m{-}1$ down to $0$).
+
+**3. State update.** $x_{t|t} = x_{t|t-1} + K_{\text{Bierman}} \, v_t$.
+
+**4. Predict for next carry.** Reconstruct $C_{t|t}$ from the Bierman-updated factors $U_t^+, D_t^+$, then compute the one-step-ahead prediction:
+
+$$C_{t|t} = U_t^+ \, \text{diag}(D_t^+) \, (U_t^+)^\top$$
+
+$$x_{t+1|t} = G \, x_{t|t}, \qquad C_{t+1|t} = \tfrac{1}{2}\bigl(G \, C_{t|t} \, G^\top + W + (G \, C_{t|t} \, G^\top + W)^\top\bigr)$$
+
+**5. Re-factor for next carry.** Decompose $C_{t+1|t} + \varepsilon I$ via Cholesky → LDL:
+
+$$C_{t+1|t} + \varepsilon I = L \, L^\top = L_{\text{unit}} \, \text{diag}(d^2) \, L_{\text{unit}}^\top$$
+
+The $\varepsilon I$ is added *only* for Cholesky stability — the true $C_{t+1|t}$ (without $\varepsilon$) is stored in the carry's `C_true` field. This prevents epsilon from accumulating across timesteps into the backward smoother's covariance outputs.
+
+**6. Carry and outputs.** The updated carry is $(x_{t+1|t}, U_{t+1|t}, D_{t+1|t}, C_{t+1|t})$. For the backward smoother, the step emits:
+
+$$\texttt{x\_pred} = x_{t|t-1}, \quad \texttt{C\_pred} = C_{t|t-1}, \quad \texttt{K} = G \, C_{t|t-1} \, F^\top / C_p^{(t)}, \quad \texttt{v} = v_t, \quad \texttt{Cp} = C_p^{(t)}$$
+
+The key insight: the standard `forwardStep` carry **is** the predicted state/covariance $(x_{t|t-1}, C_{t|t-1})$, and emits $\texttt{x\_pred} = x_{\text{carry}}$, $\texttt{C\_pred} = C_{\text{carry}}$. The UD path matches this exactly: it emits the carry's true $C_{t|t-1}$ (without epsilon) and the carry's $x_{t|t-1}$. The backward RTS smoother reuses unchanged.
+
+##### Backward smoother
+
+The backward pass is the standard sequential RTS smoother (same function as the `scan` path), operating on the $(x_{\text{pred}}, C_{\text{pred}}, K, v, C_p)$ sequence emitted by the UD forward pass. No modification is needed — the UD forward step emits the true predicted covariance $C_{t|t-1}$ (without epsilon) via the `C_true` carry field, making the output identical to the standard carry convention.
+
+##### Design choices
+
+| Aspect | Choice | Rationale |
+|--------|--------|----------|
+| Factorization convention | Unit lower-triangular $U$ | Cholesky gives lower-tri $L$ natively; avoids transpose |
+| Time update | Cholesky → LDL re-factorization of $C_{t+1|t} + \varepsilon I$ | Simpler than Thornton's $O(m^2)$ square-root time update; re-factorization is $O(m^3/3)$ via Cholesky. Epsilon only for Cholesky, not stored in `C_true` |
+| Epsilon isolation | `C_true` carry field stores exact $C_{t|t-1}$ | Prevents $\varepsilon I$ from accumulating across $n$ timesteps into backward smoother covariances |
+| Column loop order | $j = m{-}1$ down to $0$ | Lower-tri: free entries at $i > j$; reverse order ensures $g_j$ is unmodified when used in $\alpha$ update |
+| Backward smoother gain $K$ | Predicted-convention $K = G \bar{C}_t F' / C_p$ | Same convention as standard carry: $x_{pred} = \bar{x}_t$, $C_{pred} = \bar{C}_t$ |
+| NaN masking | $f \leftarrow 0$ when observation is NaN | Entire Bierman loop becomes a no-op: $D, U$ unchanged, $K = 0$ |
+| Scope | $p = 1$ only | Bierman's column loop is scalar-observation-specific; $p > 1$ would need a different formulation |
+
+##### Known limitations
+
+- **$p > 1$**: UD factorization currently supports scalar observations only ($p = 1$). Throws for multivariate observations.
+- **MLE**: Not yet wired into `dlmMLE`. Use `algorithm: 'scan'` or `'assoc'` for MLE.
+- **Time update**: Uses Cholesky → LDL re-factorization rather than the Thornton square-root time update. This is $O(m^3/3)$ per step — same complexity as the standard path. The Cholesky input is regularized with $\varepsilon I$, but the true covariance (without $\varepsilon$) is carried separately to avoid accumulation. A future Thornton implementation could eliminate the Cholesky roundtrip entirely.
+
+##### References
+
+- Bierman, G. J. (1977). *Factorization Methods for Discrete Sequential Estimation*. Academic Press.
+- Grewal, M. S. & Andrews, A. P. (2001). *Kalman Filtering: Theory and Practice Using MATLAB*. Wiley. Algorithm 6.1.
+
 ### Backend performance
 
 `dlmFit` warm-run timings (jitted core, second of two sequential runs) and maximum errors vs. the Octave/MATLAB reference (worst case across all 5 models and all outputs: yhat, ystd, smoothed, smoothedStd) for each backend × dtype × algorithm × stabilization combination. Regenerate with `pnpm run bench:full`. **Bold rows** are the auto-selected default per backend × dtype.
 
-Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATLAB); `joseph` = Joseph-form covariance update + `(C+C')/2` symmetrize (f32/scan default, always on); `joseph+triu` = Joseph form + triu symmetrize instead of `(C+C')/2` (explicit `stabilization:{cTriuSym:true}`); `built-in` = assoc/sqrt-assoc paths use their own exact per-timestep formulation (no external flag); `off` = explicit override disabling the default (`stabilization:{cTriuSym:false}`).
+Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATLAB); `joseph` = Joseph-form covariance update + `(C+C')/2` symmetrize (f32/scan default, always on); `joseph+triu` = Joseph form + triu symmetrize instead of `(C+C')/2` (explicit `stabilization:{cTriuSym:true}`); `built-in` = assoc/sqrt-assoc/ud paths use their own exact per-timestep formulation (no external flag); `off` = explicit override disabling the default (`stabilization:{cTriuSym:false}`).
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Gapped order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
 <!-- generated:bench-full-table -->
-| backend | dtype | algorithm | stab | Nile o=0 (warm) | Nile o=1 (warm) | Kaisaniemi (warm) | Energy (warm) | Gapped (warm) | max \|Δ\| | max \|Δ\|% |
-|---------|-------|-----------|------|-------|-------|-------|-------|-------|----------|------------|
-| **cpu** | **f64** | **scan** | **triu** | **236 ms** | **430 ms** | **545 ms** | **606 ms** | **448 ms** | **9.31e-11** | **4.20e-9** |
-|  |  | scan | off | 217 ms | 349 ms | 446 ms | 494 ms | 376 ms | 2.08e-8 | 1.06e-4 |
-|  |  | assoc | built-in | 149 ms | 340 ms | 1259 ms | 1736 ms | 322 ms | 1.33e-8 | 2.17e-5 |
-|  | **f32** | **scan** | **joseph** | **222 ms** | **412 ms** | **515 ms** | **566 ms** | **407 ms** | **5.83e-3** | **0.29** |
-|  |  | scan | joseph+triu | 249 ms | 455 ms | 579 ms | 629 ms | 462 ms | 0.01 | 0.90 |
-|  |  | assoc | built-in | 151 ms | 325 ms | 1277 ms | 1765 ms | 332 ms | 0.01 | 19.6 |
-| **wasm** | **f64** | **scan** | **triu** | **25 ms** | **27 ms** | **27 ms** | **27 ms** | **28 ms** | **9.31e-11** | **4.20e-9** |
-|  |  | scan | off | 20 ms | 23 ms | 22 ms | 23 ms | 30 ms | 2.08e-8 | 1.06e-4 |
-|  |  | assoc | built-in | 78 ms | 100 ms | 220 ms | 108 ms | 102 ms | 1.33e-8 | 2.17e-5 |
-|  |  | sqrt-assoc | built-in | 120 ms | 137 ms | 237 ms | 200 ms | 139 ms | 2.92e-8 | 2.03e-4 |
-|  | **f32** | **scan** | **joseph** | **20 ms** | **25 ms** | **28 ms** | **25 ms** | **27 ms** | **0.04** | **1.27** |
-|  |  | scan | joseph+triu | 22 ms | 28 ms | 29 ms | 28 ms | 28 ms | 0.04 | 1.78 |
-|  |  | assoc | built-in | 76 ms | 99 ms | 230 ms | 106 ms | 101 ms | 0.01 | 21.9 |
-|  |  | sqrt-assoc | built-in | 123 ms | 132 ms | 159 ms | 190 ms | 137 ms | 0.03 | 199 |
-| **webgpu** | **f32** | **assoc** | **built-in** | **371 ms** | **431 ms** | **597 ms** | **434 ms** | **453 ms** | **0.01** | **20.5** |
-|  |  | scan | joseph | 612 ms | 760 ms | 879 ms | 917 ms | 922 ms | 0.01 | 0.98 |
-|  |  | scan | joseph+triu | 721 ms | 763 ms | 893 ms | 925 ms | 1068 ms | 0.03 | 2.99 |
+| backend | dtype | algorithm | stab | Nile o=0 | rel err | Nile o=1 | rel err | Kaisaniemi | rel err | Energy | rel err | Gapped | rel err |
+|---------|-------|-----------|------|-------|------|-------|------|-------|------|-------|------|-------|------|
+| **cpu** | **f64** | **scan** | **triu** | **239 ms** | **1.73e-16** | **433 ms** | **4.78e-13** | **537 ms** | **4.20e-11** | **602 ms** | **1.19e-11** | **440 ms** | **2.52e-13** |
+|  |  | scan | off | 210 ms | 1.73e-16 | 347 ms | 1.40e-11 | 445 ms | 5.85e-10 | 492 ms | 1.06e-6 | 356 ms | 1.03e-12 |
+|  |  | assoc | built-in | 151 ms | 4.87e-12 | 324 ms | 4.36e-9 | 1265 ms | 3.17e-8 | 1749 ms | 2.17e-7 | 332 ms | 1.29e-9 |
+|  |  | ud | built-in | 277 ms | 1.73e-16 | 495 ms | 4.41e-13 | 672 ms | 2.04e-11 | 684 ms | 1.06e-11 | 512 ms | 5.99e-14 |
+|  | **f32** | **scan** | **joseph** | **218 ms** | **9.93e-7** | **399 ms** | **2.25e-4** | **509 ms** | **2.93e-3** | **572 ms** | **6.18e-4** | **413 ms** | **1.74e-5** |
+|  |  | scan | joseph+triu | 249 ms | 9.93e-7 | 499 ms | 1.09e-4 | 577 ms | 8.98e-3 | 642 ms | 1.41e-3 | 465 ms | 1.40e-4 |
+|  |  | assoc | built-in | 146 ms | 4.74e-6 | 327 ms | 3.93e-3 | 1269 ms | 0.03 | 1776 ms | 0.20 | 327 ms | 1.51e-3 |
+|  |  | ud | built-in | 244 ms | 9.93e-7 | 477 ms | 5.09e-4 | 587 ms | 3.44e-3 | 654 ms | 1.15e-3 | 474 ms | 1.50e-4 |
+| **wasm** | **f64** | **scan** | **triu** | **25 ms** | **1.73e-16** | **27 ms** | **4.78e-13** | **27 ms** | **4.20e-11** | **28 ms** | **1.19e-11** | **27 ms** | **2.52e-13** |
+|  |  | scan | off | 20 ms | 1.73e-16 | 23 ms | 1.40e-11 | 24 ms | 5.85e-10 | 23 ms | 1.06e-6 | 22 ms | 1.03e-12 |
+|  |  | assoc | built-in | 81 ms | 4.87e-12 | 98 ms | 4.36e-9 | 243 ms | 3.17e-8 | 105 ms | 2.17e-7 | 98 ms | 1.29e-9 |
+|  |  | sqrt-assoc | built-in | 126 ms | 1.82e-15 | 137 ms | 6.84e-12 | 188 ms | 2.03e-6 | 191 ms | 3.10e-10 | 141 ms | 6.78e-13 |
+|  |  | ud | built-in | 27 ms | 1.73e-16 | 32 ms | 4.41e-13 | 33 ms | 2.04e-11 | 33 ms | 1.06e-11 | 32 ms | 5.99e-14 |
+|  | **f32** | **scan** | **joseph** | **21 ms** | **1.06e-6** | **24 ms** | **2.59e-4** | **27 ms** | **0.01** | **24 ms** | **2.08e-3** | **23 ms** | **1.32e-4** |
+|  |  | scan | joseph+triu | 28 ms | 1.06e-6 | 28 ms | 7.11e-4 | 28 ms | 0.02 | 28 ms | 1.34e-3 | 28 ms | 2.48e-4 |
+|  |  | assoc | built-in | 72 ms | 4.74e-6 | 98 ms | 4.53e-3 | 206 ms | 0.03 | 103 ms | 0.22 | 101 ms | 1.19e-3 |
+|  |  | sqrt-assoc | built-in | 116 ms | 2.91e-7 | 136 ms | 1.34e-3 | 168 ms | 1.99 | 178 ms | 0.03 | 142 ms | 3.83e-5 |
+|  |  | ud | built-in | 24 ms | 1.06e-6 | 30 ms | 7.60e-4 | 30 ms | 3.44e-3 | 31 ms | 2.39e-3 | 30 ms | 1.77e-4 |
+| **webgpu** | **f32** | **assoc** | **built-in** | **360 ms** | **4.74e-6** | **438 ms** | **5.01e-3** | **624 ms** | **0.03** | **469 ms** | **0.21** | **484 ms** | **4.87e-4** |
+|  |  | scan | joseph | 584 ms | 1.06e-6 | 874 ms | 6.34e-5 | 990 ms | 9.85e-3 | 1183 ms | 1.06e-3 | 1095 ms | 2.56e-5 |
+|  |  | scan | joseph+triu | 808 ms | 1.06e-6 | 883 ms | 6.34e-5 | 1098 ms | 0.03 | 1186 ms | 2.88e-3 | 1373 ms | 8.20e-5 |
+|  |  | ud | built-in | 765 ms | 1.06e-6 | 975 ms | 4.28e-4 | 1157 ms | 2.67e-3 | 1365 ms | 4.34e-4 | 1463 ms | 5.64e-5 |
 <!-- /generated -->
 
-Both error columns show worst case across all 5 benchmark models and all output variables (yhat, ystd, smoothed, smoothedStd). `max |Δ|%` uses the Octave reference value as denominator; percentages >1% in the `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
+Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
 
 **Key findings** (see table above for exact numbers):
 - **WASM is ~10–20× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.

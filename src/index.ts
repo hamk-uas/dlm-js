@@ -90,16 +90,18 @@ const dlmSmo = async (
   forceAssocScan?: boolean,
   stabilization?: DlmStabilization,
   forceSqrtAssocScan?: boolean,
+  forceUdScan?: boolean,
 ): Promise<DlmSmoResult & Disposable> => {
   const n = y_arr.shape[0];
   const p = obsSize;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Branch selection: three execution paths based on device + dtype
+  // Branch selection: four execution paths based on device + dtype
   //
   //   wasm/cpu + Float64  →  sequential scan + triu+triu' symmetrization (default)
   //   cpu      + Float32  →  sequential scan + Joseph form + triu/avg sym + cEps
   //   webgpu   + Float32  →  associativeScan forward + Joseph form/sym/cEps
+  //   ud       + any      →  sequential scan + UD (Bierman) factorization in forward
   //
   // Float64 default: triu(C)+triu(C,1)' symmetrization after each filter and
   // smoother step (matches MATLAB dlmsmo.m line 77). Reduces max relative error
@@ -112,11 +114,16 @@ const dlmSmo = async (
   // The assoc path (webgpu) reformulates the forward Kalman filter
   // as an associative prefix scan per Särkkä & García-Fernández (2020),
   // reducing sequential depth from O(n) to O(log n) on parallel hardware.
+  //
+  // The UD path (Bierman 1977) factors C = U·D·U' (unit upper-triangular U,
+  // positive diagonal D). The Bierman measurement update avoids squaring
+  // condition numbers, improving Float32 precision.
   // ─────────────────────────────────────────────────────────────────────────
   const device = defaultDevice();
   const f32 = dtype === DType.Float32;
-  const useSqrtAssocScan = forceSqrtAssocScan ?? false;
-  const useAssocScan = !useSqrtAssocScan && (forceAssocScan ?? (f32 && device === 'webgpu'));
+  const useUdScan = forceUdScan ?? false;
+  const useSqrtAssocScan = !useUdScan && (forceSqrtAssocScan ?? false);
+  const useAssocScan = !useUdScan && !useSqrtAssocScan && (forceAssocScan ?? (f32 && device === 'webgpu'));
 
   // ── Stabilization flags (f32 sequential backward step only) ──────────────────
   // Flags are captured as JS constants — each unique combination produces a
@@ -148,6 +155,7 @@ const dlmSmo = async (
   // inline np.array() temporaries that the leak checker flags (rc=1, never disposed).
   using half             = np.array(0.5, { dtype });                               // scalar
   using zeros_mm         = np.zeros([stateSize, stateSize], { dtype });            // [m,m]
+  using zeros_m          = np.zeros([stateSize], { dtype });                       // [m]
 
   // Initial state
   using x0 = np.array(x0_data, { dtype });
@@ -482,6 +490,253 @@ const dlmSmo = async (
     }
 
     return [{ r: r_new, N: N_new }, { x_smooth, C_smooth }];
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UD (Bierman) Forward Filter
+  //
+  // Factors covariance C = U·D·U' where U is unit upper-triangular and D is
+  // a positive diagonal vector.  The Bierman measurement update processes
+  // observation components via an unrolled column loop (j = 0..m-1), avoiding
+  // the O(m³) matrix products that square the condition number in the Joseph
+  // form.  D stays positive by construction (ratio of positive alphas).
+  //
+  // Time update: reconstruct C from UD, predict C_bar = G·C·G' + W, then
+  // decompose back to UD via Cholesky → LDL.  (The Thornton time update
+  // could replace this for even better precision but adds complexity.)
+  //
+  // Reference: Bierman (1977), "Factorization Methods for Discrete Sequential
+  // Estimation"; Grewal & Andrews (2001), Algorithm 6.1.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Precomputed one-hot vectors and column masks for the Bierman inner loop.
+  // Created unconditionally (cheap) to avoid conditional `using` complexity.
+  const ud_oneHot: np.Array[] = [];        // [m] one-hot vectors: e_j
+  const ud_oneHotCol: np.Array[] = [];     // [m,1] column one-hot: e_j reshaped
+  const ud_oneHotRow: np.Array[] = [];     // [1,m] row one-hot: e_j reshaped
+  const ud_gtMask: np.Array[] = [];        // [m] masks: gtMask[j][i] = (i > j ? 1 : 0)
+  if (useUdScan) {
+    for (let j = 0; j < stateSize; j++) {
+      const hot = new Array(stateSize).fill(0);
+      hot[j] = 1;
+      ud_oneHot.push(np.array(hot, { dtype }));
+      ud_oneHotCol.push(np.reshape(ud_oneHot[j], [stateSize, 1]));
+      ud_oneHotRow.push(np.reshape(ud_oneHot[j], [1, stateSize]));
+      const gt = new Array(stateSize).fill(0);
+      for (let i = j + 1; i < stateSize; i++) gt[i] = 1;
+      ud_gtMask.push(np.array(gt, { dtype }));
+    }
+  }
+
+  type UDForwardCarry = { x: np.Array; U: np.Array; D: np.Array; C_true: np.Array };
+
+  const forwardStepUD = (
+    carry: UDForwardCarry,
+    inp: ForwardX
+  ): [UDForwardCarry, ForwardY] => {
+    const { x: x_pred, U: Ui, D: Di, C_true: C_pred } = carry;
+    const { y: yi, V2: V2i, FF: FFi, Gt: G_t, Wt: W_t } = inp;
+    const m = stateSize;
+
+    // ── NaN masking (identical to standard forwardStep) ──
+    using is_nan_11 = np.isnan(yi);                                 // [1,1] bool
+    const mask_t = np.where(is_nan_11, zero_11, const_one_11);     // [1,1]: 0 or 1
+    using y_safe = np.where(is_nan_11, np.zerosLike(yi), yi);       // [1,1]: 0 if NaN
+
+    // C_pred is the TRUE predicted covariance from the carry (no epsilon).
+    // The carry's U,D encode C_pred + eps (from Cholesky regularization),
+    // but C_true avoids epsilon accumulation in backward smoother outputs.
+
+    // ── Clone carry's U,D as Bierman working arrays ──
+    // The carry already holds (U_{t|t-1}, D_{t|t-1}) — the exact LDL factors
+    // Bierman needs.  Cloning avoids a pointless C_pred→Cholesky→LDL roundtrip
+    // that lost strict PSD on the CPU backend (different matmul accumulation
+    // ordering vs WASM caused Cholesky to produce NaN for m ≥ 2).
+    // Clone needed: accumulator-swap in the Bierman loop disposes old values.
+    // jax-js-lint: allow-non-using — Bierman loop mutates U_bar/D_bar below
+    let U_bar = np.add(Ui, zeros_mm);                               // [m,m] clone
+    let D_bar = np.add(Di, zeros_m);                                // [m] clone
+
+    // ── Innovation (using predicted state from carry directly) ──
+    using Fx_pred = np.matmul(FFi, x_pred);                         // [1,1]
+    using v_raw = np.subtract(y_safe, Fx_pred);
+    const v = np.multiply(mask_t, v_raw);                            // [1,1]
+
+    // Innovation covariance: Cp = F·C_pred·F' + V2
+    const Cp = np.add(
+      np.einsum('ij,jk,lk->il', FFi, C_pred, FFi),                 // [1,1]
+      V2i
+    );
+
+    // ── Bierman measurement update (p=1 scalar observation) ──
+    // U_bar is unit LOWER-triangular: C_pred = U·D·U'.
+    // f = U'·H' (U' is upper-tri × column vec).
+    // Column loop runs in REVERSE order (j = m-1 down to 0) because for
+    // lower-tri U the free entries in column j are at rows i > j.  Reverse
+    // processing ensures g[j] is still its original value when used in the
+    // α update (inner loops only modify g at positions i > current_j, and
+    // future columns have smaller j).
+    // When NaN, f_bar = 0 → entire Bierman loop becomes a no-op
+    // (all alphas stay at R, D/U unchanged, K = 0).
+    using f_raw = np.matmul(np.transpose(U_bar), np.transpose(FFi));// [m,1]
+    using f_vec_raw = np.reshape(f_raw, [m]);                       // [m]
+    using f_vec = np.multiply(np.reshape(mask_t, []), f_vec_raw);   // 0 when NaN
+
+    // g = D_bar ⊙ f (element-wise product)
+    // jax-js-lint: allow-non-using — g_vec mutated in column loop below
+    let g_vec = np.multiply(D_bar, f_vec);                           // [m]
+
+    // R = observation variance (scalar)
+    using R_scalar = np.reshape(V2i, []);                            // scalar
+
+    // Process column m-1 first (no inner-loop entries: no rows i > m-1)
+    // α₀ = R + f_{m-1}·g_{m-1}
+    using f_last = np.sum(np.multiply(f_vec, ud_oneHot[m - 1]));    // scalar
+    using g_last = np.sum(np.multiply(g_vec, ud_oneHot[m - 1]));    // scalar
+    // jax-js-lint: allow-non-using — alpha mutated in column loop below
+    let alpha = np.add(R_scalar, np.multiply(f_last, g_last));       // scalar
+
+    // D_new[m-1] = D_bar[m-1] · R / α
+    {
+      using D_last = np.sum(np.multiply(D_bar, ud_oneHot[m - 1]));  // scalar
+      using D_last_new = np.multiply(D_last, np.divide(R_scalar, alpha));
+      using delta_last = np.subtract(D_last_new, D_last);
+      // jax-js-lint: allow-non-using — accumulator-swap: D_bar updated
+      const D_new = np.add(D_bar, np.multiply(delta_last, ud_oneHot[m - 1]));
+      D_bar.dispose();
+      D_bar = D_new;
+    }
+
+    // Column loop j = m-2 down to 0: update D[j], U[:,j], g
+    for (let j = m - 2; j >= 0; j--) {
+      // Extract scalar values for column j
+      using f_j = np.sum(np.multiply(f_vec, ud_oneHot[j]));         // scalar
+      using g_j = np.sum(np.multiply(g_vec, ud_oneHot[j]));         // scalar
+
+      // α_new = α_old + f_j · g_j
+      // jax-js-lint: allow-non-using — accumulator-swap for alpha
+      const alpha_old = alpha;
+      alpha = np.add(alpha_old, np.multiply(f_j, g_j));
+
+      // λ_j = -f_j / α_old
+      using lambda_j = np.divide(np.negative(f_j), alpha_old);      // scalar
+      alpha_old.dispose();
+
+      // D_new[j] = D_bar[j] · α_old / α_new  (= D_bar[j] · (α_new - f_j·g_j) / α_new)
+      {
+        using D_j = np.sum(np.multiply(D_bar, ud_oneHot[j]));
+        using alpha_minus = np.subtract(alpha, np.multiply(f_j, g_j));
+        using D_j_new = np.multiply(D_j, np.divide(alpha_minus, alpha));
+        using delta_j = np.subtract(D_j_new, D_j);
+        // jax-js-lint: allow-non-using — accumulator-swap: D_bar updated
+        const D_new = np.add(D_bar, np.multiply(delta_j, ud_oneHot[j]));
+        D_bar.dispose();
+        D_bar = D_new;
+      }
+
+      // Extract old column j of U_bar: [m,1]
+      using u_col_old = np.matmul(U_bar, ud_oneHotCol[j]);          // [m,1]
+
+      // U_bar[:,j] += λ_j · g   (only rows i > j, masked by gtMask)
+      using delta_u = np.multiply(
+        lambda_j,
+        np.multiply(np.reshape(g_vec, [m, 1]), np.reshape(ud_gtMask[j], [m, 1]))
+      );                                                             // [m,1]
+      using rank1_u = np.matmul(delta_u, ud_oneHotRow[j]);          // [m,m]
+      // jax-js-lint: allow-non-using — accumulator-swap: U_bar updated
+      const U_new = np.add(U_bar, rank1_u);
+      U_bar.dispose();
+      U_bar = U_new;
+
+      // g[i] += U_old[i,j] · g_j   (only rows i > j, masked by gtMask)
+      using g_update = np.multiply(
+        g_j,
+        np.multiply(np.reshape(u_col_old, [m]), ud_gtMask[j])
+      );                                                             // [m]
+      // jax-js-lint: allow-non-using — accumulator-swap: g_vec updated
+      const g_new = np.add(g_vec, g_update);
+      g_vec.dispose();
+      g_vec = g_new;
+    }
+    alpha.dispose();
+    g_vec.dispose();
+
+    // Filtered gain: K_filt = C_pred · F' / Cp  [m,1]
+    // Computed from C_pred (exact, no epsilon) for consistent numerator/denominator.
+    // The Bierman loop's g_vec encodes (C_pred + ε)·F' via U·D·U', but Cp uses
+    // C_pred (no ε).  Dividing (C+ε)·F' by F·C·F'+V² introduces O(ε/Cp)
+    // per-step gain bias that accumulates through forward and backward passes.
+    using CpredFt = np.matmul(C_pred, np.transpose(FFi));           // [m,1]
+    using K_filt = np.divide(CpredFt, Cp);                          // [m,1]
+
+    // Filtered state: x_filt = x_pred + K_filt · v  = x_{t|t}
+    using x_filt = np.add(x_pred, np.matmul(K_filt, v));            // [m,1]
+
+    // ── Predict for next carry ──
+    // Dispose Bierman factors (time update uses C_pred directly — see below)
+    U_bar.dispose();
+    D_bar.dispose();
+
+    // x_{t+1|t} = G · x_{t|t}
+    const x_next_pred = np.matmul(G_t, x_filt);                     // [m,1]
+
+    // Predicted-convention gain for the backward RTS smoother:
+    // K = mask · G · K_filt = mask · G · C_pred · F' / Cp  [m,1]
+    using K_G_Kfilt = np.matmul(G_t, K_filt);                       // [m,1]
+    const K = np.multiply(mask_t, K_G_Kfilt);                       // [m,1] (0 when NaN)
+
+    // L = G - K·F  [m,m]  (= G when NaN, since K=0)
+    using L_mat = np.subtract(G_t, np.matmul(K, FFi));              // [m,m]
+
+    // C_{t+1|t}: standard DLM prediction formula using C_pred (exact, from carry).
+    // Avoids Cholesky-roundtrip error from Bierman C_filt (which encodes C_pred+ε):
+    // the old G·C_filt·G'+W path squared condition number and accumulated ε through
+    // the Cholesky→LDL→Bierman→reconstruct chain at every step.
+    // jax-js-lint: allow-non-using — sym branch takes ownership below
+    let C_fwd_raw: np.Array;
+    if (f32) {
+      // Joseph form: L·C·L' + K·V²·K' + W
+      using LCLt = np.einsum('ij,jk,lk->il', L_mat, C_pred, L_mat);
+      using KV2Kt = np.multiply(V2i, np.matmul(K, np.transpose(K)));
+      using sum1 = np.add(LCLt, KV2Kt);
+      C_fwd_raw = np.add(sum1, W_t);
+    } else {
+      // Standard: G·C·L' + W (matches MATLAB dlmsmo.m)
+      C_fwd_raw = np.add(np.einsum('ij,jk,lk->il', G_t, C_pred, L_mat), W_t);
+    }
+
+    // Apply symmetrization for f32 (always) or f64+cTriuSym.
+    let C_next_true: np.Array;
+    if (f32 || stabCTriuSym) {
+      if (stabCTriuSym) {
+        using C_upper = np.triu(C_fwd_raw);
+        using C_sup   = np.triu(C_fwd_raw, 1);
+        using C_sup_t = np.transpose(C_sup);
+        C_next_true = np.add(C_upper, C_sup_t);
+      } else {
+        using Ct      = np.transpose(C_fwd_raw);
+        using sumBoth = np.add(C_fwd_raw, Ct);
+        C_next_true = np.multiply(half, sumBoth);
+      }
+      C_fwd_raw.dispose();
+    } else {
+      C_next_true = C_fwd_raw;
+    }
+
+    // Factor C_{t+1|t} via Cholesky → LDL for next carry
+    // Add epsilon ONLY for Cholesky stability; C_next_true (no eps) goes to carry
+    using C_for_chol = np.add(C_next_true, stab_cEps_I);
+    using L_next = np.linalg.cholesky(C_for_chol);
+    using Ld_next = np.einsum('ii->i', L_next);
+    using Ldi_next = np.reciprocal(Ld_next);
+    using Ldim_next = np.multiply(np.reshape(Ldi_next, [1, m]), stab_I_eye);
+    const U_next = np.matmul(L_next, Ldim_next);
+    const D_next = np.multiply(Ld_next, Ld_next);
+
+    return [
+      { x: x_next_pred, U: U_next, D: D_next, C_true: C_next_true },
+      { x_pred, C_pred, K, v, Cp, FF: FFi, Gt: G_t, mask: mask_t } as ForwardY,
+    ];
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1415,6 +1670,64 @@ const dlmSmo = async (
       x_filt.dispose();
       C_filt.dispose();
 
+    } else if (useUdScan) {
+      // ─── UD (Bierman) Forward Filter ───
+      // Carries U (unit lower-triangular) and D (positive diagonal) instead of C.
+      // Bierman column-by-column measurement update avoids condition number squaring.
+      // Only supports p=1 (scalar observations).
+      if (p > 1) throw new Error('ud algorithm not yet supported for multivariate observations (p > 1)');
+
+      // Initial UD: C0 = L_unit·D·L_unit' via Cholesky → LDL
+      // Store L_unit (unit lower-tri) as U so that C = U·D·U' holds.
+      using C0sym = np.add(C0, np.transpose(C0));
+      using C0half = np.multiply(half, C0sym);
+      using C0reg = np.add(C0half, stab_cEps_I);
+      using L0 = np.linalg.cholesky(C0reg);
+      using L0d = np.einsum('ii->i', L0);
+      using L0di = np.reciprocal(L0d);
+      using L0dim = np.multiply(np.reshape(L0di, [1, stateSize]), stab_I_eye);
+      using U0_init = np.matmul(L0, L0dim);                         // unit lower-tri
+      using D0_init = np.multiply(L0d, L0d);
+
+      // eslint-disable-next-line jax-js/require-scan-result-dispose
+      const [udCarry, udSeq] = lax.scan(
+        forwardStepUD,
+        { x: x0, U: U0_init, D: D0_init, C_true: C0 },
+        { y: y_arr, V2: V2_arr, FF: FF_scan, Gt: G_scan, Wt: W_scan }
+      );
+      tree.dispose(udCarry);
+      fwd = udSeq as unknown as ForwardY;
+
+      // ─── Sequential Backward RTS Smoother (reuses standard backwardStep) ───
+      using x_pred_rev = np.flip(fwd.x_pred, 0);
+      using C_pred_rev = np.flip(fwd.C_pred, 0);
+      using K_rev = np.flip(fwd.K, 0);
+      using v_rev = np.flip(fwd.v, 0);
+      using Cp_rev = np.flip(fwd.Cp, 0);
+      using FF_rev = np.flip(fwd.FF, 0);
+      using Gt_rev = np.flip(fwd.Gt, 0);
+      using mask_rev = np.flip(fwd.mask, 0);
+
+      const [bwdCarry, bwd] = lax.scan(
+        backwardStep,
+        { r: r0, N: N0 },
+        {
+          x_pred: x_pred_rev,
+          C_pred: C_pred_rev,
+          K: K_rev,
+          v: v_rev,
+          Cp: Cp_rev,
+          FF: FF_rev,
+          Gt: Gt_rev,
+          mask: mask_rev,
+        }
+      );
+      tree.dispose(bwdCarry);
+
+      x_smooth = np.flip(bwd.x_smooth, 0);  // [n, m, 1]
+      C_smooth = np.flip(bwd.C_smooth, 0);  // [n, m, m]
+      tree.dispose(bwd);
+
     } else {
       // ─── Sequential Forward Filter (cpu/wasm) ───
       // fwdSeq fields are disposed individually via fwd.K.dispose() etc.
@@ -1585,6 +1898,12 @@ const dlmSmo = async (
   // Run core — one jit wrapping both scans + all diagnostics
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, G_scan, W_scan, r0, N0);
 
+  // Dispose UD precomputed arrays (no-op if empty)
+  for (const a of ud_oneHot) a.dispose();
+  for (const a of ud_oneHotCol) a.dispose();
+  for (const a of ud_oneHotRow) a.dispose();
+  for (const a of ud_gtMask) a.dispose();
+
   return tree.makeDisposable({
     ...coreResult, m: stateSize, p,
   }) as DlmSmoResult & Disposable;
@@ -1632,6 +1951,7 @@ export const dlmFit = async (
   const dtype = parseDtype(opts.dtype);
   const forceAssocScan = algorithm === 'assoc' ? true : algorithm === 'scan' ? false : undefined;
   const forceSqrtAssocScan = algorithm === 'sqrt-assoc' ? true : undefined;
+  const forceUdScan = algorithm === 'ud' ? true : undefined;
 
   // Detect observation dimension p from opts.F (p>1) or default (p=1).
   const obsF: number[][] | undefined = opts.F;  // [p, m_ext] observation matrix
@@ -1873,7 +2193,7 @@ export const dlmFit = async (
   let x0_updated: number[][];
   let C0_scaled: number[][];
   { // Block scope — `using` auto-disposes all Pass 1 arrays at block end
-    using out1 = await dlmSmo(y_arr, V2_arr, x0_data, G_scan, W_scan, C0_data, m, obsP, dtype, FF_scan_obs, forceAssocScan, stabilization, forceSqrtAssocScan);
+    using out1 = await dlmSmo(y_arr, V2_arr, x0_data, G_scan, W_scan, C0_data, m, obsP, dtype, FF_scan_obs, forceAssocScan, stabilization, forceSqrtAssocScan, forceUdScan);
     // out1.x is [n, m, 1] — extract first timestep
     const x_data = await out1.x.data() as Float64Array | Float32Array;
     const C_data = await out1.C.data() as Float64Array | Float32Array;
@@ -1887,7 +2207,7 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   // Pass 2: Final smoother with refined initial state
   // ─────────────────────────────────────────────────────────────────────────
-  const out2 = await dlmSmo(y_arr, V2_arr, x0_updated, G_scan, W_scan, C0_scaled, m, obsP, dtype, FF_scan_obs, forceAssocScan, stabilization, forceSqrtAssocScan);
+  const out2 = await dlmSmo(y_arr, V2_arr, x0_updated, G_scan, W_scan, C0_scaled, m, obsP, dtype, FF_scan_obs, forceAssocScan, stabilization, forceSqrtAssocScan, forceUdScan);
 
   FF_scan_obs.dispose();
   y_arr.dispose();

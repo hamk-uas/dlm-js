@@ -43,6 +43,14 @@ function fmtErr(v: number): string {
   return v.toExponential(2);
 }
 
+/** Format relative error (sidecar stores percentage; divide by 100). */
+function fmtRelErr(pct: number): string {
+  if (!isFinite(pct)) return "—";
+  if (pct === 0) return "0";
+  const rel = pct / 100;
+  return fmtErr(rel);
+}
+
 // ── bench-full-table ──────────────────────────────────────────────────────
 
 interface BenchFullResult {
@@ -72,7 +80,7 @@ interface RowSpec {
 function stabDisplay(r: RowSpec): string {
   if (r.stabLabel === "off") return "off";
   if (r.stabLabel === "joseph+triu") return "joseph+triu";
-  if (r.algorithm === "assoc" || r.algorithm === "sqrt-assoc") return "built-in";
+  if (r.algorithm === "assoc" || r.algorithm === "sqrt-assoc" || r.algorithm === "ud") return "built-in";
   if (r.dtype === "f64") return "triu";
   return "joseph";
 }
@@ -93,7 +101,7 @@ const MODEL_ORDER = [
   "Gapped, order=1",
 ] as const;
 
-const MODEL_HEADERS = ["Nile o=0 (warm)", "Nile o=1 (warm)", "Kaisaniemi (warm)", "Energy (warm)", "Gapped (warm)"];
+const MODEL_HEADERS = ["Nile o=0", "Nile o=1", "Kaisaniemi", "Energy", "Gapped"];
 
 // Row order matching the current README layout (excludes cpu/sqrt-assoc
 // which has very large errors due to JS interpreter numerical behaviour).
@@ -102,24 +110,29 @@ const ROW_SPECS: RowSpec[] = [
   { backend: "cpu", dtype: "f64", algorithm: "scan",  stabLabel: "default" },
   { backend: "cpu", dtype: "f64", algorithm: "scan",  stabLabel: "off" },
   { backend: "cpu", dtype: "f64", algorithm: "assoc", stabLabel: "default" },
+  { backend: "cpu", dtype: "f64", algorithm: "ud",    stabLabel: "default" },
   // cpu f32
   { backend: "cpu", dtype: "f32", algorithm: "scan",  stabLabel: "default" },
   { backend: "cpu", dtype: "f32", algorithm: "scan",  stabLabel: "joseph+triu" },
   { backend: "cpu", dtype: "f32", algorithm: "assoc", stabLabel: "default" },
+  { backend: "cpu", dtype: "f32", algorithm: "ud",    stabLabel: "default" },
   // wasm f64
   { backend: "wasm", dtype: "f64", algorithm: "scan",       stabLabel: "default" },
   { backend: "wasm", dtype: "f64", algorithm: "scan",       stabLabel: "off" },
   { backend: "wasm", dtype: "f64", algorithm: "assoc",      stabLabel: "default" },
   { backend: "wasm", dtype: "f64", algorithm: "sqrt-assoc", stabLabel: "default" },
+  { backend: "wasm", dtype: "f64", algorithm: "ud",         stabLabel: "default" },
   // wasm f32
   { backend: "wasm", dtype: "f32", algorithm: "scan",       stabLabel: "default" },
   { backend: "wasm", dtype: "f32", algorithm: "scan",       stabLabel: "joseph+triu" },
   { backend: "wasm", dtype: "f32", algorithm: "assoc",      stabLabel: "default" },
   { backend: "wasm", dtype: "f32", algorithm: "sqrt-assoc", stabLabel: "default" },
+  { backend: "wasm", dtype: "f32", algorithm: "ud",         stabLabel: "default" },
   // webgpu f32
   { backend: "webgpu", dtype: "f32", algorithm: "assoc", stabLabel: "default" },
   { backend: "webgpu", dtype: "f32", algorithm: "scan",  stabLabel: "default" },
   { backend: "webgpu", dtype: "f32", algorithm: "scan",  stabLabel: "joseph+triu" },
+  { backend: "webgpu", dtype: "f32", algorithm: "ud",    stabLabel: "default" },
 ];
 
 function generateBenchFullTable(): string {
@@ -137,11 +150,14 @@ function generateBenchFullTable(): string {
   // Build table
   const lines: string[] = [];
 
+  // Header: backend | dtype | algorithm | stab | model1 | Δ% | model2 | Δ% | ...
+  const headerCells = MODEL_HEADERS.flatMap(h => [`${h}`, "rel err"]);
   lines.push(
-    `| backend | dtype | algorithm | stab | ${MODEL_HEADERS.join(" | ")} | max \\|Δ\\| | max \\|Δ\\|% |`,
+    `| backend | dtype | algorithm | stab | ${headerCells.join(" | ")} |`,
   );
+  const sepCells = MODEL_HEADERS.flatMap(() => ["-------", "------"]);
   lines.push(
-    `|---------|-------|-----------|------|${MODEL_HEADERS.map(() => "-------").join("|")}|----------|------------|`,
+    `|---------|-------|-----------|------|${sepCells.join("|")}|`,
   );
 
   let prevBackend = "";
@@ -162,27 +178,20 @@ function generateBenchFullTable(): string {
     const algoCell = b(spec.algorithm);
     const stabCell = b(stabDisplay(spec));
 
-    // Per-model warm times
+    // Per-model: warm time cell + Δ% cell
     const modelCells: string[] = [];
-    let worstAbs = 0;
-    let worstPct = 0;
 
     for (const model of MODEL_ORDER) {
       const key = `${spec.backend}|${spec.dtype}|${spec.algorithm}|${spec.stabLabel}|${model}`;
       const r = idx.get(key);
       if (!r) {
-        modelCells.push(b("—"));
+        modelCells.push(b("—"), b("—"));
       } else {
-        modelCells.push(b(fmtMs(r.warmMs)));
-        if (isFinite(r.maxAbsErr) && r.maxAbsErr > worstAbs) worstAbs = r.maxAbsErr;
-        if (isFinite(r.maxPctErr) && r.maxPctErr > worstPct) worstPct = r.maxPctErr;
+        modelCells.push(b(fmtMs(r.warmMs)), b(fmtRelErr(r.maxPctErr)));
       }
     }
 
-    const absCell = b(fmtErr(worstAbs));
-    const pctCell = b(fmtErr(worstPct));
-
-    lines.push(`| ${backendCell} | ${dtypeCell} | ${algoCell} | ${stabCell} | ${modelCells.join(" | ")} | ${absCell} | ${pctCell} |`);
+    lines.push(`| ${backendCell} | ${dtypeCell} | ${algoCell} | ${stabCell} | ${modelCells.join(" | ")} |`);
   }
 
   return lines.join("\n");
