@@ -21,7 +21,7 @@
 
 import { defaultDevice, init } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmFit } from "../src/index.ts";
-import type { DlmStabilization } from "../src/types.ts";
+import type { DlmStabilizationFlags } from "../src/types.ts";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
@@ -77,16 +77,15 @@ const MODELS: ModelDef[] = [
 
 // ── Candidate flags ──────────────────────────────────────────────────────────
 
-const CANDIDATES_F32: (keyof DlmStabilization)[] = ['nSym', 'nDiag', 'nDiagAbs', 'nLeak', 'cDiag', 'cEps', 'cDiagAbs', 'cTriuSym', 'cSmoAbsDiag'];
-const CANDIDATES_F64: (keyof DlmStabilization)[] = ['cTriuSym', 'cSmoAbsDiag'];
+const CANDIDATES_F32: (keyof DlmStabilizationFlags)[] = ['nSym', 'nDiag', 'nDiagAbs', 'nLeak', 'cDiag', 'cDiagAbs', 'cTriuSym', 'cSmoAbsDiag'];
+const CANDIDATES_F64: (keyof DlmStabilizationFlags)[] = ['cTriuSym', 'cSmoAbsDiag'];
 
-const FLAG_DESC: Record<keyof DlmStabilization, string> = {
+const FLAG_DESC: Record<keyof DlmStabilizationFlags, string> = {
   nSym:        'sym N each step',
   nDiag:       'clamp diag(N)≥0',
   nDiagAbs:    'abs(diag(N)) — sign-flip N diagonal',
   nLeak:       'N*=(1-1e-5)/step',
   cDiag:       'clamp diag(C)≧1e-7',
-  cEps:        'C+=1e-6·I (no-op, now unconditional)',
   cDiagAbs:    'abs(diag(C)) — sign-flip C diagonal',
   cTriuSym:    'triu(C)+triu(C,1)\' — upper-tri-authoritative sym (f32+f64)',
   cSmoAbsDiag: 'abs(diag(C_smooth)) after sym — mirrors MATLAB dlmsmo.m (f32+f64)',
@@ -150,7 +149,7 @@ function relErr(a: ArrayLike<number>, b: number[]): number {
 
 async function evaluate(
   models: LoadedModel[],
-  flags: DlmStabilization,
+  flags: DlmStabilizationFlags,
   dtype: 'f32' | 'f64' = 'f32',
 ): Promise<EvalResult> {
   const results: ModelResult[] = [];
@@ -213,8 +212,8 @@ function fmtScore(s: number): string {
   return s.toExponential(2);
 }
 
-function flagsLabel(flags: DlmStabilization): string {
-  const active = (Object.keys(flags) as (keyof DlmStabilization)[])
+function flagsLabel(flags: DlmStabilizationFlags): string {
+  const active = (Object.keys(flags) as (keyof DlmStabilizationFlags)[])
     .filter(k => flags[k]);
   return active.length > 0 ? active.join('+') : 'none';
 }
@@ -245,11 +244,11 @@ async function fullSearch(dtype: 'f32' | 'f64' = 'f32'): Promise<void> {
   console.log('  ' + models.map(m => `${m.def.name}(m=${m.def.m})`).join('  '));
   console.log(`\nRunning all ${total} combinations...\n`);
 
-  type Combo = { flags: DlmStabilization; result: EvalResult };
+  type Combo = { flags: DlmStabilizationFlags; result: EvalResult };
   const combos: Combo[] = [];
 
   for (let mask = 0; mask < total; mask++) {
-    const flags: DlmStabilization = {};
+    const flags: DlmStabilizationFlags = {};
     for (let i = 0; i < nFlags; i++) {
       if (mask & (1 << i)) flags[candidates[i]] = true;
     }
@@ -320,15 +319,15 @@ async function greedySearch(): Promise<void> {
   const baselineResult = await evaluate(models, {});
   printEvalRow('joseph only (baseline)', baselineResult);
 
-  let activeFlags: DlmStabilization = {};
-  let remaining: (keyof DlmStabilization)[] = [...CANDIDATES];
+  let activeFlags: DlmStabilizationFlags = {};
+  let remaining: (keyof DlmStabilizationFlags)[] = [...CANDIDATES];
   let bestScore = baselineResult.score;
 
   for (let round = 1; round <= CANDIDATES.length; round++) {
     console.log(`\nRound ${round}: testing additions to joseph+[${flagsLabel(activeFlags)}]:`);
 
     let roundBestScore = bestScore;
-    let roundBestFlag: keyof DlmStabilization | null = null;
+    let roundBestFlag: keyof DlmStabilizationFlags | null = null;
     let roundBestResult: EvalResult | null = null;
 
     for (const flag of remaining) {

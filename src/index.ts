@@ -3,12 +3,12 @@ import type { DlmSmoResult, FloatArray } from "./types";
 import {
   getFloatArrayType, parseDtype,
   StateMatrix, CovMatrix,
-  checkUnknownKeys, DLM_FIT_KEYS, DLM_STABILIZATION_KEYS, DLM_FORECAST_KEYS,
+  checkUnknownKeys, DLM_FIT_KEYS, DLM_STABILIZATION_KEYS, DLM_STABILIZATION_PRESETS, DLM_FORECAST_KEYS,
 } from "./types";
 import type {
   DlmFitResult, DlmForecastResult, DlmTensorResult,
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
-  DlmStabilization,
+  DlmStabilization, DlmStabilizationFlags,
 } from "./types";
 import { dlmGenSys, dlmGenSysTV } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
@@ -17,7 +17,8 @@ import type { DlmOptions } from "./dlmgensys";
 export type {
   DlmFitResult, DlmForecastResult, DlmTensorResult,
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
-  DlmDtype, DlmAlgorithm, DlmLossFn, DlmParamMeta, DlmStabilization,
+  DlmDtype, DlmAlgorithm, DlmLossFn, DlmParamMeta,
+  DlmStabilization, DlmStabilizationPreset, DlmStabilizationFlags,
   FloatArray,
 } from "./types";
 export { StateMatrix, CovMatrix } from "./types";
@@ -76,6 +77,15 @@ export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
  * @returns Smoothed and filtered state estimates with diagnostics
  * @internal
  */
+
+/** Resolve a `DlmStabilization` value (preset string or flags object) into flags. */
+function resolveStabilization(stab: DlmStabilization | undefined): DlmStabilizationFlags {
+  if (stab === undefined) return {};
+  if (stab === 'matlab') return { cTriuSym: true, cSmoAbsDiag: true };
+  if (stab === 'none') return { cTriuSym: false };
+  return stab;  // DlmStabilizationFlags pass-through
+}
+
 const dlmSmo = async (
   y_arr: np.Array,     // [n, p, 1] observations
   V2_arr: np.Array,    // [n, p, p] observation noise covariance
@@ -128,18 +138,18 @@ const dlmSmo = async (
   // ── Stabilization flags (f32 sequential backward step only) ──────────────────
   // Flags are captured as JS constants — each unique combination produces a
   // different JIT-compiled kernel (acceptable for research/exploration).
-  const stabNSym     = stabilization?.nSym      ?? false;
-  const stabNDiag    = stabilization?.nDiag     ?? false;
-  const stabNDiagAbs = stabilization?.nDiagAbs  ?? false;
-  const stabNLeak    = stabilization?.nLeak     ?? false;
-  const stabCDiag    = stabilization?.cDiag     ?? false;
-  const stabCEps     = stabilization?.cEps      ?? false;  // no-op (cEps now unconditional for f32)
-  const stabCDiagAbs = stabilization?.cDiagAbs  ?? false;
+  const stabFlags    = resolveStabilization(stabilization);
+  const stabNSym     = stabFlags.nSym      ?? false;
+  const stabNDiag    = stabFlags.nDiag     ?? false;
+  const stabNDiagAbs = stabFlags.nDiagAbs  ?? false;
+  const stabNLeak    = stabFlags.nLeak     ?? false;
+  const stabCDiag    = stabFlags.cDiag     ?? false;
+  const stabCDiagAbs = stabFlags.cDiagAbs  ?? false;
   // cTriuSym: default true for f64 (matches MATLAB dlmsmo.m triu+triu' sym),
   //           default false for f32 (uses (C+C')/2 instead; triu has no benefit for f32).
   // Override with stabilization: { cTriuSym: false } to disable for f64.
-  const stabCTriuSym    = stabilization?.cTriuSym    ?? !f32;
-  const stabCSmoAbsDiag = stabilization?.cSmoAbsDiag ?? false;  // abs(diag(C_smooth)) (f32+f64)
+  const stabCTriuSym    = stabFlags.cTriuSym    ?? !f32;
+  const stabCSmoAbsDiag = stabFlags.cSmoAbsDiag ?? false;  // abs(diag(C_smooth)) (f32+f64)
   // Pre-computed [m,m] constant tensors for stabilization ops.
   // Created unconditionally to avoid conditional `using` complexity.
   // Captured by backwardStep closure; disposed when dlmSmo scope exits after jit.
@@ -1983,8 +1993,10 @@ export const dlmFit = async (
   opts: DlmFitOptions,
 ): Promise<DlmFitResult> => {
   checkUnknownKeys(opts as unknown as Record<string, unknown>, DLM_FIT_KEYS, 'dlmFit');
-  if (opts.stabilization) {
+  if (opts.stabilization && typeof opts.stabilization === 'object') {
     checkUnknownKeys(opts.stabilization as unknown as Record<string, unknown>, DLM_STABILIZATION_KEYS, 'dlmFit (stabilization)');
+  } else if (typeof opts.stabilization === 'string' && !DLM_STABILIZATION_PRESETS.has(opts.stabilization)) {
+    throw new Error(`dlmFit: unknown stabilization preset '${opts.stabilization}'. Valid presets: 'matlab', 'none'.`);
   }
   const {
     obsStd: s, processStd: w,

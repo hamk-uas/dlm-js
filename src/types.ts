@@ -100,10 +100,15 @@ export const DLM_FIT_KEYS: ReadonlySet<string> = new Set([
   'dtype', 'algorithm', 'stabilization',
 ]);
 
-/** Valid keys for {@link DlmStabilization}. */
+/** Valid keys for {@link DlmStabilizationFlags}. */
 export const DLM_STABILIZATION_KEYS: ReadonlySet<string> = new Set([
   'nSym', 'nDiag', 'nDiagAbs', 'nLeak',
-  'cDiag', 'cEps', 'cDiagAbs', 'cTriuSym', 'cSmoAbsDiag',
+  'cDiag', 'cDiagAbs', 'cTriuSym', 'cSmoAbsDiag',
+]);
+
+/** Named stabilization presets for {@link DlmStabilization}. */
+export const DLM_STABILIZATION_PRESETS: ReadonlySet<string> = new Set([
+  'matlab', 'none',
 ]);
 
 /** Valid keys for {@link DlmMleOptions}. */
@@ -534,20 +539,45 @@ export interface DlmForecastResult {
 // ─── Options types ──────────────────────────────────────────────────────────
 
 /**
- * Incremental stabilization flags for the sequential scan smoother.
+ * Named presets for the `stabilization` option in {@link DlmFitOptions}.
+ *
+ * - `'matlab'` — MATLAB `dlmsmo.m` exact match: `triu+triu'` symmetrize +
+ *   `abs(diag(C_smooth))` after the backward smoother. Works for both f32
+ *   and f64. Equivalent to `{ cTriuSym: true, cSmoAbsDiag: true }`.
+ * - `'none'` — Disable all optional stabilization flags. For f32, the
+ *   unconditional Joseph form + symmetrize + `C += 1e-6·I` baseline still
+ *   applies (those cannot be disabled). Equivalent to `{ cTriuSym: false }`.
+ */
+export type DlmStabilizationPreset = 'matlab' | 'none';
+
+/**
+ * Stabilization setting for the sequential scan smoother.
+ *
+ * - **Preset string** — `'matlab'` or `'none'` (see {@link DlmStabilizationPreset}).
+ * - **Flags object** — fine-grained control for research / exploration
+ *   (see {@link DlmStabilizationFlags}).
+ * - **`undefined`** (omit the option) — library defaults: f64 uses
+ *   `triu+triu'` symmetrize; f32 uses Joseph form + `(C+C')/2` + `C += 1e-6·I`.
+ */
+export type DlmStabilization = DlmStabilizationPreset | DlmStabilizationFlags;
+
+/**
+ * Fine-grained stabilization flags for the sequential scan smoother.
  *
  * Most flags are f32-only (silently ignored for f64) and sit on top of the
- * default joseph+symmetrize+cEps baseline. Two flags — `cTriuSym` and
- * `cSmoAbsDiag` — also work for f64: they mirror the stabilization steps in
- * MATLAB's `dlmsmo.m` (triu+triu' symmetrize + abs(diag) on smoother output)
- * and reduce the f64 max error vs the Octave reference by ~3000×.
+ * default Joseph + symmetrize + `C += 1e-6·I` baseline. Two flags —
+ * `cTriuSym` and `cSmoAbsDiag` — also work for f64: they mirror the
+ * stabilization steps in MATLAB's `dlmsmo.m` (`triu+triu'` symmetrize +
+ * `abs(diag)` on smoother output) and reduce the f64 max error vs the Octave
+ * reference by ~3000×.
  *
  * Applicable to the sequential scan path only; the assoc/WebGPU path has its
  * own internal stabilization.
  *
- * Use `pnpm run stab:search:full` to exhaustively search all combinations.
+ * For most users, use the preset strings `'matlab'` or `'none'` instead.
+ * Use `pnpm run stab:search:full` to exhaustively search all flag combinations.
  */
-export interface DlmStabilization {
+export interface DlmStabilizationFlags {
   /**
    * Symmetrize N after each backward step: N = 0.5*(N + N').
    * N is an information matrix and should be symmetric, but f32 rounding in
@@ -580,14 +610,6 @@ export interface DlmStabilization {
    * Prevents negative variances from causing NaN in sqrt(diag(C_smooth)).
    */
   cDiag?: boolean;
-  /**
-   * @deprecated No-op. `cEps` (C += 1e-6·I after symmetrize) is now applied
-   * unconditionally on the f32 sequential path — exhaustive search over all
-   * 128 flag combinations confirmed it reduces max relative error on m=4 models
-   * from 1.37e-2 → 9.66e-3 with no downside on any other model. The flag is
-   * kept for API compatibility but setting it has no additional effect.
-   */
-  cEps?: boolean;
   /**
    * Take abs of diagonal of C_smooth after symmetrize: diag(C) = |diag(C)|.
    * Unlike cDiag (clamp to 1e-7) this is magnitude-preserving: if catastrophic
@@ -705,9 +727,14 @@ export interface DlmFitOptions {
   /** Algorithm selection. `'scan'` = sequential, `'assoc'` = parallel associative scan. Default: auto-select from device/dtype. */
   algorithm?: DlmAlgorithm;
   /**
-   * @experimental Incremental Float32 stabilization flags for the backward smoother.
-   * Stacks on top of the default joseph+symmetrize. See {@link DlmStabilization}.
-   * Ignored when dtype is 'f64' or algorithm is 'assoc'.
+   * Stabilization mode for the backward smoother.
+   *
+   * - `'matlab'` — MATLAB `dlmsmo.m` exact match (`cTriuSym` + `cSmoAbsDiag`).
+   * - `'none'`   — Disable all optional stabilization flags.
+   * - Object     — Fine-grained {@link DlmStabilizationFlags} for research.
+   * - `undefined` (omit) — Library defaults per dtype.
+   *
+   * See {@link DlmStabilization} and {@link DlmStabilizationFlags}.
    */
   stabilization?: DlmStabilization;
 }

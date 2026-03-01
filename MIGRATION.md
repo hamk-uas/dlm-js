@@ -116,8 +116,9 @@ const sys = dlmGenSys({ order: 1, harmonics: 2, seasonLength: 12, arCoefficients
 |---------|-------------|
 | `DType` enum (`DType.Float32`, `DType.Float64`) | `'f32'` / `'f64'` strings in `dtype` option |
 | `DlmRunConfig` | Fields (`dtype`, `algorithm`) inlined into `DlmFitOptions` / `DlmMleOptions` |
-| `stabilization` parameter | Auto-selected internally (Joseph form for Float32 scan, own formulation for assoc) |
 | `forceAssocScan` | `algorithm: 'assoc'` in options |
+| `DlmStabilization` (9-flag interface) | `DlmStabilization` union: `'matlab' \| 'none' \| DlmStabilizationFlags` — presets for common cases, flags object for research |
+| `cEps` stabilization flag | Removed (unconditional for Float32; no-op flag deleted) |
 
 ## MATLAB compatibility helpers
 

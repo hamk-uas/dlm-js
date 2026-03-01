@@ -1054,7 +1054,7 @@ or
 pnpm run test:node
 ```
 
-This runs 14 test suites (316 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, `ud.test.ts`, and `options.test.ts` — against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs 14 test suites (318 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, `ud.test.ts`, and `options.test.ts` — against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 
@@ -1075,7 +1075,6 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 
 ## TODO
 
-* Float32 backward-smoother stabilization — experimental `DlmStabilization` flags already implemented (`cEps` gives −29% max error); next steps: evaluate log-Cholesky / modified-Cholesky parameterizations, consider making `cEps` the f32 default, or collapse the 7-flag interface to a simpler enum before documenting
 * Test the built library (in `dist/`)
 * MCMC parameter estimation — depends on Marko Laine's `mcmcrun` toolbox; would require porting or replacing the MCMC engine
 * State sampling (disturbance smoother) — blocked on MCMC

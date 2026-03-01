@@ -66,6 +66,20 @@ describe('unknown option validation', () => {
     })).rejects.toThrow(/unknown option 'unknownFlag'/i);
   });
 
+  it('dlmFit rejects unknown stabilization preset', async () => {
+    await expect(dlmFit([1, 2, 3], {
+      obsStd: 1, processStd: [1, 1],
+      stabilization: 'turbo' as never,
+    })).rejects.toThrow(/unknown stabilization preset 'turbo'/i);
+  });
+
+  it('dlmFit rejects deprecated cEps flag', async () => {
+    await expect(dlmFit([1, 2, 3], {
+      obsStd: 1, processStd: [1, 1],
+      stabilization: { cEps: true } as never,
+    })).rejects.toThrow(/unknown option 'cEps'/i);
+  });
+
   // ── dlmMLE ──
   it('dlmMLE rejects MATLAB name trig with hint', async () => {
     await expect(dlmMLE([1, 2, 3], {
