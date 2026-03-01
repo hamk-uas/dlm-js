@@ -11,21 +11,10 @@
  */
 
 import { checkUnknownKeys, DLM_GENSYS_KEYS } from "./types";
+import type { DlmModelSpec } from "./types";
 
 /** DLM model configuration options */
-export interface DlmOptions {
-  /** Polynomial trend order: 0 = level, 1 = level+slope, 2 = quadratic (default: 1) */
-  order?: number;
-  /** Use full seasonal component with seasonLength-1 states (default: false). In MATLAB DLM, this is `fullseas`. */
-  fullSeasonal?: boolean;
-  /** Number of trigonometric harmonic pairs; overrides fullSeasonal if > 0 (default: 0). In MATLAB DLM, this is `trig`. */
-  harmonics?: number;
-  /** Number of seasons per cycle (default: 12). In MATLAB DLM, this is `ns`. */
-  seasonLength?: number;
-  /** AR coefficients; adds AR(p) block where p = arCoefficients.length (default: []). In MATLAB DLM, this is `arphi`. */
-  arCoefficients?: number[];
-  /** Spline mode: modifies W for order=1 (default: false) */
-  spline?: boolean;
+export interface DlmOptions extends DlmModelSpec {
   /** Fit AR coefficients via MLE optimization (default: false). In MATLAB DLM, this is `fitar`. */
   fitAr?: boolean;
 }

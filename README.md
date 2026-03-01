@@ -60,7 +60,7 @@ console.log(result.deviance);   // -2·log-likelihood
 //   result.standardizedResiduals [n], result.mse, result.mape, result.rss, result.residualVariance, result.nobs
 ```
 
-For an order=1 model with `options.spline: true`, the W covariance is scaled to produce an integrated random walk (matches MATLAB `dlmfit` spline mode).
+For an order=1 model with `spline: true`, the W covariance is scaled to produce an integrated random walk (matches MATLAB `dlmfit` spline mode).
 
 ### CommonJS (Node.js)
 
@@ -79,6 +79,20 @@ console.log(sys.F);  // observation vector (1×m)
 console.log(sys.m);  // state dimension
 ```
 
+### Shared model specification (`DlmModelSpec`)
+
+The `DlmModelSpec` type captures the structural model description (trend order, seasonality, AR) and is accepted by `dlmGenSys`, `dlmFit`, and `dlmMLE`. Define the model once and thread it through the pipeline:
+
+```ts
+import { dlmFit, dlmMLE, dlmGenSys, type DlmModelSpec } from "dlm-js";
+
+const model: DlmModelSpec = { order: 1, harmonics: 2, seasonLength: 12 };
+
+const sys = dlmGenSys(model);
+const fit = await dlmFit(y, { ...model, obsStd: 120, processStd: [40, 10], dtype: 'f64' });
+const mle = await dlmMLE(y, { ...model, dtype: 'f64' });
+```
+
 ### h-step-ahead forecasting
 
 Propagate the last smoothed state h steps forward with no new observations:
@@ -92,7 +106,7 @@ const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140];
 const fit = await dlmFit(y, { obsStd: 120, processStd: [40, 10], order: 1, dtype: 'f64' });
 
 // Forecast 12 steps ahead
-const fc = await dlmForecast(fit, 120, 12, { dtype: 'f64' });
+const fc = await dlmForecast(fit, 12, { dtype: 'f64' });
 
 console.log(fc.yhat);       // predicted observation means [h] = F·x_pred
 console.log(fc.ystd);       // observation prediction std devs [h] — grows monotonically
@@ -113,7 +127,7 @@ With covariates, pass `X_forecast` rows for each forecast step:
 
 ```js
 // Forecast 3 steps ahead with known future covariate values
-const fc = await dlmForecast(fit, 120, 3, { dtype: 'f64', X: [
+const fc = await dlmForecast(fit, 3, { dtype: 'f64', X: [
   [solarProxy[n], qbo1[n], qbo2[n]],    // step n+1
   [solarProxy[n+1], qbo1[n+1], qbo2[n+1]], // step n+2
   [solarProxy[n+2], qbo1[n+2], qbo2[n+2]], // step n+3

@@ -130,7 +130,7 @@ const s_median = [...s_filled].sort((a, b) => a - b)[Math.floor(s_filled.length 
 const H_FORE = 180;  // 15 years
 const X_forecast_zero = Array.from({ length: H_FORE }, () => [0, 0, 0]);
 const fore = await withLeakCheck(() =>
-  dlmForecast(fit, s_median, H_FORE, { X: X_forecast_zero })
+  dlmForecast(fit, H_FORE, { obsStd: s_median, X: X_forecast_zero })
 );
 
 // Build forecast time axis (monthly steps from end of data)

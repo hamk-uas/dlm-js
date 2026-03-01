@@ -19,7 +19,7 @@ export type {
   DlmFitOptions, DlmForecastOptions, DlmFitResultMatlab,
   DlmDtype, DlmAlgorithm, DlmLossFn, DlmParamMeta,
   DlmStabilization, DlmStabilizationPreset, DlmStabilizationFlags,
-  FloatArray,
+  DlmModelSpec, FloatArray,
 } from "./types";
 export { StateMatrix, CovMatrix } from "./types";
 export type { DlmOptions, DlmSystem, DlmSystemTV } from "./dlmgensys";
@@ -55,15 +55,6 @@ export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
  *
  * Reference: Durbin & Koopman (2012), "Time Series Analysis by State Space Methods"
  *
- * @param y - Observations (n×1)
- * @param F - Observation matrix (1×m), maps state to observation. When FF_arr
- *            is provided, this is the base F (1×m_base) and the effective F at
- *            each timestep is read from FF_arr instead.
- * @param V_std - Observation noise std devs (n×1)
- * @param x0_data - Initial state mean (m×1 as nested array)
- * @param G - State transition matrix (m×m)
- * @param W - State noise covariance (m×m)
- * @param C0_data - Initial state covariance (m×m as nested array)
  * @param y_arr - Observations tensor [n, p, 1] (p=1 for univariate)
  * @param V2_arr - Observation noise covariance [n, p, p] (diagonal for independent noise)
  * @param x0_data - Initial state mean (m×1 as nested array)
@@ -74,6 +65,10 @@ export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
  * @param obsSize - Observation dimension p (1 for univariate)
  * @param dtype - Computation precision
  * @param FF_scan - Observation matrix [n, p, m] (time-varying or tiled static)
+ * @param forceAssocScan - Force associative scan (parallel) algorithm
+ * @param stabilization - Stabilization mode for backward smoother
+ * @param forceSqrtAssocScan - Force square-root associative scan algorithm
+ * @param forceUdScan - Force UD (Bierman/Thornton) algorithm
  * @returns Smoothed and filtered state estimates with diagnostics
  * @internal
  */
@@ -2380,14 +2375,12 @@ export const dlmFit = async (
  * covariate F rows are included inside the same compiled body.
  *
  * @param fit - DlmFitResult from dlmFit (provides G, F, W, last smoothed state)
- * @param obsStd - Observation noise std dev (scalar, same as used in dlmFit)
  * @param h - Forecast horizon (number of steps ahead)
- * @param opts - Optional forecast options (dtype, covariates)
+ * @param opts - Optional forecast options (obsStd, dtype, covariates)
  * @returns Predicted state means, covariances, and observation predictions for steps 1…h
  */
 export const dlmForecast = async (
   fit: DlmFitResult,
-  obsStd: number,
   h: number,
   opts?: DlmForecastOptions,
 ): Promise<DlmForecastResult> => {
@@ -2397,6 +2390,7 @@ export const dlmForecast = async (
   if (fit.p && fit.p > 1) {
     throw new Error('dlmForecast does not yet support multivariate observations (p > 1)');
   }
+  const obsStd = opts?.obsStd ?? fit.obsNoise[0];
   const { G: G_data, W: W_data } = fit;
   // F_data is always number[] when p=1 (p>1 throws above)
   const F_data = fit.F as number[];

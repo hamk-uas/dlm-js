@@ -130,7 +130,7 @@ describe('unknown option validation', () => {
       smoothedCov: { get: () => 0 },
       covariates: [],
     } as never;
-    await expect(dlmForecast(mockFit, 1, 5, {
+    await expect(dlmForecast(mockFit, 5, {
       algorithm: 'scan',
     } as never)).rejects.toThrow(/unknown option 'algorithm'/i);
   });

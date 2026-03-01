@@ -75,7 +75,7 @@ describe('dlmForecast', () => {
 
     const h = 20;
     const fit = await dlmFit(obs, { obsStd: s, processStd: [qW * qW], dtype: 'f64', order: 0 });
-    const fc = await dlmForecast(fit, s, h);
+    const fc = await dlmForecast(fit, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -102,7 +102,7 @@ describe('dlmForecast', () => {
 
     const h = 15;
     const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01, 0.0025], dtype: 'f64', order: 1 });
-    const fc = await dlmForecast(fit, s, h);
+    const fc = await dlmForecast(fit, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -127,7 +127,7 @@ describe('dlmForecast', () => {
 
     const h = ns * 2;
     const fit = await dlmFit(obs, { obsStd: s, processStd: new Array(nW).fill(0.01), dtype: 'f64', order: 0, harmonics: nHarmonics, seasonLength: ns });
-    const fc = await dlmForecast(fit, s, h);
+    const fc = await dlmForecast(fit, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -155,7 +155,7 @@ describe('dlmForecast', () => {
 
     const h = 20;
     const fit = await dlmFit(obs, { obsStd: s, processStd: [0.09, 0], dtype: 'f64', order: 0, arCoefficients: phi });
-    const fc = await dlmForecast(fit, s, h);
+    const fc = await dlmForecast(fit, h);
 
     assertAllFinite(fc.yhat);
     assertAllFinite(fc.ystd);
@@ -181,8 +181,8 @@ describe('dlmForecast', () => {
     const X_low  = Array.from({ length: h }, () => [-1.0] as ArrayLike<number>);
     const X_high = Array.from({ length: h }, () => [+1.0] as ArrayLike<number>);
     const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01], dtype: 'f64', order: 0, X: X_train });
-    const fc_low  = await dlmForecast(fit, s, h, { X: X_low });
-    const fc_high = await dlmForecast(fit, s, h, { X: X_high });
+    const fc_low  = await dlmForecast(fit, h, { X: X_low });
+    const fc_high = await dlmForecast(fit, h, { X: X_high });
 
     assertAllFinite(fc_low.yhat);
     assertAllFinite(fc_high.yhat);
@@ -205,7 +205,7 @@ describe('dlmForecast', () => {
     for (const cfg of configs) {
       applyConfig(cfg);
       const fit = await dlmFit(obs, { obsStd: s, processStd: [0.01], dtype: getDlmDtype(cfg), order: 0 });
-      const fc  = await dlmForecast(fit, s, h, { dtype: getDlmDtype(cfg) });
+      const fc  = await dlmForecast(fit, h, { dtype: getDlmDtype(cfg) });
 
       expect(fc.h, `${cfg.label}: h`).toBe(h);
       expect(fc.m, `${cfg.label}: m`).toBe(1);

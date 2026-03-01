@@ -43,8 +43,10 @@ const mle = await dlmMLE(y, { order: 1, maxIter: 300, lr: 0.05, tol: 1e-6, dtype
 // Before
 const fc = await dlmForecast(fit, s, h, { dtype: DType.Float64 }, X_forecast);
 
-// After
-const fc = await dlmForecast(fit, obsStd, h, { dtype: 'f64', X: X_forecast });
+// After — obsStd defaults to fit.obsNoise[0], so usually just:
+const fc = await dlmForecast(fit, h, { dtype: 'f64', X: X_forecast });
+// Or with explicit obsStd override:
+const fc = await dlmForecast(fit, h, { obsStd, dtype: 'f64', X: X_forecast });
 ```
 
 ### `dlmGenSys`

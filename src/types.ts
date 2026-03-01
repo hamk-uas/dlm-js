@@ -141,7 +141,7 @@ export const DLM_MLE_NATURAL_KEYS: ReadonlySet<string> = new Set([
 
 /** Valid keys for {@link DlmForecastOptions}. */
 export const DLM_FORECAST_KEYS: ReadonlySet<string> = new Set([
-  'dtype', 'X',
+  'dtype', 'X', 'obsStd', 'timestamps',
 ]);
 
 /** Valid keys for {@link DlmOptions} (dlmGenSys). */
@@ -645,10 +645,42 @@ export interface DlmStabilizationFlags {
   cSmoAbsDiag?: boolean;
 }
 
+// ─── Shared model specification ─────────────────────────────────────────────
+
+/**
+ * Shared model specification fields used by {@link DlmFitOptions},
+ * {@link DlmMleOptions}, and {@link DlmOptions} (dlmGenSys).
+ *
+ * These fields describe the structural components of the state-space model:
+ * polynomial trend, seasonal/harmonic, AR, and spline.  A single
+ * `DlmModelSpec` object can be threaded through the full pipeline:
+ *
+ * ```ts
+ * const model: DlmModelSpec = { order: 1, harmonics: 2, seasonLength: 12 };
+ * const sys   = dlmGenSys(model);
+ * const fit   = await dlmFit(y, { ...model, obsStd: 120, processStd: [40, 10] });
+ * const mle   = await dlmMLE(y, model);
+ * ```
+ */
+export interface DlmModelSpec {
+  /** Polynomial trend order: 0 (level), 1 (level + slope), 2 (level + slope + acceleration). Default: 1. */
+  order?: number;
+  /** Number of trigonometric harmonic pairs. In MATLAB DLM, this is `trig`. */
+  harmonics?: number;
+  /** Seasons per cycle (period length). In MATLAB DLM, this is `ns`. Default: 12. */
+  seasonLength?: number;
+  /** Full seasonal component (ns-1 dummy variables). In MATLAB DLM, this is `fullseas`. */
+  fullSeasonal?: boolean;
+  /** AR coefficients (initial values). In MATLAB DLM, this is `arphi`. */
+  arCoefficients?: number[];
+  /** Spline mode for order=1: modifies W for integrated random walk. */
+  spline?: boolean;
+}
+
 /**
  * Options for {@link dlmFit} and dlmFitTensor.
  */
-export interface DlmFitOptions {
+export interface DlmFitOptions extends DlmModelSpec {
   // ── Noise (required) ──
 
   /**
@@ -666,21 +698,6 @@ export interface DlmFitOptions {
   obsStd: number | ArrayLike<number> | number[][];
   /** Process noise std devs (diagonal of √W). Length determines which states have noise. */
   processStd: number[];
-
-  // ── Model specification (optional, defaults to local linear trend) ──
-
-  /** Polynomial trend order: 0 (level), 1 (level + slope), 2 (level + slope + acceleration). Default: 1. */
-  order?: number;
-  /** Number of trigonometric harmonic pairs. In MATLAB DLM, this is `trig`. */
-  harmonics?: number;
-  /** Seasons per cycle (period length). In MATLAB DLM, this is `ns`. Default: 12. */
-  seasonLength?: number;
-  /** Full seasonal component (ns-1 dummy variables). In MATLAB DLM, this is `fullseas`. */
-  fullSeasonal?: boolean;
-  /** AR coefficients (initial values). In MATLAB DLM, this is `arphi`. */
-  arCoefficients?: number[];
-  /** Spline mode for order=1: modifies W for integrated random walk. */
-  spline?: boolean;
 
   // ── Multivariate observations ──
 
@@ -742,19 +759,9 @@ export interface DlmFitOptions {
 /**
  * Options for {@link dlmMLE}.
  */
-export interface DlmMleOptions {
-  // ── Model specification ──
+export interface DlmMleOptions extends DlmModelSpec {
+  // ── Model specification (inherited from DlmModelSpec) ──
 
-  /** Polynomial trend order. Default: 1. */
-  order?: number;
-  /** Number of trigonometric harmonic pairs. In MATLAB DLM, this is `trig`. */
-  harmonics?: number;
-  /** Seasons per cycle. In MATLAB DLM, this is `ns`. Default: 12. */
-  seasonLength?: number;
-  /** Full seasonal component. In MATLAB DLM, this is `fullseas`. */
-  fullSeasonal?: boolean;
-  /** AR coefficients (initial values when fitAr=true). In MATLAB DLM, this is `arphi`. */
-  arCoefficients?: number[];
   /** Estimate AR coefficients via MLE. In MATLAB DLM, this is `fitar`. */
   fitAr?: boolean;
 
@@ -882,6 +889,19 @@ export interface DlmForecastOptions {
   dtype?: DlmDtype;
   /** Covariate rows for forecast steps (h rows × q cols). */
   X?: ArrayLike<number>[];
+  /**
+   * Observation noise std dev (scalar). Overrides the value from the fit result.
+   * If omitted, defaults to `fit.obsNoise[0]` (the first observation's noise std dev).
+   * Useful for scenario analysis ("what if observation noise were different?").
+   */
+  obsStd?: number;
+  /**
+   * Timestamps for forecast steps (length h). When provided, forecast-step
+   * intervals Δt_k = timestamps[k] - timestamps[k-1] (or timestamps[0] - last
+   * fit timestamp) are used to compute time-varying G(Δt_k) and W(Δt_k).
+   * When omitted, all forecast steps use Δt = 1 (uniform spacing).
+   */
+  timestamps?: number[];
 }
 
 // adSafeInv removed in v0.7.8: np.linalg.inv now has a correct VJP.
