@@ -27,12 +27,15 @@ importers:
       jiti:
         specifier: ^2.6.1
         version: 2.6.1
+      katex:
+        specifier: ^0.16.33
+        version: 0.16.33
+      markdown-it-texmath:
+        specifier: ^1.0.0
+        version: 1.0.0
       typedoc:
         specifier: ^0.28.17
         version: 0.28.17(typescript@5.9.3)
-      typedoc-plugin-katex:
-        specifier: ^0.1.2
-        version: 0.1.2
       typedoc-theme-fresh:
         specifier: ^0.2.3
         version: 0.2.3(typedoc@0.28.17(typescript@5.9.3))
@@ -868,6 +871,10 @@ packages:
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
+  commander@8.3.0:
+    resolution: {integrity: sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww==}
+    engines: {node: '>= 12'}
+
   compare-versions@6.1.1:
     resolution: {integrity: sha512-4hm4VPpIecmlg59CHXnRDnqGplJFrbLG4aFEl5vl6cK1u76ws3LLvX7ikFnTDl5vo39sjWD6AaDPYodJp/NNHg==}
 
@@ -1144,6 +1151,10 @@ packages:
   jsonfile@6.2.0:
     resolution: {integrity: sha512-FGuPw30AdOIUTRMC2OMRtQV+jkVj2cfPqSeWXv1NEAJ1qZ5zb1X6z1mFhbfOB/iy3ssJCD+3KuZ8r8C3uVFlAg==}
 
+  katex@0.16.33:
+    resolution: {integrity: sha512-q3N5u+1sY9Bu7T4nlXoiRBXWfwSefNGoKeOwekV+gw0cAXQlz2Ww6BLcmBxVDeXBMUDQv6fK5bcNaJLxob3ZQA==}
+    hasBin: true
+
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
 
@@ -1187,6 +1198,9 @@ packages:
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
+
+  markdown-it-texmath@1.0.0:
+    resolution: {integrity: sha512-4hhkiX8/gus+6e53PLCUmUrsa6ZWGgJW2XCW6O0ASvZUiezIK900ZicinTDtG3kAO2kon7oUA/ReWmpW2FByxg==}
 
   markdown-it@14.1.1:
     resolution: {integrity: sha512-BuU2qnTti9YKgK5N+IeMubp14ZUKUUw7yeJbkjtosvHiP0AZ5c8IAgEMk79D0eC8F23r4Ac/q8cAIFdm2FtyoA==}
@@ -1447,9 +1461,6 @@ packages:
   type-detect@4.1.0:
     resolution: {integrity: sha512-Acylog8/luQ8L7il+geoSxhEkazvkslg7PSNKOX59mbB9cOveP5aq9h74Y7YU8yDpJwetzQQrfIwtf4Wp4LKcw==}
     engines: {node: '>=4'}
-
-  typedoc-plugin-katex@0.1.2:
-    resolution: {integrity: sha512-2TsaDyvQVYq1yEa7v7MPz4GEM1iWlu4QWeEtcx3B1FyLdHRDoAf0aEW2zo7By8aOyrI1yWA4hnAZKYg1iW/HHA==}
 
   typedoc-theme-fresh@0.2.3:
     resolution: {integrity: sha512-SKSKyULDZMTMViCSY9A1e/Y9+A38oMfjHD6kpNdtb5+EBsiAUJfnuXWGu4tYPn6gon5KqzhWYwIqZv2T8/I/Tw==}
@@ -2344,6 +2355,8 @@ snapshots:
 
   color-name@1.1.4: {}
 
+  commander@8.3.0: {}
+
   compare-versions@6.1.1: {}
 
   concat-map@0.0.1: {}
@@ -2637,6 +2650,10 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
+  katex@0.16.33:
+    dependencies:
+      commander: 8.3.0
+
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
@@ -2684,6 +2701,8 @@ snapshots:
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  markdown-it-texmath@1.0.0: {}
 
   markdown-it@14.1.1:
     dependencies:
@@ -2931,8 +2950,6 @@ snapshots:
       prelude-ls: 1.2.1
 
   type-detect@4.1.0: {}
-
-  typedoc-plugin-katex@0.1.2: {}
 
   typedoc-theme-fresh@0.2.3(typedoc@0.28.17(typescript@5.9.3)):
     dependencies:
