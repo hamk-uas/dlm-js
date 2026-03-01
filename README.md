@@ -499,11 +499,11 @@ This is emitted as $\mathtt{C\_pred}$ for the backward smoother.
 
 **2. Innovation.** $v_t = y_t - F \, x_{t|t-1}$.
 
-**3. Bierman measurement update (scalar observation, $p=1$).** Clone the carry's $U_{t|t-1}, D_{t|t-1}$ as working arrays. Define $f = U^\top H^\top$ and $g = D \odot f$ (element-wise). Initialize $\alpha_0 = V^2$. For $j = m{-}1$ down to $0$:
+**3. Bierman measurement update (scalar observation, $p=1$).** Clone the carry's $U_{t|t-1}, D_{t|t-1}$ as working arrays. Define $f = U^\top F^\top$ and $g = D \odot f$ (element-wise). Initialize $\alpha = V^2$. For $j = m{-}1$ down to $0$:
 
-$$\alpha_{j}^{\text{new}} = \alpha_{j}^{\text{old}} + f_j \, g_j$$
+$$\alpha^{\text{new}} = \alpha^{\text{old}} + f_j \, g_j$$
 
-$$d_j^+ = d_j \cdot \frac{\alpha_j^{\text{old}}}{\alpha_j^{\text{new}}}, \qquad \lambda_j = -\frac{f_j}{\alpha_j^{\text{old}}}$$
+$$d_j^+ = d_j \cdot \frac{\alpha^{\text{old}}}{\alpha^{\text{new}}}, \qquad \lambda_j = -\frac{f_j}{\alpha^{\text{old}}}$$
 
 $$\bar{U}_{i,j}^+ = \bar{U}_{i,j} + \lambda_j \, g_i \quad (i > j), \qquad g_i^+ = g_i + \bar{U}_{i,j} \, g_j \quad (i > j)$$
 
@@ -515,7 +515,7 @@ After the loop, $\alpha_{\text{final}} = C_p^{(t)}$ (innovation covariance) and 
 
 **5. Thornton time update (modified weighted Gram-Schmidt).** Given the Bierman-updated factors $U_t^+, D_t^+$ and process noise $W_t$:
 
-1. Factor $W_t = L_W \, D_W \, L_W^\top$ via Cholesky → LDL (one-time per step on the well-conditioned user-specified $W$).
+1. Decompose $W_t = L_W \, D_W \, L_W^\top$. For diagonal $W$ (all dlm-js models), $L_W = I$ and $D_W = \text{diag}(W_t)$, extracted directly without Cholesky to avoid $\epsilon$ contamination.
 2. Form the augmented matrix $B = G \, U_t^+$ and its companion $L = L_W$, with weight vectors $D_t^+$ and $D_W$.
 3. MWGS: for $j = 0, \ldots, m{-}1$:
 
@@ -542,7 +542,7 @@ The backward pass is the standard sequential RTS smoother (same function as the 
 | Factorization convention | Unit lower-triangular $U$ | Cholesky gives lower-tri $L$ natively; avoids transpose |
 | Measurement update | Bierman column loop ($j = m{-}1$ down to $0$) | Scalar-observation processing; produces gain $K$ and $C_p$ as byproducts |
 | Time update | Thornton MWGS on augmented $[G U_{\text{filt}}, L_W]$ | Propagates UD factors directly; no Cholesky re-factorization of $C$; no epsilon needed |
-| $W$ factorization | Cholesky → LDL of $W_t$ each step | $W$ is user-specified process noise (well-conditioned); one-time cost per step |
+| $W$ factorization | Explicit diagonal extraction of $W_t$ each step | $W$ is diagonal in dlm-js; avoids $\epsilon$ contamination from Cholesky |
 | Column loop order | $j = m{-}1$ down to $0$ (Bierman), $j = 0$ to $m{-}1$ (Thornton) | Lower-tri convention: free entries at $i > j$ |
 | Backward smoother gain $K$ | $K = G \, K_{\text{Bierman}}$ | Predicted-convention gain from Bierman's exact $C_{\text{pred}} F' / C_p$ |
 | NaN masking | $f \leftarrow 0$ when observation is NaN | Entire Bierman loop becomes a no-op: $D, U$ unchanged, $K = 0$ |

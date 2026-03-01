@@ -580,7 +580,7 @@ const dlmSmo = async (
 
     // ── Bierman measurement update (p=1 scalar observation) ──
     // U_bar is unit LOWER-triangular: C_pred = U·D·U'.
-    // f = U'·H' (U' is upper-tri × column vec).
+    // f = U'·F' (U' is upper-tri × column vec).
     // Column loop runs in REVERSE order (j = m-1 down to 0) because for
     // lower-tri U the free entries in column j are at rows i > j.  Reverse
     // processing ensures g[j] is still its original value when used in the
