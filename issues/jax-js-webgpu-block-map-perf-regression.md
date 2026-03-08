@@ -91,6 +91,20 @@ Updated to `a6f588f1cc20a287ab7b28fdeb373d1543c3e5dc` (block-map branch). All 31
 
 Numbers essentially identical to 17d2257. The fix in a6f588f does not address this regression.
 
+### 2026-03-08: Commit 9b5bf7d — regression NOT fixed
+
+Updated to `9b5bf7d79a0716129b8c29a34e5058f74d3d9500` (block-map branch). All 317 tests pass (correctness OK). Repro output:
+
+```
+  N       | baseline (d08dd54) | observed | slowdown
+      100 |     541 ms       |     654 ms | 1.21×
+     3200 |     615 ms       |    1786 ms | 2.90× <<<
+    12800 |     738 ms       |    5372 ms | 7.28× <<<
+    25600 |     899 ms       |   10523 ms | 11.70× <<<
+```
+
+Numbers identical to a6f588f and 17d2257. Three consecutive block-map commits tested — none address this regression.
+
 ## Hardware
 
 - GPU: NVIDIA RTX 4070 (eGPU, Thunderbolt 4)
