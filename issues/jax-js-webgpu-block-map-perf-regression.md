@@ -75,6 +75,22 @@ The script measures WebGPU `dlmFit` (algorithm: 'assoc') at N=100, 3200, 12800, 
 2. Compare the number of `queue.submit()` calls and buffer operations per Kogge-Stone round between the two branches.
 3. If the regression is in buffer mapping (the "block-map" in the branch name suggests a new buffer mapping strategy), consider whether the old mapping strategy can be preserved for `associativeScan` workloads where the same buffers are reused across rounds.
 
+## Observations
+
+### 2026-03-08: Commit a6f588f — regression NOT fixed
+
+Updated to `a6f588f1cc20a287ab7b28fdeb373d1543c3e5dc` (block-map branch). All 317 tests pass (correctness OK). Repro output:
+
+```
+  N       | baseline (d08dd54) | observed | slowdown
+      100 |     541 ms       |     645 ms | 1.19×
+     3200 |     615 ms       |    1785 ms | 2.90× <<<
+    12800 |     738 ms       |    5333 ms | 7.23× <<<
+    25600 |     899 ms       |   10612 ms | 11.80× <<<
+```
+
+Numbers essentially identical to 17d2257. The fix in a6f588f does not address this regression.
+
 ## Hardware
 
 - GPU: NVIDIA RTX 4070 (eGPU, Thunderbolt 4)
