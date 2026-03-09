@@ -111,6 +111,53 @@ The dispatch count is still the dominant cost. At N=100, the forward+backward `a
 
 **Status: 🔴 Open** — parallel readback is adopted, but the core dispatch-count issue persists.
 
+## Observation: `689d8a5` — WASM compiled-loop + binding limit guard (2026-03-09)
+
+Commit `689d8a5` (single commit since `3e580f4`) adds three features:
+
+1. **Multi-output kernel slot mapping** in `planAssociativeScan` — fixes WASM "unmapped slot" crash for multi-output compose functions like DLM's 5-tuple.
+2. **Adaptive block size** with shmem pre-estimation (tries B=256, 128, 64, 32).
+3. **Storage buffer binding limit check** — rejects block-map when bindings > `maxStorageBuffersPerShaderStage`. For the 5-tuple forward compose: `numConsts + 2×numLeaves = 1 + 2×5 = 11 bindings > limit 10` → falls back to Kogge-Stone on WebGPU.
+
+### WASM compiled-loop activation
+
+The WASM compiled-loop-blocked path now activates for the forward 5-tuple compose:
+```
+[assoc-scan] SUCCESS! Using WASM compiled-loop-blocked (B=256) with 4 step(s)
+```
+
+Confirmed via `setDebug(2)`. The jaxpr traces per-element shapes `float64[2,2]` — both `np.einsum('nij,njk->nik', ...)` and `np.matmul(...)` lower to the same `dot_general` primitive and both activate the compiled-loop equally. **No einsum→matmul conversion needed.**
+
+### A/B test: einsum vs matmul in compose functions
+
+Tested both variants at `dlmFit` level (Nile N=100, m=2, 30 warm runs each):
+
+| Compose variant | scan p50 | assoc p50 | assoc/scan |
+|-----------------|----------|-----------|------------|
+| einsum (original) | 3.29 ms | 12.98 ms | 3.94× |
+| matmul (converted) | 3.25 ms | 12.58 ms | 3.87× |
+
+Identical within noise. The jaxpr tracing normalises both to `dot_general` — the compiled-loop doesn't care which JS-level API produced it.
+
+### WebGPU unchanged
+
+WebGPU warm: ~122 ms (Nile order=1, m=2). The 5-tuple binding limit (11 > 10) means WebGPU still uses Kogge-Stone fallback. The 3-tuple backward compose (0 constants + 6 leaves = 6 bindings ≤ 10) could potentially use block-map, but this isn't observed yet.
+
+### Scaling (bench-scaling.ts, Nile order=1, m=2)
+
+| N | WASM/f64 (warm) | WebGPU/f32 (cold) | ratio |
+|---|-----------------|-------------------|-------|
+| 100 | 9.5 ms | 366 ms | 38× |
+| 800 | 7.1 ms | 736 ms | 104× |
+| 3200 | 9.0 ms | 1,692 ms | 188× |
+| 12800 | 16.3 ms | 5,300 ms | 325× |
+| 51200 | 42.9 ms | 19,363 ms | 451× |
+| 102400 | 100.1 ms | timeout | — |
+
+Ratios are worse than `3e580f4` because WebGPU cold includes JIT compile time while WASM is warm (polymorphic JIT).
+
+**Status: 🔴 Open** — WASM compiled-loop activates (scan itself is fast), but full `dlmFit(algorithm:'assoc')` is still ~4× slower than `scan` due to element construction and smoother overhead. WebGPU dispatch count unchanged.
+
 ## Hardware
 
 - GPU: NVIDIA RTX 4070 (eGPU, Thunderbolt 4)

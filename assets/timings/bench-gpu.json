@@ -1,10 +1,10 @@
 {
-  "nile_o0__webgpu_f32__first": 272.777338,
-  "nile_o0__webgpu_f32__warm": 119.06991800000003,
-  "nile_o1__webgpu_f32__first": 316.53338399999996,
-  "nile_o1__webgpu_f32__warm": 122.92299400000002,
-  "kaisaniemi__webgpu_f32__first": 591.7305289999999,
-  "kaisaniemi__webgpu_f32__warm": 355.1083739999999,
-  "trigar__webgpu_f32__first": 612.2544079999998,
-  "trigar__webgpu_f32__warm": 361.8880610000001
+  "nile_o0__webgpu_f32__first": 281.462621,
+  "nile_o0__webgpu_f32__warm": 125.48539000000005,
+  "nile_o1__webgpu_f32__first": 313.82093999999995,
+  "nile_o1__webgpu_f32__warm": 121.94660600000009,
+  "kaisaniemi__webgpu_f32__first": 769.5999280000001,
+  "kaisaniemi__webgpu_f32__warm": 182.41461299999992,
+  "trigar__webgpu_f32__first": 590.990002,
+  "trigar__webgpu_f32__warm": 183.5491350000002
 }
