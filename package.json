@@ -10,10 +10,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "@hamk-uas/jax-js-nonconsuming"
-    ],
-    "overrides": {
-      "@hamk-uas/jax-js-nonconsuming": "link:../jax-js-nonconsuming"
-    }
+    ]
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
@@ -79,6 +76,6 @@
     }
   },
   "dependencies": {
-    "@hamk-uas/jax-js-nonconsuming": "link:../jax-js-nonconsuming"
+    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#v0.8.0"
   }
 }
