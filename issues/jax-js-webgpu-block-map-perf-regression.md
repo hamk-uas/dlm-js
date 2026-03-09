@@ -68,6 +68,19 @@ The compose functions in dlm-js are representative of real `associativeScan` wor
 
 ...then WebGPU `associativeScan` would go from hundreds of dispatches to single-digits, and the 20–200× overhead should collapse to near-parity with WASM or better.
 
+## Failure observation: `3c37a3d` (2026-03-09)
+
+Commits `39c9328` (stable jaxpr hash + unrolled polyfills) and `3c37a3d` (JIT execute loop optimization) claim WebGPU N=100 m=2 warm goes from 323ms → 7ms. On our hardware, **no improvement observed**:
+
+| N | WASM/f64 (warm) | WebGPU/f32 (cold) | WebGPU/f32 (warm) | cold/WASM | warm/WASM |
+|---|-----------------|-------------------|-------------------|-----------|-----------|
+| 100 | 6.7 ms | 548 ms | 318 ms | 82× | 48× |
+| 3200 | 8.2 ms | 1761 ms | 1561 ms | 216× | 191× |
+
+Previous measurement at `0e5a982`: N=100 cold 649ms (20×), N=3200 cold 1839ms (59×). Warm runs are essentially unchanged from before the optimization commits.
+
+Tests: 317/318 pass (correctness is fine — this is purely a performance issue).
+
 ## Hardware
 
 - GPU: NVIDIA RTX 4070 (eGPU, Thunderbolt 4)
