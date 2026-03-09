@@ -8,8 +8,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 289.54056099999997,
-      "warmMs": 251.03865099999996,
+      "firstMs": 232.645201,
+      "warmMs": 160.824973,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -22,8 +22,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 221.11034999999993,
-      "warmMs": 215.10424199999989,
+      "firstMs": 139.023231,
+      "warmMs": 139.337673,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -36,8 +36,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 201.45903599999997,
-      "warmMs": 146.5266650000001,
+      "firstMs": 144.67879800000003,
+      "warmMs": 72.91162799999984,
       "stable": true,
       "maxAbsErr": 5.118863555253483e-9,
       "maxPctErr": 4.873912250773534e-10
@@ -50,11 +50,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 229.14780599999995,
-      "warmMs": 239.9338630000002,
+      "firstMs": 512.4952190000001,
+      "warmMs": 348.2359299999998,
       "stable": true,
-      "maxAbsErr": 1.5916157281026244e-12,
-      "maxPctErr": 1.819268236679251e-13
+      "maxAbsErr": 6.821210263296962e-13,
+      "maxPctErr": 2.5989546238275017e-13
     },
     {
       "model": "Nile, order=0",
@@ -64,8 +64,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 394.45908599999984,
-      "warmMs": 383.0482109999998,
+      "firstMs": 269.6674220000002,
+      "warmMs": 258.52465200000006,
       "stable": true,
       "maxAbsErr": 2.5011104298755527e-12,
       "maxPctErr": 1.3028528792759433e-12
@@ -78,8 +78,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 226.656434,
-      "warmMs": 216.43427900000006,
+      "firstMs": 154.20567699999992,
+      "warmMs": 143.05401200000006,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00009927985510129371
@@ -92,8 +92,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 258.0923200000002,
-      "warmMs": 247.11280699999998,
+      "firstMs": 174.174489,
+      "warmMs": 179.5652200000004,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00009927985510129371
@@ -106,8 +106,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 149.1787529999997,
-      "warmMs": 155.6998090000002,
+      "firstMs": 104.72608300000002,
+      "warmMs": 68.86770399999978,
       "stable": true,
       "maxAbsErr": 0.004929106836243591,
       "maxPctErr": 0.0004742033186195521
@@ -120,11 +120,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 219.67787299999964,
-      "warmMs": 212.24841000000015,
+      "firstMs": 448.15479300000015,
+      "warmMs": 349.7608960000007,
       "stable": true,
-      "maxAbsErr": 0.00020143199276390078,
-      "maxPctErr": 0.00002911234851436964
+      "maxAbsErr": 0.000296773307127296,
+      "maxPctErr": 0.00005728284394733532
     },
     {
       "model": "Nile, order=0",
@@ -134,8 +134,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 367.7590419999997,
-      "warmMs": 358.0660740000003,
+      "firstMs": 266.7922779999999,
+      "warmMs": 250.8934390000004,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00010625637079699816
@@ -148,8 +148,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 44.467241000000286,
-      "warmMs": 26.05213399999957,
+      "firstMs": 28.847665000000234,
+      "warmMs": 5.477955000000293,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -162,8 +162,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 23.31802500000049,
-      "warmMs": 19.9078870000003,
+      "firstMs": 13.93554800000038,
+      "warmMs": 4.195706000000428,
       "stable": true,
       "maxAbsErr": 1.1368683772161603e-13,
       "maxPctErr": 1.734694432165283e-14
@@ -176,8 +176,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 103.33930400000008,
-      "warmMs": 77.36886600000071,
+      "firstMs": 73.92449800000031,
+      "warmMs": 24.23555699999997,
       "stable": true,
       "maxAbsErr": 5.118863555253483e-9,
       "maxPctErr": 4.873912250773534e-10
@@ -190,11 +190,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 157.02068099999997,
-      "warmMs": 136.23800200000005,
+      "firstMs": 238.0476690000005,
+      "warmMs": 76.81022200000007,
       "stable": true,
-      "maxAbsErr": 1.5916157281026244e-12,
-      "maxPctErr": 1.819268236679251e-13
+      "maxAbsErr": 6.821210263296962e-13,
+      "maxPctErr": 2.5989546238275017e-13
     },
     {
       "model": "Nile, order=0",
@@ -204,8 +204,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 36.39741700000013,
-      "warmMs": 31.517815000000155,
+      "firstMs": 18.27190000000064,
+      "warmMs": 6.431225999999697,
       "stable": true,
       "maxAbsErr": 2.5011104298755527e-12,
       "maxPctErr": 1.3028528792759433e-12
@@ -218,8 +218,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 30.104781000000003,
-      "warmMs": 19.40136100000018,
+      "firstMs": 15.987030000000232,
+      "warmMs": 4.772431999999753,
       "stable": true,
       "maxAbsErr": 0.0001519166751222656,
       "maxPctErr": 0.00010625637079699816
@@ -232,8 +232,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 26.584083000000646,
-      "warmMs": 23.333369999999377,
+      "firstMs": 15.148226999999679,
+      "warmMs": 4.270021999999699,
       "stable": true,
       "maxAbsErr": 0.0001519166751222656,
       "maxPctErr": 0.00010625637079699816
@@ -246,8 +246,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 93.965416,
-      "warmMs": 73.44457499999953,
+      "firstMs": 63.956185000000005,
+      "warmMs": 16.17310499999985,
       "stable": true,
       "maxAbsErr": 0.004929106836243591,
       "maxPctErr": 0.0004742033186195521
@@ -260,11 +260,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 149.60668199999964,
-      "warmMs": 132.06334499999957,
+      "firstMs": 246.8221139999996,
+      "warmMs": 78.82367499999964,
       "stable": true,
-      "maxAbsErr": 0.00020143199276390078,
-      "maxPctErr": 0.00002911234851436964
+      "maxAbsErr": 0.0003980220967605419,
+      "maxPctErr": 0.00007504652516944935
     },
     {
       "model": "Nile, order=0",
@@ -274,8 +274,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 34.217437000000245,
-      "warmMs": 29.397665999999845,
+      "firstMs": 17.942307000000255,
+      "warmMs": 4.986447000000226,
       "stable": true,
       "maxAbsErr": 0.00009221875143339275,
       "maxPctErr": 0.00010625637079699816
@@ -288,11 +288,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 594.1718039999996,
-      "warmMs": 617.04817,
+      "firstMs": 279.15490599999976,
+      "warmMs": 221.99887799999942,
       "stable": true,
-      "maxAbsErr": 0.0001519166751222656,
-      "maxPctErr": 0.00010625637079699816
+      "maxAbsErr": 5468.65437786323,
+      "maxPctErr": 10001.358022651575
     },
     {
       "model": "Nile, order=0",
@@ -302,11 +302,11 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 413.9552480000002,
-      "warmMs": 369.636481999999,
+      "firstMs": 221.02047999999922,
+      "warmMs": 148.3130570000003,
       "stable": true,
-      "maxAbsErr": 0.004929106836243591,
-      "maxPctErr": 0.0004742033186195521
+      "maxAbsErr": 25.12387001058316,
+      "maxPctErr": 61.33652229936699
     },
     {
       "model": "Nile, order=0",
@@ -316,11 +316,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1050.8730930000002,
-      "warmMs": 1056.2856460000003,
+      "firstMs": 472.0058599999993,
+      "warmMs": 390.2575569999999,
       "stable": true,
-      "maxAbsErr": 0.00009221875143339275,
-      "maxPctErr": 0.00010625637079699816
+      "maxAbsErr": 5468.65388958198,
+      "maxPctErr": 10001.357129657565
     },
     {
       "model": "Nile, order=0",
@@ -330,11 +330,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 829.167711,
-      "warmMs": 924.2294510000011,
+      "firstMs": 229.59364199999982,
+      "warmMs": 170.6935080000003,
       "stable": true,
-      "maxAbsErr": 0.0001519166751222656,
-      "maxPctErr": 0.00010625637079699816
+      "maxAbsErr": 5468.65437786323,
+      "maxPctErr": 10001.358022651575
     },
     {
       "model": "Nile, order=1",
@@ -344,8 +344,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 439.5767619999988,
-      "warmMs": 431.52640000000065,
+      "firstMs": 378.94481499999983,
+      "warmMs": 366.26925200000096,
       "stable": true,
       "maxAbsErr": 6.679101716144942e-13,
       "maxPctErr": 4.7754214358181386e-11
@@ -358,8 +358,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 347.7662970000001,
-      "warmMs": 348.86210400000164,
+      "firstMs": 295.9303940000009,
+      "warmMs": 289.16091400000005,
       "stable": true,
       "maxAbsErr": 2.3419488570652902e-11,
       "maxPctErr": 1.4032392219096375e-9
@@ -372,8 +372,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 326.33032599999933,
-      "warmMs": 325.10772200000065,
+      "firstMs": 267.7869720000017,
+      "warmMs": 221.9714440000007,
       "stable": true,
       "maxAbsErr": 2.890374162234366e-9,
       "maxPctErr": 4.360714157389197e-7
@@ -386,11 +386,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 449.0432410000012,
-      "warmMs": 452.103153,
+      "firstMs": 1717.0651909999997,
+      "warmMs": 1501.3605339999995,
       "stable": true,
-      "maxAbsErr": 2281.44640425218,
-      "maxPctErr": 5976.157846809211
+      "maxAbsErr": 2281.446404252176,
+      "maxPctErr": 5976.157846808936
     },
     {
       "model": "Nile, order=1",
@@ -400,8 +400,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 896.8611550000023,
-      "warmMs": 879.2766389999997,
+      "firstMs": 744.8127789999999,
+      "warmMs": 722.5321949999998,
       "stable": true,
       "maxAbsErr": 1.3096723705530167e-10,
       "maxPctErr": 1.4326264307454416e-10
@@ -414,8 +414,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 408.56699500000104,
-      "warmMs": 397.18650100000013,
+      "firstMs": 339.9011699999992,
+      "warmMs": 336.2456570000013,
       "stable": true,
       "maxAbsErr": 0.0015982297661594203,
       "maxPctErr": 0.022522675753179146
@@ -428,8 +428,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 467.2928439999996,
-      "warmMs": 450.7344779999985,
+      "firstMs": 387.48562499999935,
+      "warmMs": 386.95247199999903,
       "stable": true,
       "maxAbsErr": 0.0014761594536594203,
       "maxPctErr": 0.01094211222176302
@@ -442,8 +442,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 328.5733710000022,
-      "warmMs": 330.46789799999897,
+      "firstMs": 274.019350999999,
+      "warmMs": 221.42124799999874,
       "stable": true,
       "maxAbsErr": 0.002974687524329056,
       "maxPctErr": 0.3932809098863647
@@ -456,11 +456,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 443.1080870000005,
-      "warmMs": 442.5847759999997,
+      "firstMs": 1727.7097680000006,
+      "warmMs": 1523.3631429999987,
       "stable": true,
       "maxAbsErr": 2281.4461483056302,
-      "maxPctErr": 5977.372928677012
+      "maxPctErr": 5976.532796099343
     },
     {
       "model": "Nile, order=1",
@@ -470,8 +470,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 884.2940689999996,
-      "warmMs": 874.2699570000004,
+      "firstMs": 724.6591559999979,
+      "warmMs": 722.1606749999992,
       "stable": true,
       "maxAbsErr": 0.0011099485161594203,
       "maxPctErr": 0.07479471565633466
@@ -484,8 +484,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 32.85345700000107,
-      "warmMs": 26.111159000000043,
+      "firstMs": 18.883256000000983,
+      "warmMs": 4.815236999998888,
       "stable": true,
       "maxAbsErr": 6.679101716144942e-13,
       "maxPctErr": 4.7754214358181386e-11
@@ -498,8 +498,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 26.47885099999985,
-      "warmMs": 22.26991199999975,
+      "firstMs": 13.631423999999242,
+      "warmMs": 5.176745999997365,
       "stable": true,
       "maxAbsErr": 2.3419488570652902e-11,
       "maxPctErr": 1.4032392219096375e-9
@@ -512,8 +512,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 161.0804250000001,
-      "warmMs": 99.36387399999876,
+      "firstMs": 122.98261900000216,
+      "warmMs": 23.402615000002697,
       "stable": true,
       "maxAbsErr": 2.890374162234366e-9,
       "maxPctErr": 4.360714157389197e-7
@@ -526,11 +526,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 220.99923599999966,
-      "warmMs": 140.79798500000106,
+      "firstMs": 463.25861799999984,
+      "warmMs": 138.49400999999853,
       "stable": true,
-      "maxAbsErr": 8.753886504564434e-12,
-      "maxPctErr": 6.835778544885667e-10
+      "maxAbsErr": 9.322320693172514e-12,
+      "maxPctErr": 5.734332182465595e-10
     },
     {
       "model": "Nile, order=1",
@@ -540,8 +540,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 56.85104099999808,
-      "warmMs": 51.788242000002356,
+      "firstMs": 33.04473499999949,
+      "warmMs": 7.128735999998753,
       "stable": true,
       "maxAbsErr": 1.3096723705530167e-10,
       "maxPctErr": 1.4326264307454416e-10
@@ -554,8 +554,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 29.830324999998993,
-      "warmMs": 23.563668000002508,
+      "firstMs": 17.356112999998004,
+      "warmMs": 4.016712999997253,
       "stable": true,
       "maxAbsErr": 0.0017203000786594203,
       "maxPctErr": 0.025866709191557667
@@ -568,8 +568,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 31.475185999999667,
-      "warmMs": 28.030695999997988,
+      "firstMs": 19.212116999999125,
+      "warmMs": 5.065670999996655,
       "stable": true,
       "maxAbsErr": 0.0025521608588405797,
       "maxPctErr": 0.07109694902926925
@@ -582,8 +582,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 159.0933440000008,
-      "warmMs": 99.93498700000055,
+      "firstMs": 122.46392399999968,
+      "warmMs": 21.20918999999776,
       "stable": true,
       "maxAbsErr": 0.002889966806606026,
       "maxPctErr": 0.453082013505184
@@ -596,11 +596,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 262.3585920000005,
-      "warmMs": 141.07722799999829,
+      "firstMs": 416.0147169999982,
+      "warmMs": 128.65709200000128,
       "stable": true,
-      "maxAbsErr": 0.006876723135746943,
-      "maxPctErr": 0.13421577103848334
+      "maxAbsErr": 0.0020344096767530573,
+      "maxPctErr": 0.3074458659425348
     },
     {
       "model": "Nile, order=1",
@@ -610,8 +610,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 54.175992999997106,
-      "warmMs": 48.90304600000309,
+      "firstMs": 27.009915000002366,
+      "warmMs": 6.071029999999155,
       "stable": true,
       "maxAbsErr": 0.0013540891411594203,
       "maxPctErr": 0.07964289856737601
@@ -624,11 +624,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1008.2853040000009,
-      "warmMs": 972.4252510000006,
+      "firstMs": 328.67171600000074,
+      "warmMs": 190.08466100000078,
       "stable": true,
-      "maxAbsErr": 0.0018423703911594203,
-      "maxPctErr": 0.006340180027912529
+      "maxAbsErr": 5489.505256250325,
+      "maxPctErr": 1370209.0965932335
     },
     {
       "model": "Nile, order=1",
@@ -638,11 +638,11 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 587.2007449999983,
-      "warmMs": 456.4086930000012,
+      "firstMs": 297.8229879999999,
+      "warmMs": 169.7433400000009,
       "stable": true,
-      "maxAbsErr": 0.002852617211829056,
-      "maxPctErr": 0.5007626598463999
+      "maxAbsErr": 50.7146563189562,
+      "maxPctErr": 96.56023054403468
     },
     {
       "model": "Nile, order=1",
@@ -652,11 +652,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1976.9747640000023,
-      "warmMs": 1893.7736929999992,
+      "firstMs": 707.907475,
+      "warmMs": 594.2430440000026,
       "stable": true,
-      "maxAbsErr": 0.0020865110161594203,
-      "maxPctErr": 0.07701337563257393
+      "maxAbsErr": 5489.505256250325,
+      "maxPctErr": 1370295.1766560273
     },
     {
       "model": "Nile, order=1",
@@ -666,11 +666,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 1003.2556609999992,
-      "warmMs": 1019.4698430000026,
+      "firstMs": 267.56540099999984,
+      "warmMs": 199.66607699999804,
       "stable": true,
-      "maxAbsErr": 0.0017203000786594203,
-      "maxPctErr": 0.006340180027912529
+      "maxAbsErr": 5489.505256250325,
+      "maxPctErr": 1370209.0965932335
     },
     {
       "model": "Kaisaniemi, trig",
@@ -680,8 +680,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 567.3009440000023,
-      "warmMs": 562.2363380000024,
+      "firstMs": 469.42350799999986,
+      "warmMs": 458.91135900000154,
       "stable": true,
       "maxAbsErr": 2.347277927583491e-11,
       "maxPctErr": 4.198139088237142e-9
@@ -694,8 +694,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 462.9994880000013,
-      "warmMs": 457.4730619999973,
+      "firstMs": 379.338329000002,
+      "warmMs": 403.6311080000014,
       "stable": true,
       "maxAbsErr": 1.020907802740112e-10,
       "maxPctErr": 5.8536961187600494e-8
@@ -708,8 +708,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1315.9519299999956,
-      "warmMs": 1320.1516919999995,
+      "firstMs": 1128.058488999999,
+      "warmMs": 1010.2440960000022,
       "stable": true,
       "maxAbsErr": 2.1720314435924593e-10,
       "maxPctErr": 0.0000031658559748747426
@@ -722,11 +722,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 1392.8274329999986,
-      "warmMs": 1361.1724669999967,
+      "firstMs": 16917.670129,
+      "warmMs": null,
       "stable": true,
-      "maxAbsErr": 1.7189086844800467,
-      "maxPctErr": 69789.40126844535
+      "maxAbsErr": null,
+      "maxPctErr": null
     },
     {
       "model": "Kaisaniemi, trig",
@@ -736,8 +736,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1738.1952180000008,
-      "warmMs": 1710.6053509999983,
+      "firstMs": 1448.2095869999976,
+      "warmMs": 1443.6303610000032,
       "stable": true,
       "maxAbsErr": 0.00002240543830644981,
       "maxPctErr": 0.004007243677370074
@@ -750,8 +750,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 503.4579539999977,
-      "warmMs": 509.49566700000287,
+      "firstMs": 443.5487760000033,
+      "warmMs": 455.17402699999366,
       "stable": true,
       "maxAbsErr": 0.0016354655964656573,
       "maxPctErr": 0.29250528739295756
@@ -764,8 +764,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 581.4867339999983,
-      "warmMs": 570.3773179999989,
+      "firstMs": 500.14098699999886,
+      "warmMs": 488.72957300000417,
       "stable": true,
       "maxAbsErr": 0.005019750620575358,
       "maxPctErr": 0.8977893519041108
@@ -778,8 +778,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1279.6539679999987,
-      "warmMs": 1281.864637000006,
+      "firstMs": 1144.4761969999963,
+      "warmMs": 1027.582061000001,
       "stable": true,
       "maxAbsErr": 0.00022220026767616474,
       "maxPctErr": 3.0815281295169528
@@ -792,11 +792,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 1330.0940929999997,
-      "warmMs": 1316.5750189999962,
+      "firstMs": 17152.46873,
+      "warmMs": null,
       "stable": true,
-      "maxAbsErr": 1.7065336568542335,
-      "maxPctErr": 69885.89537092562
+      "maxAbsErr": null,
+      "maxPctErr": null
     },
     {
       "model": "Kaisaniemi, trig",
@@ -806,8 +806,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 1721.319958,
-      "warmMs": 1703.146811000006,
+      "firstMs": 1460.3408429999981,
+      "warmMs": 1448.1368949999887,
       "stable": true,
       "maxAbsErr": 0.01164570805862386,
       "maxPctErr": 2.0828510180487827
@@ -820,8 +820,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 35.15975299999991,
-      "warmMs": 26.6384440000038,
+      "firstMs": 23.46067200000107,
+      "warmMs": 5.1201640000072075,
       "stable": true,
       "maxAbsErr": 2.347277927583491e-11,
       "maxPctErr": 4.198139088237142e-9
@@ -834,8 +834,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 26.577782000000298,
-      "warmMs": 21.247323000003234,
+      "firstMs": 14.928792999999132,
+      "warmMs": 4.452288000000408,
       "stable": true,
       "maxAbsErr": 1.020907802740112e-10,
       "maxPctErr": 5.8536961187600494e-8
@@ -848,8 +848,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 299.73923999999533,
-      "warmMs": 218.643925999997,
+      "firstMs": 229.83460499999637,
+      "warmMs": 47.06428700000106,
       "stable": true,
       "maxAbsErr": 2.1720314435924593e-10,
       "maxPctErr": 0.0000031658559748747426
@@ -862,11 +862,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 267.0566749999998,
-      "warmMs": 166.46685699999944,
+      "firstMs": 865.0846149999998,
+      "warmMs": 336.1002989999979,
       "stable": true,
-      "maxAbsErr": 2.919287034330864e-8,
-      "maxPctErr": 0.00020319154761949147
+      "maxAbsErr": 2.9192925410370663e-8,
+      "maxPctErr": 0.000203176250802588
     },
     {
       "model": "Kaisaniemi, trig",
@@ -876,8 +876,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 88.21588299999712,
-      "warmMs": 73.93201400000544,
+      "firstMs": 52.05090499999642,
+      "warmMs": 9.21752999999444,
       "stable": true,
       "maxAbsErr": 0.00002240543830644981,
       "maxPctErr": 0.004007243677370074
@@ -890,8 +890,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 33.47191899999598,
-      "warmMs": 24.9753819999969,
+      "firstMs": 20.741416999997455,
+      "warmMs": 6.084960000007413,
       "stable": true,
       "maxAbsErr": 0.007103834126739095,
       "maxPctErr": 1.2705305738770716
@@ -904,8 +904,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 32.57977699999901,
-      "warmMs": 28.14763999999559,
+      "firstMs": 18.48165900001186,
+      "warmMs": 5.3392969999986235,
       "stable": true,
       "maxAbsErr": 0.009934034373016765,
       "maxPctErr": 1.776715808348589
@@ -918,8 +918,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 287.80139000000054,
-      "warmMs": 209.66001300000062,
+      "firstMs": 209.6134519999905,
+      "warmMs": 43.268301999996766,
       "stable": true,
       "maxAbsErr": 0.00020560811999370543,
       "maxPctErr": 2.8122685871673223
@@ -932,11 +932,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 239.64150100000552,
-      "warmMs": 166.38004100000398,
+      "firstMs": 745.3197289999953,
+      "warmMs": 273.2206470000092,
       "stable": true,
-      "maxAbsErr": 0.028630647633819173,
-      "maxPctErr": 199.41661109278934
+      "maxAbsErr": 0.02866688725784261,
+      "maxPctErr": 198.60883246574045
     },
     {
       "model": "Kaisaniemi, trig",
@@ -946,8 +946,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 86.15239100000326,
-      "warmMs": 71.93175899999915,
+      "firstMs": 45.443960999997216,
+      "warmMs": 10.637405000001309,
       "stable": true,
       "maxAbsErr": 0.0012983417256160479,
       "maxPctErr": 0.3739693306366412
@@ -960,11 +960,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1121.4468839999972,
-      "warmMs": 1216.5345270000034,
+      "firstMs": 416.71497199998703,
+      "warmMs": 262.55296700001054,
       "stable": true,
-      "maxAbsErr": 0.005507078196258952,
-      "maxPctErr": 0.9849485638666817
+      "maxAbsErr": 169.62891106365132,
+      "maxPctErr": 1268584.285950612
     },
     {
       "model": "Kaisaniemi, trig",
@@ -974,11 +974,11 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 877.915479999996,
-      "warmMs": 677.9568280000021,
+      "firstMs": 698.1614990000089,
+      "warmMs": 449.81645699999353,
       "stable": true,
-      "maxAbsErr": 0.00020543003425199657,
-      "maxPctErr": 2.857145177558927
+      "maxAbsErr": 0.00019832604362068906,
+      "maxPctErr": 2.9020217679505325
     },
     {
       "model": "Kaisaniemi, trig",
@@ -988,11 +988,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 4827.895341999996,
-      "warmMs": 5161.52279100001,
+      "firstMs": 1340.0881510000036,
+      "warmMs": 1075.1144970000023,
       "stable": true,
-      "maxAbsErr": 0.005141649220733235,
-      "maxPctErr": 0.9195910853976393
+      "maxAbsErr": 169.62723259685444,
+      "maxPctErr": 1268571.7333934465
     },
     {
       "model": "Kaisaniemi, trig",
@@ -1002,11 +1002,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 1597.8537660000002,
-      "warmMs": 1677.1394310000032,
+      "firstMs": 344.72063999999955,
+      "warmMs": 268.7791950000101,
       "stable": true,
-      "maxAbsErr": 0.016699399973602702,
-      "maxPctErr": 2.986710817472814
+      "maxAbsErr": 169.60851006267475,
+      "maxPctErr": 1268431.715323976
     },
     {
       "model": "Energy, trig+AR",
@@ -1016,8 +1016,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 608.2403049999994,
-      "warmMs": 601.3037429999968,
+      "firstMs": 534.2886639999924,
+      "warmMs": 517.8099520000105,
       "stable": true,
       "maxAbsErr": 9.312373094871873e-11,
       "maxPctErr": 1.1857512427397484e-9
@@ -1030,8 +1030,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 495.4195400000026,
-      "warmMs": 505.3826310000004,
+      "firstMs": 430.2590940000082,
+      "warmMs": 416.8137979999883,
       "stable": true,
       "maxAbsErr": 2.0783602394658374e-8,
       "maxPctErr": 0.0001061799306652662
@@ -1044,11 +1044,11 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1820.3959130000003,
-      "warmMs": 1768.5505249999987,
+      "firstMs": 1954.4565900000016,
+      "warmMs": 1844.4211610000057,
       "stable": true,
-      "maxAbsErr": 4.783942131325603e-10,
-      "maxPctErr": 0.000021738046890974354
+      "maxAbsErr": 4.783657914231298e-10,
+      "maxPctErr": 0.000021738947605860666
     },
     {
       "model": "Energy, trig+AR",
@@ -1058,11 +1058,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 2181.950217000005,
-      "warmMs": 2176.368715999997,
+      "firstMs": 32924.440583,
+      "warmMs": null,
       "stable": true,
-      "maxAbsErr": 82.38603890942896,
-      "maxPctErr": 267399.65565694706
+      "maxAbsErr": null,
+      "maxPctErr": null
     },
     {
       "model": "Energy, trig+AR",
@@ -1072,8 +1072,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 2200.3833190000005,
-      "warmMs": 2270.1077150000056,
+      "firstMs": 1837.0111270000052,
+      "warmMs": 1835.808882000012,
       "stable": true,
       "maxAbsErr": 1.5029272049105202e-8,
       "maxPctErr": 1.5630613568196307e-8
@@ -1086,8 +1086,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 565.4816090000095,
-      "warmMs": 558.7275179999997,
+      "firstMs": 497.30120099999476,
+      "warmMs": 485.70098500000313,
       "stable": true,
       "maxAbsErr": 0.005832999008077877,
       "maxPctErr": 0.06176282934887255
@@ -1100,8 +1100,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 636.817618000001,
-      "warmMs": 634.860572000005,
+      "firstMs": 555.1070309999923,
+      "warmMs": 555.3814909999928,
       "stable": true,
       "maxAbsErr": 0.010860116226297123,
       "maxPctErr": 0.14075741660771865
@@ -1114,8 +1114,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 1784.9076160000113,
-      "warmMs": 1882.1939049999928,
+      "firstMs": 1973.908687999996,
+      "warmMs": 1884.5131840000104,
       "stable": true,
       "maxAbsErr": 0.0009592481008837694,
       "maxPctErr": 19.556383614536983
@@ -1128,11 +1128,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 2409.2462210000085,
-      "warmMs": 2386.876687000011,
+      "firstMs": 33572.948837,
+      "warmMs": null,
       "stable": true,
-      "maxAbsErr": 82.37805989424625,
-      "maxPctErr": 267396.7299346932
+      "maxAbsErr": null,
+      "maxPctErr": null
     },
     {
       "model": "Energy, trig+AR",
@@ -1142,8 +1142,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 2312.774390999999,
-      "warmMs": 2263.4621840000036,
+      "firstMs": 1890.2043190000113,
+      "warmMs": 1897.9188150000118,
       "stable": true,
       "maxAbsErr": 0.0072072710155808295,
       "maxPctErr": 0.1017592563900333
@@ -1156,8 +1156,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 40.35451799999282,
-      "warmMs": 29.15392100000463,
+      "firstMs": 36.02911299999687,
+      "warmMs": 8.405956000002334,
       "stable": true,
       "maxAbsErr": 9.312373094871873e-11,
       "maxPctErr": 1.1857512427397484e-9
@@ -1170,8 +1170,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 28.64569799999299,
-      "warmMs": 23.693050000001676,
+      "firstMs": 22.076777999987826,
+      "warmMs": 6.866039999993518,
       "stable": true,
       "maxAbsErr": 2.0783602394658374e-8,
       "maxPctErr": 0.0001061799306652662
@@ -1184,11 +1184,11 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 185.30879899999127,
-      "warmMs": 106.94434299999557,
+      "firstMs": 297.24553499999456,
+      "warmMs": 69.19635199999902,
       "stable": true,
-      "maxAbsErr": 4.783942131325603e-10,
-      "maxPctErr": 0.000021738046890974354
+      "maxAbsErr": 4.783657914231298e-10,
+      "maxPctErr": 0.000021738947605860666
     },
     {
       "model": "Energy, trig+AR",
@@ -1198,11 +1198,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 585.7093069999974,
-      "warmMs": 262.0755439999921,
+      "firstMs": 1267.3478170000017,
+      "warmMs": 450.5393130000157,
       "stable": true,
-      "maxAbsErr": 4.0969894143927377e-11,
-      "maxPctErr": 3.097775121657593e-8
+      "maxAbsErr": 3.9321434996963944e-11,
+      "maxPctErr": 1.6976765388841206e-8
     },
     {
       "model": "Energy, trig+AR",
@@ -1212,8 +1212,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 113.23149900000135,
-      "warmMs": 93.75843800000439,
+      "firstMs": 58.581196999992244,
+      "warmMs": 12.210972000000766,
       "stable": true,
       "maxAbsErr": 1.5029272049105202e-8,
       "maxPctErr": 1.5630613568196307e-8
@@ -1226,8 +1226,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 36.40061599999899,
-      "warmMs": 26.489879000000656,
+      "firstMs": 21.086761999991722,
+      "warmMs": 4.606505999981891,
       "stable": true,
       "maxAbsErr": 0.03965345118723462,
       "maxPctErr": 0.20755760674147616
@@ -1240,8 +1240,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 33.38235499999428,
-      "warmMs": 30.057211000006646,
+      "firstMs": 18.915841999987606,
+      "warmMs": 8.536309999995865,
       "stable": true,
       "maxAbsErr": 0.03512159083567212,
       "maxPctErr": 0.1341042969997659
@@ -1254,11 +1254,11 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 182.40031199999794,
-      "warmMs": 106.25874699999986,
+      "firstMs": 236.2075939999777,
+      "warmMs": 58.67889800001285,
       "stable": true,
-      "maxAbsErr": 0.002250224751614738,
-      "maxPctErr": 21.870162871400858
+      "maxAbsErr": 0.002605111343484623,
+      "maxPctErr": 22.151733892077416
     },
     {
       "model": "Energy, trig+AR",
@@ -1268,11 +1268,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 288.3055120000063,
-      "warmMs": 210.9805550000019,
+      "firstMs": 945.6674579999817,
+      "warmMs": 431.3212399999902,
       "stable": true,
-      "maxAbsErr": 0.005743348775752111,
-      "maxPctErr": 2.937572285475041
+      "maxAbsErr": 0.006219541849247889,
+      "maxPctErr": 2.1234647691710853
     },
     {
       "model": "Energy, trig+AR",
@@ -1282,8 +1282,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 100.33389300000272,
-      "warmMs": 82.49358900000516,
+      "firstMs": 56.171308999997564,
+      "warmMs": 11.505403000017395,
       "stable": true,
       "maxAbsErr": 0.016764995014604267,
       "maxPctErr": 0.1304842019928146
@@ -1296,11 +1296,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1831.0066249999945,
-      "warmMs": 1802.1788030000025,
+      "firstMs": 552.5003699999943,
+      "warmMs": 383.4918900000048,
       "stable": true,
-      "maxAbsErr": 0.011357647351060152,
-      "maxPctErr": 0.10589020332202367
+      "maxAbsErr": 2436.0043363947775,
+      "maxPctErr": 248709.7343141762
     },
     {
       "model": "Energy, trig+AR",
@@ -1310,11 +1310,11 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 754.3056190000061,
-      "warmMs": 562.167048999996,
+      "firstMs": 739.3202879999881,
+      "warmMs": 451.00878100001137,
       "stable": true,
-      "maxAbsErr": 0.0027966435156798752,
-      "maxPctErr": 20.517397750324363
+      "maxAbsErr": 0.006275684041165519,
+      "maxPctErr": 17.536417596639954
     },
     {
       "model": "Energy, trig+AR",
@@ -1324,11 +1324,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 7683.785911999992,
-      "warmMs": 8065.287658999994,
+      "firstMs": 1678.9899440000008,
+      "warmMs": 1396.225375000009,
       "stable": true,
-      "maxAbsErr": 0.030925423843484623,
-      "maxPctErr": 0.031165649919082175
+      "maxAbsErr": 2434.6000395197775,
+      "maxPctErr": 248567.51066625802
     },
     {
       "model": "Energy, trig+AR",
@@ -1338,11 +1338,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 2037.3902789999993,
-      "warmMs": 1870.2625289999996,
+      "firstMs": 363.3907429999963,
+      "warmMs": 279.09760099998675,
       "stable": true,
-      "maxAbsErr": 0.028064400894265873,
-      "maxPctErr": 0.2882522340150681
+      "maxAbsErr": 2432.8888578791525,
+      "maxPctErr": 248393.96848013325
     },
     {
       "model": "Gapped, order=1",
@@ -1352,8 +1352,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 551.8676590000105,
-      "warmMs": 486.26498999999603,
+      "firstMs": 376.4346739999892,
+      "warmMs": 373.1862600000168,
       "stable": true,
       "maxAbsErr": 2.6716406864579767e-12,
       "maxPctErr": 2.5170474256836218e-11
@@ -1366,8 +1366,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 376.4471279999998,
-      "warmMs": 459.7804329999781,
+      "firstMs": 307.4501009999949,
+      "warmMs": 308.1610389999987,
       "stable": true,
       "maxAbsErr": 2.8819613362429664e-11,
       "maxPctErr": 1.034994793870109e-10
@@ -1380,8 +1380,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 363.7622219999903,
-      "warmMs": 349.18709700001637,
+      "firstMs": 235.27906500000972,
+      "warmMs": 228.44316100000287,
       "stable": true,
       "maxAbsErr": 1.3317944080881716e-8,
       "maxPctErr": 1.2923291205551946e-7
@@ -1394,11 +1394,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 496.5537170000025,
-      "warmMs": 484.3284130000102,
+      "firstMs": 1568.980371999991,
+      "warmMs": 1557.1869660000084,
       "stable": true,
-      "maxAbsErr": 2256.2307433212036,
-      "maxPctErr": 26423.41387978053
+      "maxAbsErr": 2256.2307433212018,
+      "maxPctErr": 26423.413879780288
     },
     {
       "model": "Gapped, order=1",
@@ -1408,8 +1408,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 953.391776000004,
-      "warmMs": 948.9260169999907,
+      "firstMs": 761.0733749999781,
+      "warmMs": 755.9275250000064,
       "stable": true,
       "maxAbsErr": 1.1027623258996755e-10,
       "maxPctErr": 1.0155298485835127e-11
@@ -1422,8 +1422,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 470.7760330000019,
-      "warmMs": 424.4260849999846,
+      "firstMs": 360.7580510000116,
+      "warmMs": 348.58561400001054,
       "stable": true,
       "maxAbsErr": 0.0006934263308266964,
       "maxPctErr": 0.0017446908741565448
@@ -1436,8 +1436,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 483.53702699998394,
-      "warmMs": 480.48006500001065,
+      "firstMs": 399.85965399999986,
+      "warmMs": 400.7099889999954,
       "stable": true,
       "maxAbsErr": 0.0006934263308266964,
       "maxPctErr": 0.013980602365928015
@@ -1450,8 +1450,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 347.7192039999936,
-      "warmMs": 351.64964299998246,
+      "firstMs": 224.6645290000015,
+      "warmMs": 229.85828000001493,
       "stable": true,
       "maxAbsErr": 0.01289843051077355,
       "maxPctErr": 0.15071222817916965
@@ -1464,11 +1464,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 482.45220299999346,
-      "warmMs": 459.17118199999095,
+      "firstMs": 1580.0985060000094,
+      "warmMs": 1576.0206480000052,
       "stable": true,
       "maxAbsErr": 2256.2308615348657,
-      "maxPctErr": 26423.422739174333
+      "maxPctErr": 26423.366112031414
     },
     {
       "model": "Gapped, order=1",
@@ -1478,8 +1478,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 904.0939829999988,
-      "warmMs": 902.624536999996,
+      "firstMs": 747.9705450000183,
+      "warmMs": 751.3364829999919,
       "stable": true,
       "maxAbsErr": 0.0006361324985846295,
       "maxPctErr": 0.0027295773431309416
@@ -1492,8 +1492,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 29.828681999992114,
-      "warmMs": 29.202204999979585,
+      "firstMs": 6.3523109999950975,
+      "warmMs": 5.46695699999691,
       "stable": true,
       "maxAbsErr": 2.6716406864579767e-12,
       "maxPctErr": 2.5170474256836218e-11
@@ -1506,8 +1506,8 @@
       "dtype": "f64",
       "algorithm": "scan",
       "stabLabel": "off",
-      "firstMs": 23.154584999982035,
-      "warmMs": 24.923784000013256,
+      "firstMs": 4.646785999997519,
+      "warmMs": 4.845633999997517,
       "stable": true,
       "maxAbsErr": 2.8819613362429664e-11,
       "maxPctErr": 1.034994793870109e-10
@@ -1520,8 +1520,8 @@
       "dtype": "f64",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 105.59545399999479,
-      "warmMs": 100.90366199999698,
+      "firstMs": 24.550380000000587,
+      "warmMs": 21.611707000003662,
       "stable": true,
       "maxAbsErr": 1.3317944080881716e-8,
       "maxPctErr": 1.2923291205551946e-7
@@ -1534,11 +1534,11 @@
       "dtype": "f64",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 151.3895349999948,
-      "warmMs": 150.29513799998676,
+      "firstMs": 140.14783599998918,
+      "warmMs": 136.46877000000677,
       "stable": true,
-      "maxAbsErr": 1.1482370609883219e-11,
-      "maxPctErr": 6.783292987965832e-11
+      "maxAbsErr": 1.6143530956469476e-11,
+      "maxPctErr": 3.4571946040267607e-11
     },
     {
       "model": "Gapped, order=1",
@@ -1548,8 +1548,8 @@
       "dtype": "f64",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 55.3035089999903,
-      "warmMs": 50.28787299999385,
+      "firstMs": 7.708669999992708,
+      "warmMs": 12.75914599999669,
       "stable": true,
       "maxAbsErr": 1.1027623258996755e-10,
       "maxPctErr": 1.0155298485835127e-11
@@ -1562,8 +1562,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 25.678453000000445,
-      "warmMs": 25.283342999988236,
+      "firstMs": 4.1260459999903105,
+      "warmMs": 3.8035349999845494,
       "stable": true,
       "maxAbsErr": 0.0010596633377986109,
       "maxPctErr": 0.013196348610987736
@@ -1576,8 +1576,8 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 27.562537000019802,
-      "warmMs": 29.655765000003157,
+      "firstMs": 6.732867999991868,
+      "warmMs": 4.9221919999981765,
       "stable": true,
       "maxAbsErr": 0.0006863412256734591,
       "maxPctErr": 0.024779173299336467
@@ -1590,8 +1590,8 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 238.63016999998945,
-      "warmMs": 111.87354099997901,
+      "firstMs": 23.18301900001825,
+      "warmMs": 23.564801000000443,
       "stable": true,
       "maxAbsErr": 0.0129060599053048,
       "maxPctErr": 0.11919125995176232
@@ -1604,11 +1604,11 @@
       "dtype": "f32",
       "algorithm": "sqrt-assoc",
       "stabLabel": "default",
-      "firstMs": 159.88860600002226,
-      "warmMs": 154.1261119999981,
+      "firstMs": 134.3721769999829,
+      "warmMs": 134.3325640000112,
       "stable": true,
-      "maxAbsErr": 0.004958802163173459,
-      "maxPctErr": 0.0038252509454327166
+      "maxAbsErr": 0.003554993569423459,
+      "maxPctErr": 0.06931071023049663
     },
     {
       "model": "Gapped, order=1",
@@ -1618,8 +1618,8 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 54.176138999988325,
-      "warmMs": 49.58413699999801,
+      "firstMs": 7.786263999994844,
+      "warmMs": 6.144720000011148,
       "stable": true,
       "maxAbsErr": 0.0009489376743658795,
       "maxPctErr": 0.0014109002480807806
@@ -1632,11 +1632,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "default",
-      "firstMs": 1550.0598959999916,
-      "warmMs": 1680.9329110000108,
+      "firstMs": 261.15137700000196,
+      "warmMs": 291.8257239999948,
       "stable": true,
-      "maxAbsErr": 0.006630792419173304,
-      "maxPctErr": 0.0025631932928492345
+      "maxAbsErr": 5621.7556696903175,
+      "maxPctErr": 16428.3151048132
     },
     {
       "model": "Gapped, order=1",
@@ -1646,11 +1646,11 @@
       "dtype": "f32",
       "algorithm": "assoc",
       "stabLabel": "default",
-      "firstMs": 580.4487690000096,
-      "warmMs": 555.622795000003,
+      "firstMs": 171.29776200000197,
+      "warmMs": 170.6710599999933,
       "stable": true,
-      "maxAbsErr": 0.01183031527639855,
-      "maxPctErr": 0.048719021895654455
+      "maxAbsErr": 31.19355641958682,
+      "maxPctErr": 96.41373550264292
     },
     {
       "model": "Gapped, order=1",
@@ -1660,11 +1660,11 @@
       "dtype": "f32",
       "algorithm": "ud",
       "stabLabel": "default",
-      "firstMs": 3319.7104199999885,
-      "warmMs": 3373.2840260000085,
+      "firstMs": 783.8191040000238,
+      "warmMs": 671.9648989999841,
       "stable": true,
-      "maxAbsErr": 0.0032128236691733036,
-      "maxPctErr": 0.0046095656187231365
+      "maxAbsErr": 5621.7556696903175,
+      "maxPctErr": 16428.3151048132
     },
     {
       "model": "Gapped, order=1",
@@ -1674,11 +1674,11 @@
       "dtype": "f32",
       "algorithm": "scan",
       "stabLabel": "joseph+triu",
-      "firstMs": 1752.614040000015,
-      "warmMs": 1630.906902000017,
+      "firstMs": 207.2188380000007,
+      "warmMs": 203.6813549999788,
       "stable": true,
-      "maxAbsErr": 0.006630792419173304,
-      "maxPctErr": 0.008199702549434223
+      "maxAbsErr": 5621.7556696903175,
+      "maxPctErr": 16428.3151048132
     }
   ]
 }

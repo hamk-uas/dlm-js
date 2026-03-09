@@ -81,6 +81,36 @@ Previous measurement at `0e5a982`: N=100 cold 649ms (20×), N=3200 cold 1839ms (
 
 Tests: 317/318 pass (correctness is fine — this is purely a performance issue).
 
+## Observation: `3e580f4` — parallel readback (2026-03-09)
+
+Commit `3e580f4` adds `tree.data()` / `tree.consumeData()` for parallel GPU readback (all `mapAsync` calls dispatched via `Promise.all`).
+
+**Correction:** The `3c37a3d` claim of "323ms → 7ms warm" was wrong — the upstream benchmark used `dtype: "float32"` which `parseDtype` didn't recognise, silently falling back to Float64/WASM. Real WebGPU warm was still ~320ms.
+
+### dlm-js adoption
+
+Applied three changes to `src/index.ts`:
+1. **Pass 2 (17 readbacks):** Replaced 17 sequential `consumeData()` calls with single `tree.consumeData(out2)` — parallel GPU readback.
+2. **Pass 1 (2 readbacks):** Replaced sequential `out1.x.data()` / `out1.C.data()` with `Promise.all([...])`.
+3. **dlmForecast (4 readbacks):** Same `tree.consumeData(out)` pattern.
+
+### Results (Nile order=1, m=2, N=100, RTX 4070 eGPU)
+
+| Metric | Before (`3c37a3d`) | After (`3e580f4` + parallel readback) |
+|--------|-------------------|--------------------------------------|
+| WebGPU warm | 318 ms | 126 ms |
+| WebGPU cold | 548 ms | ~500 ms |
+| WASM/f64 warm | 6.7 ms | 6.7 ms |
+| warm ratio | 48× | 19× |
+
+Warm improved 2.5× from parallel readback alone. Dispatch overhead (the kernel launch count) is unchanged — this optimization only reduces the readback tail.
+
+### Remaining bottleneck
+
+The dispatch count is still the dominant cost. At N=100, the forward+backward `associativeScan` generates hundreds of GPU kernel dispatches. Until block-map fusion collapses the compose function into a single kernel per round (or fewer rounds), WebGPU will remain 19–200× slower than WASM for typical dataset sizes.
+
+**Status: 🔴 Open** — parallel readback is adopted, but the core dispatch-count issue persists.
+
 ## Hardware
 
 - GPU: NVIDIA RTX 4070 (eGPU, Thunderbolt 4)

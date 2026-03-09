@@ -4,13 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@hamk-uas/jax-js-nonconsuming': link:../jax-js-nonconsuming
+
 importers:
 
   .:
     dependencies:
       '@hamk-uas/jax-js-nonconsuming':
-        specifier: github:hamk-uas/jax-js-nonconsuming#v0.7.10
-        version: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/836a740ad86b020a202d660d6b3afd7e78544e88
+        specifier: link:../jax-js-nonconsuming
+        version: link:../jax-js-nonconsuming
     devDependencies:
       '@types/node':
         specifier: ^25.0.10
@@ -73,9 +76,6 @@ packages:
   '@babel/types@7.29.0':
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
-
-  '@bufbuild/protobuf@2.11.0':
-    resolution: {integrity: sha512-sBXGT13cpmPR5BMgHE6UEEfEaShh5Ror6rfN3yEK5si7QVrtZg8LEPQb0VVhiLRUslD2yLnXtnRzG035J/mZXQ==}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -411,11 +411,6 @@ packages:
 
   '@gerrit0/mini-shiki@3.22.0':
     resolution: {integrity: sha512-jMpciqEVUBKE1QwU64S4saNMzpsSza6diNCk4MWAeCxO2+LFi2FIFmL2S0VDLzEJCxuvCbU783xi8Hp/gkM5CQ==}
-
-  '@hamk-uas/jax-js-nonconsuming@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/836a740ad86b020a202d660d6b3afd7e78544e88':
-    resolution: {tarball: https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/836a740ad86b020a202d660d6b3afd7e78544e88}
-    version: 0.7.10
-    engines: {pnpm: '>=10.0.0'}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -1252,10 +1247,6 @@ packages:
     resolution: {integrity: sha512-1FlR+gjXK7X+AsAHso35MnyN5KqGwJRi/31ft6x0M194ht7S+rWAvd7PHss9xSKMzE0asv1pyIHaJYq+BbacAQ==}
     engines: {node: '>=12'}
 
-  onnx-buf@1.20.0-1:
-    resolution: {integrity: sha512-NzsKNR3AFo1aYQJ6PXZ5V0adMbwovcO8ZoPC+mOpcOt1DYjzp30tUi22Mc4gJilzwSn/kle6Kz1yZuQexWflNg==}
-    engines: {pnpm: '>=10.0.0'}
-
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
@@ -1369,10 +1360,6 @@ packages:
     resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
     hasBin: true
-
-  sentencepiece-buf@0.2.1-0:
-    resolution: {integrity: sha512-EUNi6hvPjHr2Jcmy3gFdV+elNNsrDTnkVyJJEMGVFSbXAWacW8gNP0cQEIAG5eGk5Kz46Vc23XZ7udOQeX126Q==}
-    engines: {pnpm: '>=10.0.0'}
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -1666,9 +1653,6 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@bufbuild/protobuf@2.11.0':
-    optional: true
-
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
 
@@ -1869,12 +1853,6 @@ snapshots:
       '@shikijs/themes': 3.22.0
       '@shikijs/types': 3.22.0
       '@shikijs/vscode-textmate': 10.0.2
-
-  '@hamk-uas/jax-js-nonconsuming@https://codeload.github.com/hamk-uas/jax-js-nonconsuming/tar.gz/836a740ad86b020a202d660d6b3afd7e78544e88':
-    optionalDependencies:
-      '@bufbuild/protobuf': 2.11.0
-      onnx-buf: 1.20.0-1
-      sentencepiece-buf: 0.2.1-0
 
   '@humanfs/core@0.19.1': {}
 
@@ -2754,11 +2732,6 @@ snapshots:
     dependencies:
       mimic-fn: 4.0.0
 
-  onnx-buf@1.20.0-1:
-    dependencies:
-      '@bufbuild/protobuf': 2.11.0
-    optional: true
-
   optionator@0.9.4:
     dependencies:
       deep-is: 0.1.4
@@ -2884,11 +2857,6 @@ snapshots:
       lru-cache: 6.0.0
 
   semver@7.7.4: {}
-
-  sentencepiece-buf@0.2.1-0:
-    dependencies:
-      '@bufbuild/protobuf': 2.11.0
-    optional: true
 
   shebang-command@2.0.0:
     dependencies:

@@ -20,150 +20,178 @@ import { resolve, dirname } from "node:path";
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const sidecarDir = resolve(root, "assets/timings");
 
-await init("webgpu");
-defaultDevice("webgpu");
+const TIMEOUT_MS = 120_000; // 2 min hard cap — WebGPU dispatch overhead can be enormous
 
-const input = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "utf8"));
-const y: number[] = input.y;
-const n = y.length;
-const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
-
-// Model: trend + seasonal + AR(1), with AR coefficient estimation
-const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
-const m = 5; // 2 (poly order=1) + 2 (trig k=1) + 1 (AR)
-const nSwParams = 1 + m; // theta[0]=log(s), theta[1..5]=log(w[i])
-const maxIter = 300;
-const lr = 0.02;
-const tol = 1e-6;
-const TARGET_FPS = 10;
-const HOLD_SECONDS = 2;
-
-// F for this model: indices where F[j]=1 are the "observable" states
-// For order=1, trig=1, ns=12, arphi: F = [1, 0, 1, 0, 1]
-const fInds = [0, 2, 4];
-
-interface Frame {
-  iter: number;
-  s: number;
-  w: number[];
-  arphi: number[];
-  lik: number | null;
-  combined: number[];
-  combinedStd: number[];
+function writeSidecar(data: { elapsed: number | null; iterations: number | null; lik: number | null }) {
+  mkdirSync(sidecarDir, { recursive: true });
+  writeFileSync(
+    resolve(sidecarDir, "collect-energy-mle-frames-webgpu.json"),
+    JSON.stringify(data, null, 2) + "\n",
+  );
 }
 
-// ── Phase 1: Full optimization ─────────────────────────────────────────────
+const timedOut = Symbol("timedOut");
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof timedOut> {
+  return Promise.race([p, new Promise<typeof timedOut>((r) => setTimeout(() => r(timedOut), ms))]);
+}
 
-console.log("═══ WebGPU Energy MLE collector ═══");
-console.log("Phase 1: Full optimization...");
+async function main() {
+  await init("webgpu");
+  defaultDevice("webgpu");
 
-const thetaHistory: number[][] = [];
+  const input = JSON.parse(readFileSync(resolve(root, "tests/energy-in.json"), "utf8"));
+  const y: number[] = input.y;
+  const n = y.length;
+  const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
 
-const mle = await dlmMLE(y, {
-  ...options, maxIter, lr, tol, dtype: 'f32',
-  callbacks: {
-    onInit: (theta) => { thetaHistory.push(Array.from(theta)); },
-    onIteration: (_iter, theta, _lik) => { thetaHistory.push(Array.from(theta)); },
-  },
-});
+  const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
+  const m = 5;
+  const nSwParams = 1 + m;
+  const maxIter = 300;
+  const lr = 0.02;
+  const tol = 1e-6;
+  const TARGET_FPS = 10;
+  const HOLD_SECONDS = 2;
+  const fInds = [0, 2, 4];
 
-const elapsed = mle.elapsed;
-const totalIters = mle.iterations;
-const likHistory = mle.devianceHistory;
+  interface Frame {
+    iter: number;
+    s: number;
+    w: number[];
+    arphi: number[];
+    lik: number | null;
+    combined: number[];
+    combinedStd: number[];
+  }
 
-const arphiHistory = thetaHistory.slice(1).map((td) => td[nSwParams]);
+  // ── Phase 1: Full optimization (with timeout) ──────────────────────────────
 
-console.log(`  Done: ${totalIters} iterations in ${elapsed.toFixed(0)} ms`);
-console.log(`  Final: s=${mle.obsStd.toFixed(4)}, arphi=${mle.arCoefficients?.[0]?.toFixed(4)}`);
+  console.log("═══ WebGPU Energy MLE collector ═══");
+  console.log(`Phase 1: Full optimization (timeout ${TIMEOUT_MS / 1000}s)...`);
 
-// ── Phase 2: Frame sampling ────────────────────────────────────────────────
+  const thetaHistory: number[][] = [];
 
-const animDuration = elapsed / 1000;
-const totalFrames = Math.max(2, Math.round(animDuration * TARGET_FPS));
-const stepSize = Math.max(1, Math.round(totalIters / totalFrames));
-
-const sampleIndices: number[] = [0];
-for (let i = stepSize; i < totalIters; i += stepSize) sampleIndices.push(i);
-if (sampleIndices[sampleIndices.length - 1] !== totalIters) sampleIndices.push(totalIters);
-
-console.log(
-  `Phase 2: ${animDuration.toFixed(2)}s at ${TARGET_FPS}fps → ` +
-    `${sampleIndices.length} frames (step=${stepSize})`,
-);
-
-// ── Phase 3: dlmFit at each sampled iteration ─────────────────────────────
-
-console.log("Phase 3: Computing smoothed states at each frame...");
-
-const yArr = Float32Array.from(y);
-const frames: Frame[] = [];
-
-for (const idx of sampleIndices) {
-  const td = thetaHistory[idx];
-  const s = Math.exp(td[0]);
-  const w = Array.from({ length: m }, (_, i) => Math.exp(td[1 + i]));
-  const arphi = [td[nSwParams]];
-  const lik = idx === 0 ? null : (likHistory[idx - 1] as number);
-
-  const fitOpts = { ...options, arCoefficients: arphi, fitAr: false };
-  const fit = await dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f32', ...fitOpts });
-
-  const combined = Array.from({ length: n }, (_, i) =>
-    fInds.reduce((sum, fi) => sum + fit.smoothed.get(i, fi), 0),
+  const mleResult = await withTimeout(
+    dlmMLE(y, {
+      ...options, maxIter, lr, tol, dtype: 'f32',
+      callbacks: {
+        onInit: (theta) => { thetaHistory.push(Array.from(theta)); },
+        onIteration: (_iter, theta, _lik) => { thetaHistory.push(Array.from(theta)); },
+      },
+    }),
+    TIMEOUT_MS,
   );
 
-  const combinedStd = Array.from({ length: n }, (_, i) => {
-    let variance = 0;
-    for (const fi of fInds) variance += fit.smoothedCov.get(i, fi, fi);
-    for (let a = 0; a < fInds.length; a++) {
-      for (let b = a + 1; b < fInds.length; b++) {
-        variance += 2 * fit.smoothedCov.get(i, fInds[a], fInds[b]);
-      }
-    }
-    return Math.sqrt(Math.max(0, variance));
-  });
+  if (mleResult === timedOut) {
+    console.log(`  TIMEOUT after ${TIMEOUT_MS / 1000}s — writing null sidecar`);
+    writeSidecar({ elapsed: null, iterations: null, lik: null });
+    console.log("Timing sidecar written (null — timed out).");
+    return;
+  }
 
-  frames.push({ iter: idx, s, w, arphi, lik, combined, combinedStd });
+  const mle = mleResult;
+  const elapsed = mle.elapsed;
+  const totalIters = mle.iterations;
+  const likHistory = mle.devianceHistory;
 
-  const likStr = lik !== null ? lik.toFixed(2) : "—";
+  // Write sidecar immediately after Phase 1 (Phase 3 may timeout)
+  writeSidecar({ elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.deviance });
+  console.log("Timing sidecar written (Phase 1 complete).");
+  const arphiHistory = thetaHistory.slice(1).map((td) => td[nSwParams]);
+
+  console.log(`  Done: ${totalIters} iterations in ${elapsed.toFixed(0)} ms`);
+  console.log(`  Final: s=${mle.obsStd.toFixed(4)}, arphi=${mle.arCoefficients?.[0]?.toFixed(4)}`);
+
+  // ── Phase 2: Frame sampling ────────────────────────────────────────────────
+
+  const animDuration = elapsed / 1000;
+  const totalFrames = Math.max(2, Math.round(animDuration * TARGET_FPS));
+  const stepSize = Math.max(1, Math.round(totalIters / totalFrames));
+
+  const sampleIndices: number[] = [0];
+  for (let i = stepSize; i < totalIters; i += stepSize) sampleIndices.push(i);
+  if (sampleIndices[sampleIndices.length - 1] !== totalIters) sampleIndices.push(totalIters);
+
   console.log(
-    `  Frame ${frames.length}/${sampleIndices.length}: ` +
-      `iter=${idx}, s=${s.toFixed(2)}, φ=${arphi[0].toFixed(3)}, lik=${likStr}`,
+    `Phase 2: ${animDuration.toFixed(2)}s at ${TARGET_FPS}fps → ` +
+      `${sampleIndices.length} frames (step=${stepSize})`,
   );
+
+  // ── Phase 3: dlmFit at each sampled iteration (budget-capped) ───────────
+
+  const PHASE3_BUDGET_MS = 120_000; // 2 min cap for frame rendering
+  const phase3Start = performance.now();
+  console.log(`Phase 3: Computing smoothed states at each frame (budget ${PHASE3_BUDGET_MS / 1000}s)...`);
+
+  const yArr = Float32Array.from(y);
+  const frames: Frame[] = [];
+
+  for (const idx of sampleIndices) {
+    if (performance.now() - phase3Start > PHASE3_BUDGET_MS) {
+      console.log(`  Phase 3 budget exceeded after ${frames.length} frames — stopping`);
+      break;
+    }
+
+    const td = thetaHistory[idx];
+    const s = Math.exp(td[0]);
+    const w = Array.from({ length: m }, (_, i) => Math.exp(td[1 + i]));
+    const arphi = [td[nSwParams]];
+    const lik = idx === 0 ? null : (likHistory[idx - 1] as number);
+
+    const { fitAr: _, ...modelOpts } = options;
+    const fitOpts = { ...modelOpts, arCoefficients: arphi };
+    const fit = await dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f32', ...fitOpts });
+
+    const combined = Array.from({ length: n }, (_, i) =>
+      fInds.reduce((sum, fi) => sum + fit.smoothed.get(i, fi), 0),
+    );
+
+    const combinedStd = Array.from({ length: n }, (_, i) => {
+      let variance = 0;
+      for (const fi of fInds) variance += fit.smoothedCov.get(i, fi, fi);
+      for (let a = 0; a < fInds.length; a++) {
+        for (let b = a + 1; b < fInds.length; b++) {
+          variance += 2 * fit.smoothedCov.get(i, fInds[a], fInds[b]);
+        }
+      }
+      return Math.sqrt(Math.max(0, variance));
+    });
+
+    frames.push({ iter: idx, s, w, arphi, lik, combined, combinedStd });
+
+    const likStr = lik !== null ? lik.toFixed(2) : "—";
+    console.log(
+      `  Frame ${frames.length}/${sampleIndices.length}: ` +
+        `iter=${idx}, s=${s.toFixed(2)}, φ=${arphi[0].toFixed(3)}, lik=${likStr}`,
+    );
+  }
+
+  // ── Save output ──────────────────────────────────────────────────────────
+
+  const output = {
+    variant: "webgpu",
+    optimizer: "adam",
+    t, y, n, m,
+    s_init: Math.exp(thetaHistory[0][0]),
+    w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),
+    arphi_init: [thetaHistory[0][nSwParams]],
+    elapsed: Math.round(elapsed),
+    jitMs: mle.compilationMs,
+    iterations: totalIters,
+    targetFps: TARGET_FPS,
+    holdSeconds: HOLD_SECONDS,
+    stepSize,
+    likHistory,
+    arphiHistory,
+    frames,
+  };
+
+  mkdirSync(resolve(root, "tmp"), { recursive: true });
+  const outPath = resolve(root, "tmp/mle-frames-energy-webgpu.json");
+  writeFileSync(outPath, JSON.stringify(output, null, 2));
+  console.log(`Saved ${frames.length} frames to ${outPath}`);
+  console.log(`  Animation: ${animDuration.toFixed(2)}s play + ${HOLD_SECONDS}s hold = ${(animDuration + HOLD_SECONDS).toFixed(2)}s total cycle`);
+  console.log(`\nSummary: ${totalIters} iters, ${elapsed.toFixed(0)} ms, lik=${mle.deviance.toFixed(2)}`);
 }
 
-// ── Save output ────────────────────────────────────────────────────────────
-
-const output = {
-  variant: "webgpu",
-  optimizer: "adam",
-  t, y, n, m,
-  s_init: Math.exp(thetaHistory[0][0]),
-  w_init: Array.from({ length: m }, (_, i) => Math.exp(thetaHistory[0][1 + i])),
-  arphi_init: [thetaHistory[0][nSwParams]],
-  elapsed: Math.round(elapsed),
-  jitMs: mle.compilationMs,
-  iterations: totalIters,
-  targetFps: TARGET_FPS,
-  holdSeconds: HOLD_SECONDS,
-  stepSize,
-  likHistory,
-  arphiHistory,
-  frames,
-};
-
-mkdirSync(resolve(root, "tmp"), { recursive: true });
-const outPath = resolve(root, "tmp/mle-frames-energy-webgpu.json");
-writeFileSync(outPath, JSON.stringify(output, null, 2));
-console.log(`Saved ${frames.length} frames to ${outPath}`);
-console.log(`  Animation: ${animDuration.toFixed(2)}s play + ${HOLD_SECONDS}s hold = ${(animDuration + HOLD_SECONDS).toFixed(2)}s total cycle`);
-
-// ── Write timing sidecar ───────────────────────────────────────────────────
-
-mkdirSync(sidecarDir, { recursive: true });
-writeFileSync(
-  resolve(sidecarDir, "collect-energy-mle-frames-webgpu.json"),
-  JSON.stringify({ elapsed: Math.round(elapsed), iterations: totalIters, lik: mle.deviance }, null, 2) + "\n",
-);
-console.log(`Timing sidecar written.`);
-console.log(`\nSummary: ${totalIters} iters, ${elapsed.toFixed(0)} ms, lik=${mle.deviance.toFixed(2)}`);
+await main();

@@ -120,7 +120,8 @@ console.log(`  Final: s=${mle.obsStd.toFixed(4)}, arphi=${mle.arCoefficients?.[0
     const lik = idx === 0 ? null : likHistory[idx - 1];
 
     // Run dlmFit with the AR coefficient at this iteration
-    const fitOpts = { ...options, arCoefficients: arphi, fitAr: false };
+    const { fitAr: _, ...modelOpts } = options;
+    const fitOpts = { ...modelOpts, arCoefficients: arphi };
     const fit = await withLeakCheck(() => dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f64', ...fitOpts }));
 
     // Combined signal: F·x = x[0] + x[2] + x[4]

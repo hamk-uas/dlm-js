@@ -70,29 +70,46 @@ function median(arr: number[]): number {
   return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
 }
 
+const TIMEOUT_MS = 20_000;
+
+/** Race a promise against a timeout; returns Infinity on timeout. */
+async function withTimeout(fn: () => Promise<number>): Promise<number> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<number>(resolve => {
+    timer = setTimeout(() => resolve(Infinity), TIMEOUT_MS);
+  });
+  const result = await Promise.race([fn(), timeout]);
+  clearTimeout(timer!);
+  return result;
+}
+
 /** WASM warm median: JIT is polymorphic in N — already compiled once upfront.
  *  Just run RUNS times and take the median. */
 async function timedWarm(n: number): Promise<number> {
-  const y = makeY(n);
-  const times: number[] = [];
-  for (let i = 0; i < RUNS; i++) {
-    const t1 = performance.now();
-    const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64' as DlmDtype, ...options });
-    times.push(performance.now() - t1);
-    r[Symbol.dispose]?.();
-  }
-  return median(times);
+  return withTimeout(async () => {
+    const y = makeY(n);
+    const times: number[] = [];
+    for (let i = 0; i < RUNS; i++) {
+      const t1 = performance.now();
+      const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f64' as DlmDtype, ...options });
+      times.push(performance.now() - t1);
+      r[Symbol.dispose]?.();
+    }
+    return median(times);
+  });
 }
 
 /** WebGPU cold: JIT is NOT polymorphic in N — each N recompiles.
  *  Measure the single first call (includes JIT). */
 async function timedCold(n: number): Promise<number> {
-  const y = makeY(n);
-  const t1 = performance.now();
-  const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f32' as DlmDtype, ...options });
-  const elapsed = performance.now() - t1;
-  r[Symbol.dispose]?.();
-  return elapsed;
+  return withTimeout(async () => {
+    const y = makeY(n);
+    const t1 = performance.now();
+    const r  = await dlmFit(y, { obsStd: s, processStd: w, dtype: 'f32' as DlmDtype, ...options });
+    const elapsed = performance.now() - t1;
+    r[Symbol.dispose]?.();
+    return elapsed;
+  });
 }
 
 // ── Init both backends ─────────────────────────────────────────────────────
@@ -126,6 +143,7 @@ console.log(hdr);
 console.log("─".repeat(hdr.length));
 
 const sidecar: Record<string, number> = {};
+let gpuBailed = false;          // once GPU times out, skip all larger N
 
 for (const n of N_ALL) {
   try {
@@ -138,19 +156,25 @@ for (const n of N_ALL) {
 
     // ── WebGPU / f32 (cold — JIT recompiles for this N) ─────────────────────
     let gpuMs: number | null = null;
-    if (N_GPU.includes(n)) {
+    if (N_GPU.includes(n) && !gpuBailed) {
       defaultDevice("webgpu");
       gpuMs = await timedCold(n);
       sidecar[`webgpu_f32_n${n}`] = gpuMs;
+      if (gpuMs === Infinity) {
+        gpuBailed = true;
+        console.log("  ⏱ WebGPU timed out — skipping GPU for remaining sizes.");
+      }
     }
 
     // ── Print row ────────────────────────────────────────────────────────────
-    const gpuCell   = gpuMs !== null ? gpuMs.toFixed(1)                        : "—";
-    const ratioCell = gpuMs !== null ? (gpuMs / wasmMs).toFixed(1) + "×"      : "—";
+    const fmtMs = (v: number) => v === Infinity ? "+Inf" : v.toFixed(1);
+    const gpuCell   = gpuMs !== null ? fmtMs(gpuMs)                            : "—";
+    const ratioCell = gpuMs !== null && gpuMs !== Infinity && wasmMs !== Infinity
+      ? (gpuMs / wasmMs).toFixed(1) + "×" : "—";
     const cells = [
       n.toLocaleString("en-US").padStart(colW[0]),
-      wasmMs.toFixed(1).padStart(colW[1]),
-      usPerStep.toFixed(n >= 3_200 ? 1 : 0).padStart(colW[2]),
+      fmtMs(wasmMs).padStart(colW[1]),
+      (wasmMs === Infinity ? "+Inf" : usPerStep.toFixed(n >= 3_200 ? 1 : 0)).padStart(colW[2]),
       gpuCell.padStart(colW[3]),
       ratioCell.padStart(colW[4]),
     ];
