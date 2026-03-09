@@ -1,6 +1,6 @@
 # WebGPU `associativeScan` dispatch count — performance target for block-map fusion
 
-🔴 **Open**
+� **Mitigated** — `10ae2aa` unblocks 5-tuple block-map on WebGPU (constants → uniform buffers). ~21% warm speedup at N=100, but GPU/WASM ratio still 13–63× across N.
 
 ## Summary
 
@@ -157,6 +157,42 @@ WebGPU warm: ~122 ms (Nile order=1, m=2). The 5-tuple binding limit (11 > 10) me
 Ratios are worse than `3e580f4` because WebGPU cold includes JIT compile time while WASM is warm (polymorphic JIT).
 
 **Status: 🔴 Open** — WASM compiled-loop activates (scan itself is fast), but full `dlmFit(algorithm:'assoc')` is still ~4× slower than `scan` due to element construction and smoother overhead. WebGPU dispatch count unchanged.
+
+## Observation: `cd8d47a` — constants → uniform buffers (2026-03-10)
+
+Commits since v0.8.0:
+- `10ae2aa`: Moves small constants (≤4 elements) from group(0) storage bindings to group(1) uniform buffers in block-map fused shaders. This directly addresses the 5-tuple binding limit blocker.
+- `cd8d47a`: Einsum cleanup (renamed `_compose5_einsum` to active, fixed misleading comment).
+
+### 5-tuple block-map now activates on WebGPU
+
+**Before (`689d8a5` / v0.8.0):** 5-tuple forward compose needed `1 const + 5 in + 5 out = 11 storage bindings > maxStorageBuffersPerShaderStage (10)` → fell back to Kogge-Stone with per-op dispatches per round.
+
+**After (`cd8d47a`):** Constants ≤4 elements use group(1) uniform buffers, so `5 in + 5 out = 10 storage bindings ≤ 10` → block-map fused path activates:
+
+```
+[assoc-scan] SUCCESS! Using WebGPU block-map path (B=256)
+block_map: using fused WebGPU shader path
+```
+
+### Warm timings (Nile order=1, m=2, RTX 4070 eGPU)
+
+| N | WASM/f64 (warm) | GPU/f32 assoc (warm) | GPU/f32 scan (warm) | assoc/WASM | scan/WASM |
+|---|-----------------|---------------------|---------------------|------------|-----------|
+| 100 | 8 ms | 123 ms | 136 ms | 15× | 17× |
+| 800 | 7 ms | 428 ms | 979 ms | 63× | 144× |
+
+Compared to v0.8.0 warm (N=100): assoc 158ms → 123ms (**~21% faster**), scan 200ms → 136ms (**~32% faster**).
+
+### Assessment
+
+The specific binding-limit blocker is resolved — the 5-tuple forward compose now uses the block-map fused path on WebGPU, reducing per-round dispatch count for the compose function. However:
+
+1. **GPU/WASM ratio still 13–63× at N=100–800.** The remaining overhead is in the full `dlmFit` pipeline: element construction, backward smoother scan, diagnostic recovery, readback. These still generate many dispatches.
+2. **Ratio grows with N**, indicating the total dispatch count still scales with data size.
+3. **Block-map B=256** means the local scan phase handles up to 256 elements in one dispatch, but global merge rounds still add dispatches proportional to ⌈log₂(N/B)⌉.
+
+**Status: 🟡 Mitigated** — 5-tuple binding limit resolved, ~21% warm speedup at N=100. The core dispatch-count architecture issue persists for the full pipeline.
 
 ## Hardware
 
