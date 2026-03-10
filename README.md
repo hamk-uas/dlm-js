@@ -584,28 +584,28 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 <!-- generated:bench-full-table -->
 | backend | dtype | algorithm | stab | Nile o=0 | rel err | Nile o=1 | rel err | Kaisaniemi | rel err | Energy | rel err | Gapped | rel err |
 |---------|-------|-----------|------|-------|------|-------|------|-------|------|-------|------|-------|------|
-| **cpu** | **f64** | **scan** | **triu** | **171 ms** | **1.73e-16** | **378 ms** | **4.78e-13** | **470 ms** | **4.20e-11** | **524 ms** | **1.19e-11** | **378 ms** | **2.52e-13** |
-|  |  | scan | off | 148 ms | 1.73e-16 | 306 ms | 1.40e-11 | 377 ms | 5.85e-10 | 427 ms | 1.06e-6 | 297 ms | 1.03e-12 |
-|  |  | assoc | built-in | 75 ms | 4.87e-12 | 219 ms | 4.36e-9 | 1019 ms | 3.17e-8 | 1835 ms | 2.17e-7 | 225 ms | 1.29e-9 |
-|  |  | ud | built-in | 275 ms | 1.30e-14 | 737 ms | 1.43e-12 | 1452 ms | 4.01e-5 | 1873 ms | 1.56e-10 | 772 ms | 1.02e-13 |
-|  | **f32** | **scan** | **joseph** | **152 ms** | **9.93e-7** | **339 ms** | **2.25e-4** | **438 ms** | **2.93e-3** | **503 ms** | **6.18e-4** | **353 ms** | **1.74e-5** |
-|  |  | scan | joseph+triu | 179 ms | 9.93e-7 | 397 ms | 1.09e-4 | 501 ms | 8.98e-3 | 551 ms | 1.41e-3 | 401 ms | 1.40e-4 |
-|  |  | assoc | built-in | 68 ms | 4.74e-6 | 215 ms | 3.93e-3 | 1066 ms | 0.03 | 1870 ms | 0.20 | 226 ms | 1.51e-3 |
-|  |  | ud | built-in | 264 ms | 1.06e-6 | 717 ms | 7.48e-4 | 1426 ms | 0.02 | 1861 ms | 1.02e-3 | 734 ms | 2.73e-5 |
-| **wasm** | **f64** | **scan** | **triu** | **6 ms** | **1.73e-16** | **5 ms** | **4.78e-13** | **6 ms** | **4.20e-11** | **5 ms** | **1.19e-11** | **4 ms** | **2.52e-13** |
-|  |  | scan | off | 5 ms | 1.73e-16 | 4 ms | 1.40e-11 | 4 ms | 5.85e-10 | 4 ms | 1.06e-6 | 5 ms | 1.03e-12 |
-|  |  | assoc | built-in | 18 ms | 4.87e-12 | 21 ms | 4.36e-9 | 47 ms | 3.17e-8 | 60 ms | 2.17e-7 | 21 ms | 1.29e-9 |
-|  |  | sqrt-assoc | built-in | 78 ms | 2.60e-15 | 131 ms | 5.73e-12 | 306 ms | 2.03e-6 | 423 ms | 1.70e-10 | 134 ms | 3.46e-13 |
-|  |  | ud | built-in | 7 ms | 1.30e-14 | 7 ms | 1.43e-12 | 10 ms | 4.01e-5 | 14 ms | 1.56e-10 | 9 ms | 1.02e-13 |
-|  | **f32** | **scan** | **joseph** | **5 ms** | **1.06e-6** | **6 ms** | **2.59e-4** | **6 ms** | **0.01** | **5 ms** | **2.08e-3** | **4 ms** | **1.32e-4** |
-|  |  | scan | joseph+triu | 4 ms | 1.06e-6 | 5 ms | 7.11e-4 | 5 ms | 0.02 | 7 ms | 1.34e-3 | 5 ms | 2.48e-4 |
-|  |  | assoc | built-in | 17 ms | 4.74e-6 | 21 ms | 4.53e-3 | 42 ms | 0.03 | 59 ms | 0.22 | 23 ms | 1.19e-3 |
-|  |  | sqrt-assoc | built-in | 87 ms | 7.50e-7 | 126 ms | 3.07e-3 | 281 ms | 1.99 | 408 ms | 0.02 | 136 ms | 6.93e-4 |
-|  |  | ud | built-in | 7 ms | 1.06e-6 | 6 ms | 7.96e-4 | 9 ms | 3.74e-3 | 14 ms | 1.30e-3 | 7 ms | 1.41e-5 |
-| **webgpu** | **f32** | **assoc** | **built-in** | **73 ms** | **4.74e-6** | **88 ms** | **4.28e-3** | **125 ms** | **46.4** | **141 ms** | **46.3** | **140 ms** | **4.07e-4** |
-|  |  | scan | joseph | 186 ms | 1.06e-6 | 197 ms | 5.14e-4 | 237 ms | 8.35e-3 | 287 ms | 1.46e-3 | 224 ms | 2.13e-5 |
-|  |  | scan | joseph+triu | 211 ms | 1.06e-6 | 178 ms | 4.20e-4 | 209 ms | 8.57e-3 | 216 ms | 7.18e-4 | 189 ms | 1.25e-4 |
-|  |  | ud | built-in | 373 ms | 1.06e-6 | 545 ms | 9.96e-5 | 875 ms | 2.84e-3 | 1048 ms | 1.23e-3 | 499 ms | 4.70e-5 |
+| **cpu** | **f64** | **scan** | **triu** | **163 ms** | **1.73e-16** | **366 ms** | **4.78e-13** | **460 ms** | **4.20e-11** | **519 ms** | **1.19e-11** | **373 ms** | **2.52e-13** |
+|  |  | scan | off | 141 ms | 1.73e-16 | 288 ms | 1.40e-11 | 373 ms | 5.85e-10 | 419 ms | 1.06e-6 | 295 ms | 1.03e-12 |
+|  |  | assoc | built-in | 76 ms | 4.87e-12 | 216 ms | 4.36e-9 | 1024 ms | 3.17e-8 | 1835 ms | 2.17e-7 | 220 ms | 1.29e-9 |
+|  |  | ud | built-in | 277 ms | 1.30e-14 | 733 ms | 1.43e-12 | 1496 ms | 4.01e-5 | 1881 ms | 1.56e-10 | 756 ms | 1.02e-13 |
+|  | **f32** | **scan** | **joseph** | **148 ms** | **9.93e-7** | **334 ms** | **2.25e-4** | **448 ms** | **2.93e-3** | **508 ms** | **6.18e-4** | **349 ms** | **1.74e-5** |
+|  |  | scan | joseph+triu | 180 ms | 9.93e-7 | 399 ms | 1.09e-4 | 504 ms | 8.98e-3 | 571 ms | 1.41e-3 | 413 ms | 1.40e-4 |
+|  |  | assoc | built-in | 73 ms | 4.74e-6 | 218 ms | 3.93e-3 | 1043 ms | 0.03 | 1857 ms | 0.20 | 227 ms | 1.51e-3 |
+|  |  | ud | built-in | 264 ms | 1.06e-6 | 730 ms | 7.48e-4 | 1473 ms | 0.02 | 1811 ms | 1.02e-3 | 763 ms | 2.73e-5 |
+| **wasm** | **f64** | **scan** | **triu** | **5 ms** | **1.73e-16** | **7 ms** | **4.78e-13** | **5 ms** | **4.20e-11** | **6 ms** | **1.19e-11** | **5 ms** | **2.52e-13** |
+|  |  | scan | off | 4 ms | 1.73e-16 | 5 ms | 1.40e-11 | 4 ms | 5.85e-10 | 5 ms | 1.06e-6 | 5 ms | 1.03e-12 |
+|  |  | assoc | built-in | 23 ms | 4.87e-12 | 23 ms | 4.36e-9 | 48 ms | 3.17e-8 | 71 ms | 2.17e-7 | 23 ms | 1.29e-9 |
+|  |  | sqrt-assoc | built-in | 78 ms | 2.60e-15 | 142 ms | 5.73e-12 | 302 ms | 2.03e-6 | 422 ms | 1.70e-10 | 137 ms | 3.46e-13 |
+|  |  | ud | built-in | 6 ms | 1.30e-14 | 10 ms | 1.43e-12 | 10 ms | 4.01e-5 | 13 ms | 1.56e-10 | 8 ms | 1.02e-13 |
+|  | **f32** | **scan** | **joseph** | **5 ms** | **1.06e-6** | **4 ms** | **2.59e-4** | **5 ms** | **0.01** | **4 ms** | **2.08e-3** | **4 ms** | **1.32e-4** |
+|  |  | scan | joseph+triu | 6 ms | 1.06e-6 | 5 ms | 7.11e-4 | 5 ms | 0.02 | 5 ms | 1.34e-3 | 5 ms | 2.48e-4 |
+|  |  | assoc | built-in | 17 ms | 4.74e-6 | 21 ms | 4.53e-3 | 43 ms | 0.03 | 60 ms | 0.22 | 22 ms | 1.19e-3 |
+|  |  | sqrt-assoc | built-in | 85 ms | 7.50e-7 | 129 ms | 3.07e-3 | 279 ms | 1.99 | 410 ms | 0.02 | 142 ms | 6.93e-4 |
+|  |  | ud | built-in | 5 ms | 1.06e-6 | 8 ms | 7.96e-4 | 9 ms | 3.74e-3 | 12 ms | 1.30e-3 | 8 ms | 1.41e-5 |
+| **webgpu** | **f32** | **assoc** | **built-in** | **79 ms** | **4.74e-6** | **97 ms** | **4.28e-3** | **125 ms** | **46.4** | **145 ms** | **46.3** | **129 ms** | **4.07e-4** |
+|  |  | scan | joseph | 184 ms | 1.06e-6 | 214 ms | 5.14e-4 | 229 ms | 8.35e-3 | 314 ms | 1.46e-3 | 209 ms | 2.13e-5 |
+|  |  | scan | joseph+triu | 171 ms | 1.06e-6 | 188 ms | 4.20e-4 | 188 ms | 8.57e-3 | 200 ms | 7.18e-4 | 204 ms | 1.25e-4 |
+|  |  | ud | built-in | 374 ms | 1.06e-6 | 564 ms | 9.96e-5 | 816 ms | 2.84e-3 | 1053 ms | 1.23e-3 | 511 ms | 4.70e-5 |
 <!-- /generated -->
 
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
@@ -631,9 +631,9 @@ For background on the Nile and Kaisaniemi demos and the original model formulati
 | Model | $n$ | $m$ | wasm / f64 / scan (warm) | webgpu / f32 / assoc (warm) |
 |-------|-----|-----|--------------------------|------------------------------|
 | Nile, order=0 | 100 | 1 | <!-- timing:bb:nile-o0:wasm-f64 -->6 ms<!-- /timing --> | <!-- timing:bb:nile-o0:webgpu-f32 -->79 ms<!-- /timing --> |
-| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->6 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->76 ms<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:bb:nile-o1:wasm-f64 -->7 ms<!-- /timing --> | <!-- timing:bb:nile-o1:webgpu-f32 -->76 ms<!-- /timing --> |
 | Kaisaniemi, trig | 117 | 4 | <!-- timing:bb:kaisaniemi:wasm-f64 -->6 ms<!-- /timing --> | <!-- timing:bb:kaisaniemi:webgpu-f32 -->106 ms<!-- /timing --> |
-| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->6 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->103 ms<!-- /timing --> |
+| Energy, trig+AR | 120 | 5 | <!-- timing:bb:trigar:wasm-f64 -->14 ms<!-- /timing --> | <!-- timing:bb:trigar:webgpu-f32 -->103 ms<!-- /timing --> |
 
 **WebGPU/f32/assoc vs WASM/f64/scan scaling: O(log n) vs O(n).**
 
@@ -702,7 +702,7 @@ Noise parameters are optimized in log-space: $s = e^{\theta_s}$, $w_i = e^{\thet
 
 The entire optimization step is wrapped in a single `jit()` call. For Adam, this includes `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update; for natural gradient, the `jit(valueAndGrad(loss))` call is reused for both the gradient and finite-difference Hessian evaluations. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iterations (~<!-- timing:mle-bench:nile-order1:elapsed -->41 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:nile-order1:elapsed -->23 ms<!-- /timing -->) with the natural gradient optimizer.
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iterations (~<!-- timing:mle-bench:nile-order1:elapsed -->44 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:nile-order1:elapsed -->24 ms<!-- /timing -->) with the natural gradient optimizer.
 
 **Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
@@ -913,11 +913,11 @@ All timings measured on the same machine: <!-- computed:static("machine")-->Inte
 
 | Model | $n$ | $m$ | params | dlm-js Adam (wasm) | dlm-js natural (wasm) | Octave `fminsearch` | $-2\log L$ (Adam) | $-2\log L$ (natural) | $-2\log L$ (Octave) |
 |-------|---|---|--------|--------------------|-----------------------|---------------------|-------------------|----------------------|---------------------|
-| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:mle-bench:nile-order1:elapsed -->41 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->23 ms<!-- /timing --> | <!-- computed:static("octave-nile-order1-elapsed-ms") + " ms" -->2814 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-order1-lik") -->1104.6<!-- /computed --> |
-| Nile, order=1, fit w only | 100 | 2 | 2 | <!-- timing:mle-bench:nile-wonly:elapsed -->30 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:elapsed -->18 ms<!-- /timing --> | <!-- computed:static("octave-nile-w-only-elapsed-ms") + " ms" -->1614 ms<!-- /computed --> | <!-- timing:mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-w-only-lik") -->1104.7<!-- /computed --> |
+| Nile, order=1, fit s+w | 100 | 2 | 3 | <!-- timing:mle-bench:nile-order1:elapsed -->44 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:elapsed -->24 ms<!-- /timing --> | <!-- computed:static("octave-nile-order1-elapsed-ms") + " ms" -->2814 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order1:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-order1-lik") -->1104.6<!-- /computed --> |
+| Nile, order=1, fit w only | 100 | 2 | 2 | <!-- timing:mle-bench:nile-wonly:elapsed -->31 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:elapsed -->18 ms<!-- /timing --> | <!-- computed:static("octave-nile-w-only-elapsed-ms") + " ms" -->1614 ms<!-- /computed --> | <!-- timing:mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- timing:nat-mle-bench:nile-wonly:lik -->1104.9<!-- /timing --> | <!-- computed:static("octave-nile-w-only-lik") -->1104.7<!-- /computed --> |
 | Nile, order=0, fit s+w | 100 | 1 | 2 | <!-- timing:mle-bench:nile-order0:elapsed -->22 ms<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:elapsed -->13 ms<!-- /timing --> | <!-- computed:static("octave-nile-order0-elapsed-ms") + " ms" -->607 ms<!-- /computed --> | <!-- timing:mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- timing:nat-mle-bench:nile-order0:lik -->1095.8<!-- /timing --> | <!-- computed:static("octave-nile-order0-lik") -->1095.8<!-- /computed --> |
-| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->85 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->71 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
-| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->276 ms<!-- /timing --> | <!-- timing:nat-mle-bench:energy:elapsed -->137 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | <!-- timing:nat-mle-bench:energy:lik -->443.1<!-- /timing --> | — |
+| Kaisaniemi, trig, fit s+w | 117 | 4 | 5 | <!-- timing:mle-bench:kaisaniemi:elapsed -->86 ms<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:elapsed -->68 ms<!-- /timing --> | **failed** (NaN/Inf) | <!-- timing:mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | <!-- timing:nat-mle-bench:kaisaniemi:lik -->341.3<!-- /timing --> | — |
+| Energy, trig+AR, fit s+w+φ | 120 | 5 | 7 | <!-- timing:energy-mle:elapsed-ms -->274 ms<!-- /timing --> | <!-- timing:nat-mle-bench:energy:elapsed -->136 ms<!-- /timing --> | — | <!-- timing:energy-mle:lik -->443.1<!-- /timing --> | <!-- timing:nat-mle-bench:energy:lik -->443.1<!-- /timing --> | — |
 
 Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w only) dlm-js timings are from `pnpm run bench:mle`; Energy Adam timings are from `collect-energy-mle-frames.ts` (includes frame extraction overhead), Energy natural gradient from `bench:mle`. All dlm-js timings are single fresh-run wall-clock times including JIT overhead.
 
@@ -936,8 +936,8 @@ Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w 
 
 | Dataset | n | m | `checkpoint: false` ($n$, warm) | `checkpoint: true` ($\sqrt{n}$, warm) | speedup |
 |---------|---|---|-------------------------------|---------------------------------------|---------|
-| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->27 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->20 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->-24%<!-- /timing --> |
-| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->39 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->36 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-8%<!-- /timing --> |
+| Nile, order=1 | 100 | 2 | <!-- timing:ckpt:nile:false-ms -->24 ms<!-- /timing --> | <!-- timing:ckpt:nile:true-ms -->21 ms<!-- /timing --> | <!-- timing:ckpt:nile:speedup -->-15%<!-- /timing --> |
+| Energy, order=1+trig1+ar1 | 120 | 5 | <!-- timing:ckpt:energy:false-ms -->39 ms<!-- /timing --> | <!-- timing:ckpt:energy:true-ms -->35 ms<!-- /timing --> | <!-- timing:ckpt:energy:speedup -->-11%<!-- /timing --> |
 
 
 #### MCMC (MATLAB DLM only)
