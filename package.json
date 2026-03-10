@@ -76,6 +76,6 @@
     }
   },
   "dependencies": {
-    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#df765e910685c5a026e3c29056ba9dbd1be63b66"
+    "@hamk-uas/jax-js-nonconsuming": "github:hamk-uas/jax-js-nonconsuming#5a74c42eebf10aeba622e022a1d37231395e113a"
   }
 }
