@@ -1,6 +1,6 @@
 # WebGPU `associativeScan` dispatch count — performance target for block-map fusion
 
-� **Mitigated** — `10ae2aa` unblocks 5-tuple block-map on WebGPU (constants → uniform buffers). ~21% warm speedup at N=100, but GPU/WASM ratio still 13–63× across N.
+🟡 **Mitigated** — `33ded59` (batched copy ops + relaxed diamond heuristic for view ops). Warm median ~72ms at N=100 (was ~123ms at `2554290`, ~158ms pre-block-map). GPU/WASM ratio ~12× at N=100 (was ~21×). Still above ≤2× target.
 
 ## Summary
 
