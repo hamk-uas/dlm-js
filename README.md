@@ -243,7 +243,7 @@ Estimate observation noise `obsStd`, process noise `processStd`, and optionally 
 import { dlmMLE } from "dlm-js";
 import { defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 
-defaultDevice("wasm"); // recommended: ~10–20× faster than "cpu"
+defaultDevice("wasm"); // recommended: ~30–90× faster than "cpu"
 
 const y = [1120, 1160, 963, 1210, 1160, 1160, 813, 1230, 1370, 1140 /* ... */];
 
@@ -611,13 +611,13 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
 
 **Key findings** (see table above for exact numbers):
-- **WASM is ~10–20× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.
+- **WASM is ~30–90× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.
 - **`assoc` on CPU is faster for small m, slower for large m.** For m≥4 the extra matrix compositions dominate (~3× slower than `scan`).
 - **`assoc` on WASM is slower than `scan`** — the 5-tuple composition overhead dominates at small n. Prefer `scan` on WASM unless the parallel formulation is explicitly required.
 - **`sqrt-assoc` matches reference precision on wasm/f64** and maintains PSD covariances structurally (Cholesky factors) — no Joseph form or symmetrization needed. Slower than `scan` due to QR decompositions per composition step.
 - **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matching MATLAB `dlmsmo.m`), f32 uses Joseph-form update. The `assoc`/`sqrt-assoc` paths use their own exact formulation regardless of dtype. Overhead is negligible on WASM. Disable f64 symmetrization with `stabilization: { cTriuSym: false }`.
 - **f32 precision is limited to ~1–4% max error for large models.** Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
-- **WebGPU `assoc` is faster than `scan`** — `assoc` dispatches O(log n) rounds via a single `queue.submit()`, while `scan` dispatches O(n) sequential rounds. At small n (100–120), `assoc` is ~1.5–2× faster; the gap widens with larger n (see scaling table below).
+- **WebGPU `assoc` is faster than `scan`** — `assoc` dispatches O(log n) rounds via a single `queue.submit()`, while `scan` dispatches O(n) sequential rounds. At small n (100–120), `assoc` is ~1.5–3× faster; the gap widens with larger n (see scaling table below).
 - **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->1320 ms (warm)<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->1247 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2504 ms (cold)<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
 - **WebGPU numerical differences** vs WASM/f64 are from Float32 precision and parallel scan reordering, not algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
@@ -641,29 +641,29 @@ A scaling benchmark (Nile order=1, m=2) measures `dlmFit` at exponentially incre
 
 | N | wasm/f64/scan (warm) | webgpu/f32/assoc (cold) | ratio |
 |---|----------------------|-------------------------|-------|
-| 100 | <!-- timing:scale:wasm-f64:n100 -->7 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->1247 ms<!-- /timing --> | 17.9× |
-| 200 | <!-- timing:scale:wasm-f64:n200 -->6 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->1304 ms<!-- /timing --> | 18.4× |
-| 400 | <!-- timing:scale:wasm-f64:n400 -->6 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->1606 ms<!-- /timing --> | 18.3× |
-| 800 | <!-- timing:scale:wasm-f64:n800 -->6 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->1566 ms<!-- /timing --> | 19.6× |
-| 1600 | <!-- timing:scale:wasm-f64:n1600 -->7 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->1591 ms<!-- /timing --> | 19.7× |
-| 3200 | <!-- timing:scale:wasm-f64:n3200 -->8 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->1746 ms<!-- /timing --> | 21.2× |
-| 6400 | <!-- timing:scale:wasm-f64:n6400 -->10 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->1876 ms<!-- /timing --> | 21.2× |
-| 12800 | <!-- timing:scale:wasm-f64:n12800 -->15 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->1924 ms<!-- /timing --> | 20.1× |
-| 25600 | <!-- timing:scale:wasm-f64:n25600 -->25 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->2000 ms<!-- /timing --> | 14.8× |
-| 51200 | <!-- timing:scale:wasm-f64:n51200 -->44 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->2193 ms<!-- /timing --> | 15.4× |
-| 102400 | <!-- timing:scale:wasm-f64:n102400 -->94 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->2504 ms<!-- /timing --> | 13.8× |
-| 204800 | <!-- timing:scale:wasm-f64:n204800 -->153 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->2985 ms<!-- /timing --> | 12.3× |
-| 409600 | <!-- timing:scale:wasm-f64:n409600 -->310 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->3699 ms<!-- /timing --> | 10.2× |
-| 819200 | <!-- timing:scale:wasm-f64:n819200 -->628 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->5714 ms<!-- /timing --> | 10.0× |
-| 1638400 | <!-- timing:scale:wasm-f64:n1638400 -->1320 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1638400 -->9774 ms<!-- /timing --> | 9.5× |
+| 100 | <!-- timing:scale:wasm-f64:n100 -->7 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n100 -->1247 ms<!-- /timing --> | 181× |
+| 200 | <!-- timing:scale:wasm-f64:n200 -->6 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n200 -->1304 ms<!-- /timing --> | 227× |
+| 400 | <!-- timing:scale:wasm-f64:n400 -->6 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n400 -->1606 ms<!-- /timing --> | 272× |
+| 800 | <!-- timing:scale:wasm-f64:n800 -->6 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n800 -->1566 ms<!-- /timing --> | 247× |
+| 1600 | <!-- timing:scale:wasm-f64:n1600 -->7 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1600 -->1591 ms<!-- /timing --> | 228× |
+| 3200 | <!-- timing:scale:wasm-f64:n3200 -->8 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n3200 -->1746 ms<!-- /timing --> | 220× |
+| 6400 | <!-- timing:scale:wasm-f64:n6400 -->10 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n6400 -->1876 ms<!-- /timing --> | 179× |
+| 12800 | <!-- timing:scale:wasm-f64:n12800 -->15 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n12800 -->1924 ms<!-- /timing --> | 128× |
+| 25600 | <!-- timing:scale:wasm-f64:n25600 -->25 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n25600 -->2000 ms<!-- /timing --> | 79× |
+| 51200 | <!-- timing:scale:wasm-f64:n51200 -->44 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n51200 -->2193 ms<!-- /timing --> | 50× |
+| 102400 | <!-- timing:scale:wasm-f64:n102400 -->94 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n102400 -->2504 ms<!-- /timing --> | 27× |
+| 204800 | <!-- timing:scale:wasm-f64:n204800 -->153 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n204800 -->2985 ms<!-- /timing --> | 20× |
+| 409600 | <!-- timing:scale:wasm-f64:n409600 -->310 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n409600 -->3699 ms<!-- /timing --> | 12× |
+| 819200 | <!-- timing:scale:wasm-f64:n819200 -->628 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n819200 -->5714 ms<!-- /timing --> | 9.1× |
+| 1638400 | <!-- timing:scale:wasm-f64:n1638400 -->1320 ms<!-- /timing --> | <!-- timing:scale:webgpu-f32:n1638400 -->9774 ms<!-- /timing --> | 7.4× |
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~1.2 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1320 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM previously occurred at N=3276800 due to a signed 32-bit integer overflow in the page-count calculation — fixed upstream in jax-js-nonconsuming (bb126c6+a6d37da).
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~0.8 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1320 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM previously occurred at N=3276800 due to a signed 32-bit integer overflow in the page-count calculation — fixed upstream in jax-js-nonconsuming (bb126c6+a6d37da).
 
-2. **WebGPU cold timings include per-N JIT recompilation** (WebGPU `jit()` is not polymorphic in N). At small N the ~500 ms JIT overhead dominates; at large N the GPU arithmetic dominates. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). A 1024× increase from N=100 to N=102400 roughly triples the runtime (<!-- timing:scale:webgpu-f32:n100 -->1247 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2504 ms (cold)<!-- /timing -->).
+2. **WebGPU cold timings include per-N JIT recompilation** (WebGPU `jit()` is not polymorphic in N). At small N the ~1200 ms JIT overhead dominates; at large N the GPU arithmetic dominates. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->1247 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2504 ms (cold)<!-- /timing -->).
 
-3. **The cold-WebGPU-to-warm-WASM ratio decreases as N grows** (~18× at small N where JIT overhead dominates, ~10× at N=1.6M where GPU execution time dominates). No crossover was observed up to N=1638400.
+3. **The cold-WebGPU-to-warm-WASM ratio decreases as N grows** (~180× at small N where JIT overhead dominates, ~7× at N=1.6M where GPU execution time dominates). No crossover was observed up to N=1638400.
 
 
 ## MLE
@@ -835,7 +835,7 @@ where $g = \nabla_\theta \ell$ is the gradient, $H$ is the Hessian of the log-li
 
 **Why this is effective for DLM MLE:** The log-likelihood $\ell(\theta) = -2 \log L(\theta)$ of a DLM is smooth and close to quadratic near the optimum (it is a sum-of-squares-like prediction-error decomposition). The Hessian captures cross-parameter curvature — e.g. the coupling between observation noise $s$ and state noise $w$ — that diagonal methods like Adam miss. Convergence is typically quadratic near the optimum: 3–15 iterations vs 100–300 for Adam.
 
-**Cost trade-off:** Each natural gradient iteration is more expensive ($1 + 2p$ gradient evaluations for FD Hessian) but far fewer iterations are needed. For $p \leq 5$ and $n \leq 200$, natural gradient is ~1.5–2× faster in wall-clock time; for larger $p$ the FD cost grows and Adam becomes competitive.
+**Cost trade-off:** Each natural gradient iteration is more expensive ($1 + 2p$ gradient evaluations for FD Hessian) but far fewer iterations are needed. For $p \leq 5$ and $n \leq 200$, natural gradient is ~1.2–2× faster in wall-clock time; for larger $p$ the FD cost grows and Adam becomes competitive.
 
 ```js
 const mle = await dlmMLE(y, {
@@ -886,7 +886,7 @@ Both use the same positivity enforcement: log-space for variance parameters, the
 | **Gradient computation** | **Autodiff** via `valueAndGrad()` + reverse-mode AD through `lax.scan` | **None** — derivative-free |
 | **Typical run budget** | Adam: 200 iterations; natural: 50 iterations | 400 function evaluations (`options.maxfuneval`) |
 | **Compilation** | `jit()`-traced optimization step (forward filter + AD + parameter update) | None (interpreted; tested under Octave, or optional `dlmmex` C MEX) |
-| **WASM performance** | Adam: ~<!-- timing:ckpt:nile:false-s -->0.0 s<!-- /timing --> for 60 iters (Nile, n=100, m=2, `checkpoint: false`); natural: ~1.5 s for 5 iters | N/A |
+| **WASM performance** | Adam: <!-- timing:mle-bench:nile-order1:elapsed -->41 ms<!-- /timing --> / <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iters; natural: <!-- timing:nat-mle-bench:nile-order1:elapsed -->23 ms<!-- /timing --> / <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iters (Nile, n=100, m=2, incl. JIT) | N/A |
 
 **Key tradeoff**: Nelder-Mead needs only function evaluations (no gradients), making it robust on non-smooth surfaces but expensive as parameter dimension grows. Adam uses first-order gradients; natural gradient uses second-order curvature (Hessian) for faster convergence on smooth objectives like the DLM log-likelihood. See [Optimizers](#optimizers) for equations and algorithmic details.
 
