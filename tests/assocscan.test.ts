@@ -24,6 +24,7 @@ interface ModelCase {
   inputFile: string;
   referenceFile: string;
   options: DlmOptions;
+  timeout?: number;
 }
 
 const modelCases: ModelCase[] = [
@@ -50,6 +51,7 @@ const modelCases: ModelCase[] = [
     inputFile: 'seasonal-in.json',
     referenceFile: 'seasonal-out-m.json',
     options: { order: 1, fullSeasonal: true, seasonLength: 12 },
+    timeout: 60_000, // m=13 assocScan is expensive on CPU
   },
   {
     name: 'harmonics=2, seasonLength=12 (trigonometric seasonal, synthetic)',
@@ -104,7 +106,7 @@ describe('assoc dlmFit vs Octave', async () => {
   for (const config of f64Configs) {
     describe(`assocScan / ${config.label}`, () => {
       for (const mc of modelCases) {
-        it(mc.name, async () => {
+        it(mc.name, { timeout: mc.timeout }, async () => {
           const sys = dlmGenSys(mc.options);
           const tol = getModelTolerances(config, sys.m);
           if (!tol) return;

@@ -8,29 +8,22 @@
  *
  * WASM assoc is correct; WebGPU produces wrong results for indices 0..n-2^⌊log₂n⌋-1.
  *
- * Bug pattern (3-field compose, m=5):
- *   n=120 → indices 0..55 (=120-64) corrupted, 56..119 correct
- *   n=128 → corrupted (power of 2 — rules out pure stride-boundary cause)
- *   n=100, m=2 → passes (m-dependent)
- *
- * Run with Deno:
- *   DISPLAY=:1 deno run --unstable-webgpu --allow-read --allow-write --allow-env --allow-run \
- *     issues/repro-webgpu-reverse-assocscan-multifield.ts
+ * Run:
+ *   GPU=nvidia bash scripts/gpu-test.sh run issues/repro-webgpu-reverse-assocscan-multifield.ts
  */
 
-import { defaultDevice, init, numpy as np, lax, jit, tree } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
+import { describe, it, expect } from 'vitest';
+import { defaultDevice, init, numpy as np, lax, jit, tree } from "@hamk-uas/jax-js-nonconsuming";
 
 // ── Compose functions ──
 
 type Elem = { M: np.Array; v: np.Array };
 
-// Simple 2-field affine compose: (M₁,v₁) ∘ (M₂,v₂) = (M₁·M₂, M₁·v₂ + v₁)
 const compose = (a: Elem, b: Elem): Elem => ({
   M: np.matmul(a.M, b.M),
   v: np.add(np.matmul(a.M, b.v), a.v),
 });
 
-// 3-field backward smoother compose — matches dlmSmo composeBackward
 type BackwardElem = { A: np.Array; b: np.Array; S: np.Array };
 const composeBackward = (a: BackwardElem, b_elem: BackwardElem): BackwardElem => {
   const A_comp = np.einsum('nij,njk->nik', b_elem.A, a.A);
@@ -172,31 +165,24 @@ async function test2Field(n: number, m: number): Promise<boolean> {
   return failed;
 }
 
-async function main() {
-  await init("wasm");
-  await init("webgpu");
+describe('repro-webgpu-reverse-assocscan-multifield', () => {
+  it('reverse assocScan multi-field compose correct on WebGPU', async () => {
+    await init("wasm");
+    await init("webgpu");
 
-  let anyFail = false;
+    let anyFail = false;
 
-  console.log("── Part 1: 2-field compose (control) ──");
-  anyFail = await test2Field(120, 5) || anyFail;
-  anyFail = await test2Field(100, 2) || anyFail;
+    console.log("── Part 1: 2-field compose (control) ──");
+    anyFail = await test2Field(120, 5) || anyFail;
+    anyFail = await test2Field(100, 2) || anyFail;
 
-  console.log("\n── Part 2: 3-field backward compose (failing cases) ──");
-  anyFail = await testBackward(120, 5) || anyFail;
-  anyFail = await testBackward(100, 2) || anyFail;
-  anyFail = await testBackward(128, 5) || anyFail;
-  anyFail = await testBackward(65, 5) || anyFail;
-  anyFail = await testBackward(200, 5) || anyFail;
+    console.log("\n── Part 2: 3-field backward compose (failing cases) ──");
+    anyFail = await testBackward(120, 5) || anyFail;
+    anyFail = await testBackward(100, 2) || anyFail;
+    anyFail = await testBackward(128, 5) || anyFail;
+    anyFail = await testBackward(65, 5) || anyFail;
+    anyFail = await testBackward(200, 5) || anyFail;
 
-  if (anyFail) {
-    console.log("\n❌ At least one test FAILED — reverse assocScan multi-field compose broken on WebGPU");
-    // @ts-ignore
-    if (typeof Deno !== 'undefined') Deno.exit(1);
-    else process.exit(1);
-  } else {
-    console.log("\n✅ All tests passed");
-  }
-}
-
-main().catch(console.error);
+    expect(anyFail, "reverse assocScan multi-field compose broken on WebGPU").toBe(false);
+  });
+});

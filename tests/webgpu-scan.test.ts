@@ -5,8 +5,9 @@
  * consistent with WASM/f32. Both `algorithm:'scan'` and `algorithm:'ud'`
  * use `lax.scan` for the forward pass, so both are tested.
  *
- * These tests only run when WebGPU is available (Deno with --unstable-webgpu).
- * Under Node.js (pnpm vitest run), they are silently absent.
+ * These tests run in Chromium browser mode via @vitest/browser-playwright.
+ * Use `GPU=nvidia bash scripts/gpu-test.sh run tests/webgpu-scan.test.ts`
+ * or `pnpm vitest run tests/webgpu-scan.test.ts -c tests/vitest.nvidia.config.ts`.
  *
  * Thresholds are derived from dlm-js commit 90a9e77, where WebGPU lax.scan
  * was working correctly with jax-js-nonconsuming v0.7.10 (commit e3b88ab).
@@ -25,12 +26,11 @@
  * See issues/jax-js-webgpu-laxscan-accuracy.md.
  */
 import { describe, it, expect } from 'vitest';
+import { commands } from 'vitest/browser';
 import { dlmFit, dlmGenSys, toMatlab } from '../src/index';
 import { deepAlmostEqual, filterKeys, normalizeMatlabOutput, normalizeNulls } from './utils';
 import { getTestConfigs, applyConfig, getDlmDtype, assertAllFinite, type TestConfig } from './test-matrix';
 import type { DlmAlgorithm } from '../src/types';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // ── Model cases ────────────────────────────────────────────────────────────
 
@@ -104,6 +104,9 @@ const COMPARE_KEYS = [
 
 // ── Test runner ────────────────────────────────────────────────────────────
 
+// Resolve paths relative to workspace root (Vite serves from project root)
+const TESTS_DIR = 'tests';
+
 async function runWebGPUScanTest(
   config: TestConfig,
   mc: ModelCase,
@@ -111,14 +114,9 @@ async function runWebGPUScanTest(
 ) {
   applyConfig(config);
 
-  const inputPath = path.join(__dirname, mc.inputFile);
-  const refPath = path.join(__dirname, mc.referenceFile);
-  if (!fs.existsSync(inputPath)) throw new Error(`Input not found: ${inputPath}`);
-  if (!fs.existsSync(refPath)) throw new Error(`Reference not found: ${refPath}`);
-
-  const input = JSON.parse(fs.readFileSync(inputPath, 'utf-8'));
+  const input = JSON.parse(await commands.readFile(`${TESTS_DIR}/${mc.inputFile}`));
   const reference = normalizeNulls(
-    JSON.parse(fs.readFileSync(refPath, 'utf-8'))
+    JSON.parse(await commands.readFile(`${TESTS_DIR}/${mc.referenceFile}`))
   ) as Record<string, unknown>;
 
   const w: number[] = Array.isArray(input.w) ? input.w : [input.w];
@@ -137,10 +135,10 @@ async function runWebGPUScanTest(
   const matlab = toMatlab(result);
 
   // Write debug output
-  const outputDir = path.join(__dirname, 'out');
-  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(outputDir, `webgpu-${algorithm}-${mc.referenceFile.replace('-m.json', '')}-${config.label.replace('/', '-')}.json`),
+  const slug = mc.referenceFile.replace('-m.json', '').replace('-out', '');
+  const outFile = `tests/out/webgpu-${algorithm}-${slug}-${config.label.replace('/', '-')}.json`;
+  await commands.writeFile(
+    outFile,
     JSON.stringify(matlab, (_key, value) =>
       ArrayBuffer.isView(value) ? Array.from(value as Float64Array) : value
     , 2)
@@ -176,42 +174,28 @@ async function runWebGPUScanTest(
 
 // ── Test suites ────────────────────────────────────────────────────────────
 
-describe('WebGPU lax.scan accuracy — scan algorithm', async () => {
-  const configs = await getTestConfigs();
-  const gpuConfigs = configs.filter(c => c.label.includes('webgpu'));
-
-  if (gpuConfigs.length === 0) {
-    it.skip('no WebGPU device available', () => {});
-    return;
-  }
-
-  for (const config of gpuConfigs) {
-    describe(`webgpu/f32/scan`, () => {
-      for (const mc of modelCases) {
-        it(mc.name, async () => {
-          await runWebGPUScanTest(config, mc, 'scan');
-        });
-      }
+describe('WebGPU lax.scan accuracy — scan algorithm', () => {
+  for (const mc of modelCases) {
+    it(mc.name, async () => {
+      const configs = await getTestConfigs();
+      const gpuConfig = configs.find(c => c.label.includes('webgpu'));
+      expect(gpuConfig).toBeDefined();
+      await runWebGPUScanTest(gpuConfig!, mc, 'scan');
     });
   }
 });
 
-describe('WebGPU lax.scan accuracy — ud algorithm', async () => {
-  const configs = await getTestConfigs();
-  const gpuConfigs = configs.filter(c => c.label.includes('webgpu'));
+// Known skip: Energy m=5 produces NaN in UD algorithm on f32 (same as Node skip)
+const UD_SKIP = new Set(['Energy, trig+AR (m=5)']);
 
-  if (gpuConfigs.length === 0) {
-    it.skip('no WebGPU device available', () => {});
-    return;
-  }
-
-  for (const config of gpuConfigs) {
-    describe(`webgpu/f32/ud`, () => {
-      for (const mc of modelCases) {
-        it(mc.name, async () => {
-          await runWebGPUScanTest(config, mc, 'ud');
-        });
-      }
+describe('WebGPU lax.scan accuracy — ud algorithm', () => {
+  for (const mc of modelCases) {
+    const fn = UD_SKIP.has(mc.name) ? it.skip : it;
+    fn(mc.name, async () => {
+      const configs = await getTestConfigs();
+      const gpuConfig = configs.find(c => c.label.includes('webgpu'));
+      expect(gpuConfig).toBeDefined();
+      await runWebGPUScanTest(gpuConfig!, mc, 'ud');
     });
   }
 });

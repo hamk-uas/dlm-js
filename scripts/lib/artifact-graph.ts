@@ -128,7 +128,7 @@ export const artifactGroups: ArtifactGroup[] = [
     heavy: true,
   },
 
-  // ── WebGPU MLE animations (separate because requires Deno) ──────────────
+  // ── WebGPU MLE animations (Chromium via Playwright) ─────────────────────
   {
     id: "mle-svgs-webgpu",
     label: "MLE animation SVGs (WebGPU variants)",
@@ -148,7 +148,7 @@ export const artifactGroups: ArtifactGroup[] = [
       "assets/timings/collect-nile-mle-frames-webgpu.json",
       "assets/timings/collect-energy-mle-frames-webgpu.json",
     ],
-    command: "pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle  # (WebGPU parts use Deno; deno must be in PATH)",
+    command: "pnpm run gen:svg:nile-mle-anim && pnpm run gen:svg:energy-mle",
     heavy: true,
   },
 
@@ -204,7 +204,7 @@ export const artifactGroups: ArtifactGroup[] = [
     heavy: false,
   },
 
-  // ── WebGPU dlmFit benchmark (Deno) ───────────────────────────────────────
+  // ── WebGPU dlmFit benchmark (Chromium via Playwright) ────────────────────
   {
     id: "bench-gpu",
     label: "WebGPU dlmFit benchmark (float32, assoc)",
@@ -217,11 +217,11 @@ export const artifactGroups: ArtifactGroup[] = [
     outputs: [
       "assets/timings/bench-gpu.json",
     ],
-    command: "pnpm run bench:gpu   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
+    command: "pnpm run bench:gpu",
     heavy: true,
   },
 
-  // ── Full benchmark table (Deno + WebGPU) ────────────────────────────────
+  // ── Full benchmark table (all backends × algorithms) ────────────────────
   {
     id: "bench-full",
     label: "Full benchmark table (all backends × algorithms)",
@@ -234,7 +234,7 @@ export const artifactGroups: ArtifactGroup[] = [
     outputs: [
       "assets/timings/bench-full.json",
     ],
-    command: "pnpm run bench:full   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
+    command: "pnpm run bench:full",
     heavy: true,
   },
 
@@ -251,7 +251,7 @@ export const artifactGroups: ArtifactGroup[] = [
     outputs: [
       "assets/timings/bench-scaling.json",
     ],
-    command: "pnpm run bench:scaling   # (uses Deno with --unstable-webgpu; deno must be in PATH)",
+    command: "pnpm run bench:scaling",
     heavy: true,
   },
 ];

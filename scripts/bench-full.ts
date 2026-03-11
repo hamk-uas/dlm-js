@@ -14,50 +14,28 @@
  * Error columns compare dlm-js output (yhat, ystd, x, xstd) against the
  * Octave/MATLAB reference stored in tests/*-out-m.json.
  *
- * Must be run with Deno (WebGPU requires --unstable-webgpu):
- *   pnpm run bench:full
+ * Runs in Chromium browser mode via @vitest/browser-playwright:
+ *   GPU=nvidia bash scripts/gpu-test.sh run scripts/bench-full.ts
  *
  * Output: assets/timings/bench-full.json
  */
 
-import { DType, defaultDevice, init } from "../node_modules/@hamk-uas/jax-js-nonconsuming/dist/index.js";
+import { describe, it } from 'vitest';
+import { commands } from 'vitest/browser';
+import { DType, defaultDevice, init } from "@hamk-uas/jax-js-nonconsuming";
 import { dlmFit } from "../src/index.ts";
 import type { DlmDtype, DlmAlgorithm, DlmFitResult, DlmStabilization } from "../src/types.ts";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-
-const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
-const sidecarDir = resolve(root, "assets/timings");
 
 /** Hard timeout per dlmFit call — skip the combo if it exceeds this. */
 const TIMEOUT_MS = 10_000;
 
-// ── Init WebGPU (needed before first webgpu call) ─────────────────────────
+async function readJSON(path: string): Promise<any> {
+  return JSON.parse(await commands.readFile(path));
+}
 
-await init("webgpu");
-
-// ── Load data ──────────────────────────────────────────────────────────────
-
-const nileIn       = JSON.parse(readFileSync(resolve(root, "tests/niledemo-in.json"), "utf-8"));
-const kaisaniemiIn = JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-in.json"), "utf-8"));
-const trigarIn     = JSON.parse(readFileSync(resolve(root, "tests/trigar-in.json"), "utf-8"));
-const order0In     = JSON.parse(readFileSync(resolve(root, "tests/order0-in.json"), "utf-8"));
-const gappedIn    = JSON.parse(readFileSync(resolve(root, "tests/gapped-in.json"), "utf-8"));
-const gappedY: number[] = (gappedIn.y as (number | null)[]).map((v: number | null) => v === null ? NaN : v);
-
-// ── Load Octave/MATLAB reference outputs ───────────────────────────────────
-// Used for error comparison (max absolute and max percentage error).
+// ── Types ──────────────────────────────────────────────────────────────────
 
 type RefJson = Record<string, number[] | number[][]>;
-const refMap: Record<string, { ref: RefJson; m: number; n: number }> = {
-  "Nile, order=0":   { ref: JSON.parse(readFileSync(resolve(root, "tests/order0-out-m.json"),    "utf-8")), m: 1, n: 100 },
-  "Nile, order=1":   { ref: JSON.parse(readFileSync(resolve(root, "tests/niledemo-out-m.json"),  "utf-8")), m: 2, n: 100 },
-  "Kaisaniemi, trig":{ ref: JSON.parse(readFileSync(resolve(root, "tests/kaisaniemi-out-m.json"),"utf-8")), m: 4, n: 117 },
-  "Energy, trig+AR": { ref: JSON.parse(readFileSync(resolve(root, "tests/trigar-out-m.json"),    "utf-8")), m: 5, n: 120 },
-  "Gapped, order=1": { ref: JSON.parse(readFileSync(resolve(root, "tests/gapped-out-m.json"),  "utf-8")), m: 2, n: 100 },
-};
-
-// ── Models ─────────────────────────────────────────────────────────────────
 
 interface Model {
   label: string;
@@ -69,100 +47,34 @@ interface Model {
   m: number;
 }
 
-const toW = (v: unknown): number[] => Array.isArray(v) ? v as number[] : [v as number];
-
-const models: Model[] = [
-  {
-    label: "Nile, order=0",
-    y: order0In.y, s: order0In.s, w: toW(order0In.w),
-    options: { order: 0 },
-    n: 100, m: 1,
-  },
-  {
-    label: "Nile, order=1",
-    y: nileIn.y, s: nileIn.s, w: toW(nileIn.w),
-    options: { order: 1 },
-    n: 100, m: 2,
-  },
-  {
-    label: "Kaisaniemi, trig",
-    // kaisaniemi-in.json stores MATLAB option names (trig → harmonics)
-    y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: toW(kaisaniemiIn.w),
-    options: { order: 1, harmonics: 1 },
-    n: 117, m: 4,
-  },
-  {
-    label: "Energy, trig+AR",
-    y: trigarIn.y, s: trigarIn.s, w: toW(trigarIn.w),
-    options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] },
-    n: 120, m: 5,
-  },
-  {
-    label: "Gapped, order=1",
-    y: gappedY, s: gappedIn.s, w: toW(gappedIn.w),
-    options: gappedIn.options,      // { order: 1 }
-    n: 100, m: 2,
-  },
-];
-
-// ── Combinations ───────────────────────────────────────────────────────────
-
 interface Combo {
   backend: 'cpu' | 'wasm' | 'webgpu';
   dlmDtype: DlmDtype;
   algorithm: DlmAlgorithm;
-  /** Explicit stabilization override. Undefined = use library defaults. */
   stabilization?: DlmStabilization;
-  /** Human-readable stab label for the table (auto-derived if omitted). */
   stabLabel?: string;
 }
 
-const combos: Combo[] = [];
+interface TimingResult {
+  firstMs: number;
+  warmMs: number;
+  stable: boolean;
+  maxAbsErr: number;
+  maxPctErr: number;
+}
 
-for (const backend of ['cpu', 'wasm'] as const) {
-  for (const dlmDtype of ['f64', 'f32'] as const) {
-    for (const algorithm of ['scan', 'assoc', 'sqrt-assoc', 'ud'] as const) {
-      // Default row (uses library defaults for this dtype)
-      combos.push({ backend, dlmDtype, algorithm });
-      // f64/scan: include old no-sym baseline as explicit comparison row
-      if (dlmDtype === 'f64' && algorithm === 'scan') {
-        combos.push({
-          backend, dlmDtype, algorithm,
-          stabilization: { cTriuSym: false },
-          stabLabel: 'off',
-        });
-      }
-      // f32/scan: include joseph+triu variant (triu replaces (C+C')/2 sym step)
-      if (dlmDtype === 'f32' && algorithm === 'scan') {
-        combos.push({
-          backend, dlmDtype, algorithm,
-          stabilization: { cTriuSym: true },
-          stabLabel: 'joseph+triu',
-        });
-      }
-    }
+// ── Pure helpers (no I/O) ──────────────────────────────────────────────────
+
+const toW = (v: unknown): number[] => Array.isArray(v) ? v as number[] : [v as number];
+const dtypeLabel = (d: DlmDtype) => d;
+
+function isAllFinite(arr: number[] | Float32Array | Float64Array): boolean {
+  for (let i = 0; i < arr.length; i++) {
+    if (!isFinite((arr as number[])[i])) return false;
   }
+  return true;
 }
-// webgpu: float32 only
-for (const algorithm of ['scan', 'assoc', 'ud'] as const) {
-  combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm });
-}
-// webgpu/f32/scan: joseph+triu variant
-combos.push({
-  backend: 'webgpu', dlmDtype: 'f32', algorithm: 'scan',
-  stabilization: { cTriuSym: true },
-  stabLabel: 'joseph+triu',
-});
 
-// ── Error computation helpers ──────────────────────────────────────────────
-
-/**
- * Flatten MATLAB/Octave reference values for comparison.
- * Fields compared: yhat[n], ystd[n], x (state means), xstd (state stds).
- * Reference shapes:
- *   m=1: x=[n] flat,  xstd=[n] flat
- *   m>1: x=[m][n],    xstd=[n][m]  (ref stores row-per-time for xstd)
- */
 function flattenRef(ref: RefJson, m: number, n: number): number[] {
   const out: number[] = [];
   for (const v of ref['yhat'] as number[]) out.push(v);
@@ -179,12 +91,6 @@ function flattenRef(ref: RefJson, m: number, n: number): number[] {
   return out;
 }
 
-/**
- * Flatten dlmFit result values in the same order as flattenRef.
- * result.x    = FloatArray[m_actual], each of length n → x[i][t]
- * result.xstd = FloatArray[n],        each of length m → xstd[t][i]
- * Uses the result's own dimensions; m/n params are from the reference for sizing only.
- */
 function flattenResult(r: DlmFitResult, m: number, n: number): number[] {
   const out: number[] = [];
   const yhat = r.yhat;
@@ -205,7 +111,6 @@ function flattenResult(r: DlmFitResult, m: number, n: number): number[] {
   return out;
 }
 
-/** Return a prefix-trimmed version of refVals to match length of gotVals. */
 function trimRef(refVals: number[], gotLen: number): number[] {
   return gotLen < refVals.length ? refVals.slice(0, gotLen) : refVals;
 }
@@ -214,7 +119,7 @@ function computeErrors(got: number[], refVals: number[]): { maxAbsErr: number; m
   const threshold = 1e-10;
   let maxAbs = 0, maxPct = 0;
   for (let i = 0; i < refVals.length; i++) {
-    if (!isFinite(got[i])) continue;  // skip NaN/Inf rows (already flagged as unstable)
+    if (!isFinite(got[i])) continue;
     const abs = Math.abs(got[i] - refVals[i]);
     if (abs > maxAbs) maxAbs = abs;
     if (Math.abs(refVals[i]) > threshold) {
@@ -223,87 +128,6 @@ function computeErrors(got: number[], refVals: number[]): { maxAbsErr: number; m
     }
   }
   return { maxAbsErr: maxAbs, maxPctErr: maxPct };
-}
-
-// ── Timing helper ──────────────────────────────────────────────────────────
-
-const dtypeLabel = (d: DlmDtype) => d;
-
-function isAllFinite(arr: number[] | Float32Array | Float64Array): boolean {
-  for (let i = 0; i < arr.length; i++) {
-    if (!isFinite((arr as number[])[i])) return false;
-  }
-  return true;
-}
-
-interface TimingResult {
-  firstMs: number;
-  warmMs: number;
-  stable: boolean;   // false if output yhat contains NaN/Infinity
-  maxAbsErr: number; // max |dlm-js - octave| across yhat,ystd,x,xstd
-  maxPctErr: number; // max |(dlm-js - octave)/octave|×100 (%)
-}
-
-async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
-  try {
-    defaultDevice(combo.backend);
-  } catch {
-    return { firstMs: NaN, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
-  }
-  const { y, s, w, options } = model;
-
-  const { ref, m, n } = refMap[model.label];
-  const refVals = flattenRef(ref, m, n);
-
-  let stable = true;
-  const fitOpts = {
-    obsStd: s, processStd: w,
-    dtype: combo.dlmDtype, algorithm: combo.algorithm,
-    ...(combo.stabilization !== undefined ? { stabilization: combo.stabilization } : {}),
-    ...options,
-  };
-
-  // First run (JIT compilation)
-  const t0 = performance.now();
-  let r1: DlmFitResult;
-  try {
-    r1 = await dlmFit(y, fitOpts);
-    if (!isAllFinite(r1.yhat as number[])) stable = false;
-    r1[Symbol.dispose]?.();
-  } catch {
-    return { firstMs: NaN, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
-  }
-  const t1 = performance.now();
-  const firstMs = t1 - t0;
-
-  // If the first run exceeded the timeout, skip the warm run entirely.
-  if (firstMs > TIMEOUT_MS) {
-    return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN };
-  }
-
-  // Warm run (cached) — also used for error computation
-  const t2 = performance.now();
-  let r2: DlmFitResult;
-  try {
-    r2 = await dlmFit(y, fitOpts);
-  } catch {
-    return { firstMs, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
-  }
-  const t3 = performance.now();
-  const warmMs = t3 - t2;
-
-  // If the warm run exceeded the timeout, still record the time but skip errors.
-  if (warmMs > TIMEOUT_MS) {
-    r2[Symbol.dispose]?.();
-    return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN };
-  }
-
-  // Compute errors from warm run before dispose
-  const gotVals = flattenResult(r2, m, n);
-  const { maxAbsErr, maxPctErr } = computeErrors(gotVals, trimRef(refVals, gotVals.length));
-  r2[Symbol.dispose]?.();
-
-  return { firstMs, warmMs, stable, maxAbsErr, maxPctErr };
 }
 
 function fmtMs(ms: number): string {
@@ -318,73 +142,156 @@ function fmtErr(v: number, digits: number): string {
   return v.toExponential(digits).padStart(11);
 }
 
-// ── Run all combinations ───────────────────────────────────────────────────
+// ── Combination generation ─────────────────────────────────────────────────
 
-const allResults: Record<string, unknown>[] = [];
-
-for (const model of models) {
-  const colW = { be: 7, dt: 4, al: 14, ti: 8, err: 11 };
-  const divW = colW.be + colW.dt + colW.al + colW.ti * 2 + colW.err * 2 + 14;
-
-  console.log(`\n${'═'.repeat(divW)}`);
-  console.log(`Model: ${model.label}  (n=${model.n}, m=${model.m})`);
-  console.log('═'.repeat(divW));
-
-  const header = [
-    'backend'.padEnd(colW.be),
-    'dtype'.padEnd(colW.dt),
-    'algorithm'.padEnd(colW.al),
-    'first(ms)'.padStart(colW.ti),
-    'warm(ms)'.padStart(colW.ti),
-    '  ' + 'max|Δ|'.padStart(colW.err),
-    'max|Δ|%'.padStart(colW.err),
-    '  status',
-  ].join('  ');
-  console.log(header);
-  console.log('─'.repeat(divW));
-
-  for (const combo of combos) {
-    const result = await timedFit(model, combo);
-    const isDefaultCombo = combo.stabilization === undefined &&
-      ((combo.backend === 'webgpu' && combo.dlmDtype === 'f32' && combo.algorithm === 'assoc') ||
-       (combo.backend !== 'webgpu' && combo.algorithm === 'scan'));
-    const defaultMark = isDefaultCombo ? ' ←def' : '';
-    const status = result.stable
-      ? (defaultMark ? `✓${defaultMark}` : '✓')
-      : (isNaN(result.firstMs) ? '✗ crash' : '⚠️ NaN');
-    const stabStr = combo.stabLabel ?? (combo.stabilization !== undefined ? 'override' : 'default');
-
-    console.log([
-      combo.backend.padEnd(colW.be),
-      dtypeLabel(combo.dlmDtype).padEnd(colW.dt),
-      `${combo.algorithm}+${stabStr}`.padEnd(colW.al),
-      fmtMs(result.firstMs),
-      fmtMs(result.warmMs),
-      fmtErr(result.maxAbsErr, 2),
-      fmtErr(result.maxPctErr, 2),
-      `  ${status}`,
-    ].join('  '));
-
-    allResults.push({
-      model: model.label, n: model.n, m: model.m,
-      backend: combo.backend,
-      dtype: dtypeLabel(combo.dlmDtype),
-      algorithm: combo.algorithm,
-      stabLabel: combo.stabLabel ?? 'default',
-      firstMs: result.firstMs,
-      warmMs: result.warmMs,
-      stable: result.stable,
-      maxAbsErr: result.maxAbsErr,
-      maxPctErr: result.maxPctErr,
-    });
+function buildCombos(): Combo[] {
+  const combos: Combo[] = [];
+  for (const backend of ['cpu', 'wasm'] as const) {
+    for (const dlmDtype of ['f64', 'f32'] as const) {
+      for (const algorithm of ['scan', 'assoc', 'sqrt-assoc', 'ud'] as const) {
+        combos.push({ backend, dlmDtype, algorithm });
+        if (dlmDtype === 'f64' && algorithm === 'scan') {
+          combos.push({ backend, dlmDtype, algorithm, stabilization: { cTriuSym: false }, stabLabel: 'off' });
+        }
+        if (dlmDtype === 'f32' && algorithm === 'scan') {
+          combos.push({ backend, dlmDtype, algorithm, stabilization: { cTriuSym: true }, stabLabel: 'joseph+triu' });
+        }
+      }
+    }
   }
+  for (const algorithm of ['scan', 'assoc', 'ud'] as const) {
+    combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm });
+  }
+  combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm: 'scan', stabilization: { cTriuSym: true }, stabLabel: 'joseph+triu' });
+  return combos;
 }
 
-console.log('');
+// ── Main benchmark (vitest test body) ──────────────────────────────────────
 
-// ── Save sidecar ───────────────────────────────────────────────────────────
+describe('bench-full', () => {
+  it('comprehensive dlmFit benchmark', async () => {
+    // Init backends
+    await init("webgpu");
 
-mkdirSync(sidecarDir, { recursive: true });
-const sidecarPath = resolve(sidecarDir, "bench-full.json");
-writeFileSync(sidecarPath, JSON.stringify({ results: allResults }, null, 2));
-console.log(`Wrote ${sidecarPath}`);
+    // Load data
+    const nileIn       = await readJSON("tests/niledemo-in.json");
+    const kaisaniemiIn = await readJSON("tests/kaisaniemi-in.json");
+    const trigarIn     = await readJSON("tests/trigar-in.json");
+    const order0In     = await readJSON("tests/order0-in.json");
+    const gappedIn     = await readJSON("tests/gapped-in.json");
+    const gappedY: number[] = (gappedIn.y as (number | null)[]).map((v: number | null) => v === null ? NaN : v);
+
+    // Load Octave references
+    const refMap: Record<string, { ref: RefJson; m: number; n: number }> = {
+      "Nile, order=0":    { ref: await readJSON("tests/order0-out-m.json"),     m: 1, n: 100 },
+      "Nile, order=1":    { ref: await readJSON("tests/niledemo-out-m.json"),   m: 2, n: 100 },
+      "Kaisaniemi, trig": { ref: await readJSON("tests/kaisaniemi-out-m.json"), m: 4, n: 117 },
+      "Energy, trig+AR":  { ref: await readJSON("tests/trigar-out-m.json"),     m: 5, n: 120 },
+      "Gapped, order=1":  { ref: await readJSON("tests/gapped-out-m.json"),     m: 2, n: 100 },
+    };
+
+    // Build models
+    const models: Model[] = [
+      { label: "Nile, order=0",   y: order0In.y, s: order0In.s, w: toW(order0In.w), options: { order: 0 }, n: 100, m: 1 },
+      { label: "Nile, order=1",   y: nileIn.y,   s: nileIn.s,   w: toW(nileIn.w),   options: { order: 1 }, n: 100, m: 2 },
+      { label: "Kaisaniemi, trig", y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: toW(kaisaniemiIn.w), options: { order: 1, harmonics: 1 }, n: 117, m: 4 },
+      { label: "Energy, trig+AR", y: trigarIn.y, s: trigarIn.s, w: toW(trigarIn.w), options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] }, n: 120, m: 5 },
+      { label: "Gapped, order=1", y: gappedY, s: gappedIn.s, w: toW(gappedIn.w), options: gappedIn.options, n: 100, m: 2 },
+    ];
+
+    // Timing helper
+    async function timedFit(model: Model, combo: Combo): Promise<TimingResult> {
+      try { defaultDevice(combo.backend); } catch {
+        return { firstMs: NaN, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
+      }
+      const { y, s, w, options } = model;
+      const { ref, m, n } = refMap[model.label];
+      const refVals = flattenRef(ref, m, n);
+      let stable = true;
+      const fitOpts = {
+        obsStd: s, processStd: w,
+        dtype: combo.dlmDtype, algorithm: combo.algorithm,
+        ...(combo.stabilization !== undefined ? { stabilization: combo.stabilization } : {}),
+        ...options,
+      };
+
+      const t0 = performance.now();
+      let r1: DlmFitResult;
+      try {
+        r1 = await dlmFit(y, fitOpts);
+        if (!isAllFinite(r1.yhat as number[])) stable = false;
+        r1[Symbol.dispose]?.();
+      } catch {
+        return { firstMs: NaN, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
+      }
+      const firstMs = performance.now() - t0;
+      if (firstMs > TIMEOUT_MS) return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN };
+
+      const t2 = performance.now();
+      let r2: DlmFitResult;
+      try { r2 = await dlmFit(y, fitOpts); } catch {
+        return { firstMs, warmMs: NaN, stable: false, maxAbsErr: NaN, maxPctErr: NaN };
+      }
+      const warmMs = performance.now() - t2;
+      if (warmMs > TIMEOUT_MS) { r2[Symbol.dispose]?.(); return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN }; }
+
+      const gotVals = flattenResult(r2, m, n);
+      const { maxAbsErr, maxPctErr } = computeErrors(gotVals, trimRef(refVals, gotVals.length));
+      r2[Symbol.dispose]?.();
+      return { firstMs, warmMs, stable, maxAbsErr, maxPctErr };
+    }
+
+    // Run all combinations
+    const combos = buildCombos();
+    const allResults: Record<string, unknown>[] = [];
+
+    for (const model of models) {
+      const colW = { be: 7, dt: 4, al: 14, ti: 8, err: 11 };
+      const divW = colW.be + colW.dt + colW.al + colW.ti * 2 + colW.err * 2 + 14;
+
+      console.log(`\n${'═'.repeat(divW)}`);
+      console.log(`Model: ${model.label}  (n=${model.n}, m=${model.m})`);
+      console.log('═'.repeat(divW));
+
+      const header = [
+        'backend'.padEnd(colW.be), 'dtype'.padEnd(colW.dt), 'algorithm'.padEnd(colW.al),
+        'first(ms)'.padStart(colW.ti), 'warm(ms)'.padStart(colW.ti),
+        '  ' + 'max|Δ|'.padStart(colW.err), 'max|Δ|%'.padStart(colW.err), '  status',
+      ].join('  ');
+      console.log(header);
+      console.log('─'.repeat(divW));
+
+      for (const combo of combos) {
+        const result = await timedFit(model, combo);
+        const isDefaultCombo = combo.stabilization === undefined &&
+          ((combo.backend === 'webgpu' && combo.dlmDtype === 'f32' && combo.algorithm === 'assoc') ||
+           (combo.backend !== 'webgpu' && combo.algorithm === 'scan'));
+        const defaultMark = isDefaultCombo ? ' ←def' : '';
+        const status = result.stable
+          ? (defaultMark ? `✓${defaultMark}` : '✓')
+          : (isNaN(result.firstMs) ? '✗ crash' : '⚠️ NaN');
+        const stabStr = combo.stabLabel ?? (combo.stabilization !== undefined ? 'override' : 'default');
+
+        console.log([
+          combo.backend.padEnd(colW.be), dtypeLabel(combo.dlmDtype).padEnd(colW.dt),
+          `${combo.algorithm}+${stabStr}`.padEnd(colW.al),
+          fmtMs(result.firstMs), fmtMs(result.warmMs),
+          fmtErr(result.maxAbsErr, 2), fmtErr(result.maxPctErr, 2),
+          `  ${status}`,
+        ].join('  '));
+
+        allResults.push({
+          model: model.label, n: model.n, m: model.m,
+          backend: combo.backend, dtype: dtypeLabel(combo.dlmDtype),
+          algorithm: combo.algorithm, stabLabel: combo.stabLabel ?? 'default',
+          firstMs: result.firstMs, warmMs: result.warmMs, stable: result.stable,
+          maxAbsErr: result.maxAbsErr, maxPctErr: result.maxPctErr,
+        });
+      }
+    }
+
+    // Save sidecar
+    await commands.writeFile("assets/timings/bench-full.json", JSON.stringify({ results: allResults }, null, 2));
+    console.log('\nWrote assets/timings/bench-full.json');
+  });
+});

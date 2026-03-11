@@ -26,6 +26,8 @@ export default defineConfig({
   ],
   test: {
     include: ['tests/**/*.test.ts'],
+    exclude: ['tests/webgpu-scan.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    testTimeout: 30000,
   },
 });
