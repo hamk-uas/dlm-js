@@ -12,7 +12,7 @@
  * in green, showing how well the smoother recovers the ground truth.
  *
  * Usage:  npx tsx scripts/gen-trigar-svg.ts
- * Output: assets/trigar.svg
+ * Output: assets/trigar-{scan,assoc}.svg
  */
 
 import { dlmFit } from "../src/index.ts";

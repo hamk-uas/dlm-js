@@ -7,7 +7,7 @@
  *   - Gray shading marks contiguous and isolated gapped-data regions.
  *
  * Usage:  npx tsx scripts/gen-gapped-svg.ts
- * Output: assets/gapped-demo.svg
+ * Output: assets/gapped-demo-{scan,assoc}.svg
  */
 
 import { dlmFit } from "../src/index.ts";

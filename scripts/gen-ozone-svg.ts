@@ -19,7 +19,7 @@
  *   γ_t = 2 trig harmonics for monthly seasonality (ns=12)
  *
  * Usage:  npx tsx scripts/gen-ozone-svg.ts
- * Output: assets/ozone-demo.svg
+ * Output: assets/ozone-demo-{scan,assoc}.svg
  */
 
 import { readFileSync } from "node:fs";

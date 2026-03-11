@@ -118,6 +118,11 @@ export function gpuConfig(gpu: GpuProfile) {
       },
       testTimeout: 300_000,
       passWithNoTests: true,
+      include: [
+        "**/*.{test,spec}.?(c|m)[jt]s?(x)",
+        "scripts/**/*.ts",
+        "issues/**/*.ts",
+      ],
       setupFiles: [],
     },
   });

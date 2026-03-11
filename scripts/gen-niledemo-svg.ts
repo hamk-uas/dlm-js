@@ -3,7 +3,7 @@
  * ±2σ confidence bands from both dlm-js and MATLAB/Octave dlm.
  *
  * Usage:  npx tsx scripts/gen-niledemo-svg.ts
- * Output: assets/niledemo.svg
+ * Output: assets/niledemo-{scan,assoc,sqrt-assoc,sqrt-assoc-f32}.svg
  */
 
 import { dlmFit } from "../src/index.ts";
