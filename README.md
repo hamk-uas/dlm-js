@@ -581,6 +581,8 @@ Stab column: `triu` = `triu(C)+triu(C,1)'` symmetrize (f64 default, matches MATL
 
 Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi trig (n=117, m=4) · Energy trig+AR (n=120, m=5) · Gapped order=1 (n=100, m=2, 23 NaN). Benchmarked on: <!-- computed:static("machine") -->Intel(R) Core(TM) Ultra 5 125H, 62 GB RAM<!-- /computed --> · GPU: <!-- computed:static("gpu") -->GeForce RTX 4070 Ti SUPER (WebGPU adapter)<!-- /computed -->.
 
+<div style="overflow-x: auto">
+
 <!-- generated:bench-full-table -->
 | backend | dtype | algorithm | stab | Nile o=0 | rel err | Nile o=1 | rel err | Kaisaniemi | rel err | Energy | rel err | Gapped | rel err |
 |---------|-------|-----------|------|-------|------|-------|------|-------|------|-------|------|-------|------|
@@ -607,6 +609,8 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 |  |  | scan | joseph+triu | 64 ms | 3.99e-6 | 60 ms | 6.34e-5 | 49 ms | 0.03 | 48 ms | 2.88e-3 | 51 ms | 8.20e-5 |
 |  |  | ud | built-in | 122 ms | 1.27e-5 | 160 ms | 7.70e-4 | 123 ms | 9.20e-3 | 148 ms | 3.12e-4 | 144 ms | 4.61e-5 |
 <!-- /generated -->
+
+</div>
 
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
 
@@ -766,7 +770,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 Both optimizers can be understood as instances of **steepest descent under a norm** (Bernstein & Newhouse 2024). Given a loss $\ell(\theta)$ with gradient $g = \nabla_\theta \ell$ and a norm $\|\cdot\|$ on the parameter space, the optimal update minimizing a quadratic model is:
 
-$$\Delta\theta^* = \operatorname{arg\,min}_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
+$$\Delta\theta^* = \argmin_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
 
 where $\|g\|^\dagger$ is the dual norm and $\mathcal{D}_{\|\cdot\|}$ is the *duality map* — it converts the gradient (a member of the dual space) into a primal-space update direction. The choice of norm determines the geometry:
 
