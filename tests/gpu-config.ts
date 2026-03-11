@@ -41,7 +41,7 @@ const COMMON_ARGS = [
   "--no-sandbox",
   "--headless=new",
   "--use-angle=vulkan",
-  "--enable-features=Vulkan",
+  "--enable-features=Vulkan,WebGPUSubgroupsExperimentation",
   "--disable-vulkan-surface",
   "--enable-unsafe-webgpu",
 ];
@@ -49,11 +49,11 @@ const COMMON_ARGS = [
 /** Per-GPU overrides: extra Chromium args and env vars. */
 const GPU_PROFILES = {
   nvidia: {
-    args: ["--enable-dawn-features=vulkan_enable_f16_on_nvidia"],
+    args: ["--enable-dawn-features=allow_unsafe_apis,vulkan_enable_f16_on_nvidia"],
     env: {},
   },
   intel: {
-    args: ["--use-vulkan=native", "--force-gpu-mem-available-mb=4096"],
+    args: ["--enable-dawn-features=allow_unsafe_apis", "--use-vulkan=native", "--force-gpu-mem-available-mb=4096"],
     env: {
       // Force Vulkan loader to only load the Intel mesa driver.
       VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/intel_icd.json",
