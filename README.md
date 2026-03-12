@@ -428,7 +428,7 @@ This is algebraically equivalent but numerically more stable — it guarantees a
 
 **Approaches attempted and rejected:**
 
-- **Diagonal preconditioning** — Rescale the state space by $D = \text{diag}(\sqrt{|\text{diag}(C_0)|} + \epsilon)$ so the filter operates on a better-conditioned system, then untransform the results. Improved joseph+triu precision 2–5× for polynomial models (m ≤ 2), but **degraded** m = 1 models by ~85× and catastrophically broke trigonometric/seasonal models (max |Δ|% > 300,000%) because diagonal scaling distorts the rotation blocks in non-triangular G matrices. Reverted.
+- **Diagonal preconditioning** — Rescale the state space by $D = \text{diag}(\sqrt{|\text{diag}(C_0)|} + \epsilon)$ so the filter operates on a better-conditioned system, then untransform the results. Improved joseph+triu precision 2–5× for polynomial models (m ≤ 2), but **degraded** m = 1 models by \~85× and catastrophically broke trigonometric/seasonal models (max |Δ|% > 300,000%) because diagonal scaling distorts the rotation blocks in non-triangular G matrices. Reverted.
 - **Iterative refinement** — Re-run the smoother using the smoothed state x[0] and covariance C[0] as the initial state for each additional pass. Three C₀ strategies tested (×100, ×1, x₀-only). All variants were consistently 5–4,550× **worse** across all five benchmark models. The Float32 precision bottleneck is per-timestep rounding accumulation in the forward/backward recursions, not initialization quality — the existing two-pass scheme (diffuse prior → refined) already handles initialization optimally. Reverted.
 
 **MATLAB DLM comparison:** The `dlmsmo.m` reference uses the standard covariance update formula (not Joseph form), combined with explicit `triu + triu'` symmetrization after each filter step (line 77) and `abs(diag(C))` diagonal correction on smoother output (line 114). The improved match seen in the benchmark between dlm-js+joseph/f64 and the Octave reference (9.38e-11 vs 3.78e-8 max |Δ| for f64 without joseph) is not a coincidence — both approaches enforce numerical stability in similar ways, pushing both implementations toward the same stable numerical attractor.
@@ -458,7 +458,7 @@ Combined with a WebGPU backend, this provides two orthogonal dimensions of paral
 
 `algorithm: 'sqrt-assoc'` implements the square-root associative-scan smoother from Yaghoobi et al. [6], reformulating the parallel filter + smoother in **Cholesky-factor space**. The forward 5-tuple becomes $(A, b, U, \eta, Z)$ where $C = U U^\top$ and $J = Z Z^\top$; the backward 3-tuple becomes $(g, E, D)$ where $L = D D^\top$. Covariances are never formed explicitly during composition — they remain PSD by construction, eliminating the need for Joseph form, `(C+C')/2` symmetrization, and `cEps` regularization.
 
-Both passes use `lax.associativeScan` with ⌈log₂N⌉+1 rounds, same as the standard `assoc` path. Results are validated against the same Octave ground truth (`sqrtassoc.test.ts`; 24 tests on wasm — f64: precision comparison for all models including fullSeasonal m=13, f32: all-outputs-finite smoke test for all models including fullSeasonal m=13) with max relative error ~3e-5 (f64).
+Both passes use `lax.associativeScan` with ⌈log₂N⌉+1 rounds, same as the standard `assoc` path. Results are validated against the same Octave ground truth (`sqrtassoc.test.ts`; 24 tests on wasm — f64: precision comparison for all models including fullSeasonal m=13, f32: all-outputs-finite smoke test for all models including fullSeasonal m=13) with max relative error \~3e-5 (f64).
 
 ```ts
 const result = await dlmFit(y, {
@@ -615,14 +615,14 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
 
 **Key findings** (see table above for exact numbers):
-- **WASM is ~30–90× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.
-- **`assoc` on CPU is faster for small m, slower for large m.** For m≥4 the extra matrix compositions dominate (~3× slower than `scan`).
+- **WASM is \~30–90× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.
+- **`assoc` on CPU is faster for small m, slower for large m.** For m≥4 the extra matrix compositions dominate (\~3× slower than `scan`).
 - **`assoc` on WASM is slower than `scan`** — the 5-tuple composition overhead dominates at small n. Prefer `scan` on WASM unless the parallel formulation is explicitly required.
 - **`sqrt-assoc` matches reference precision on wasm/f64** and maintains PSD covariances structurally (Cholesky factors) — no Joseph form or symmetrization needed. Slower than `scan` due to QR decompositions per composition step.
 - **Stabilization is auto-selected per dtype** — f64 uses `cTriuSym` (triu symmetrize, matching MATLAB `dlmsmo.m`), f32 uses Joseph-form update. The `assoc`/`sqrt-assoc` paths use their own exact formulation regardless of dtype. Overhead is negligible on WASM. Disable f64 symmetrization with `stabilization: { cTriuSym: false }`.
-- **f32 precision is limited to ~1–4% max error for large models.** Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
+- **f32 precision is limited to \~1–4% max error for large models.** Use f64 when accuracy matters; f32 is safe for all state dimensions with the default stabilization.
 - **WebGPU `assoc` is faster than `scan`** — `assoc` dispatches O(log n) rounds via a single `queue.submit()`, while `scan` dispatches O(n) sequential rounds. At small n (100–120), `assoc` is ~1.5–3× faster; the gap widens with larger n (see scaling table below).
-- **WASM stays flat up to N≈3200, then scales linearly** (~<!-- timing:scale:wasm-f64:n1638400 -->1359 ms (warm)<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->1296 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2541 ms (cold)<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
+- **WASM stays flat up to N≈3200, then scales linearly** (\~<!-- timing:scale:wasm-f64:n1638400 -->1359 ms (warm)<!-- /timing --> at N=1.6M). WebGPU scales sub-linearly at small N but approaches O(N) at large N (<!-- timing:scale:webgpu-f32:n100 -->1296 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2541 ms (cold)<!-- /timing --> for a 1024× increase). No crossover was observed up to N=1.6M; see scaling table.
 - **WebGPU numerical differences** vs WASM/f64 are from Float32 precision and parallel scan reordering, not algorithmic approximation — both paths use exact per-timestep Kalman gains.
 
 For background on the Nile and Kaisaniemi demos and the original model formulation, see [Marko Laine's DLM page](https://mjlaine.github.io/dlm/). The energy demand demo uses synthetic data generated for this project. The gapped-data demo uses the same Nile dataset with 23 observations removed.
@@ -663,11 +663,11 @@ A scaling benchmark (Nile order=1, m=2) measures `dlmFit` at exponentially incre
 
 Three findings:
 
-1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around ~0.8 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1359 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM previously occurred at N=3276800 due to a signed 32-bit integer overflow in the page-count calculation — fixed upstream in jax-js-nonconsuming (bb126c6+a6d37da).
+1. **WASM stays flat up to N≈3200**, then grows roughly linearly (O(n)). The per-step cost asymptotes around \~0.8 µs/step (<!-- timing:scale:wasm-f64:n1638400 -->1359 ms (warm)<!-- /timing --> at N=1638400). The flat region reflects fixed JIT/dispatch overhead, not compute. WASM OOM previously occurred at N=3276800 due to a signed 32-bit integer overflow in the page-count calculation — fixed upstream in jax-js-nonconsuming (bb126c6+a6d37da).
 
-2. **WebGPU cold timings include per-N JIT recompilation** (WebGPU `jit()` is not polymorphic in N). At small N the ~1200 ms JIT overhead dominates; at large N the GPU arithmetic dominates. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->1296 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2541 ms (cold)<!-- /timing -->).
+2. **WebGPU cold timings include per-N JIT recompilation** (WebGPU `jit()` is not polymorphic in N). At small N the \~1200 ms JIT overhead dominates; at large N the GPU arithmetic dominates. Each associativeScan pass dispatches ⌈log₂N⌉+1 Kogge-Stone rounds, each operating on all N elements in parallel — so total GPU work is O(N log N), while WASM sequential scan is O(N). A 1024× increase from N=100 to N=102400 roughly doubles the runtime (<!-- timing:scale:webgpu-f32:n100 -->1296 ms (cold)<!-- /timing --> → <!-- timing:scale:webgpu-f32:n102400 -->2541 ms (cold)<!-- /timing -->).
 
-3. **The cold-WebGPU-to-warm-WASM ratio decreases as N grows** (~180× at small N where JIT overhead dominates, ~7× at N=1.6M where GPU execution time dominates). No crossover was observed up to N=1638400.
+3. **The cold-WebGPU-to-warm-WASM ratio decreases as N grows** (\~180× at small N where JIT overhead dominates, \~7× at N=1.6M where GPU execution time dominates). No crossover was observed up to N=1638400.
 
 
 ## MLE
@@ -706,11 +706,11 @@ Noise parameters are optimized in log-space: $s = e^{\theta_s}$, $w_i = e^{\thet
 
 The entire optimization step is wrapped in a single `jit()` call. For Adam, this includes `valueAndGrad(loss)` (Kalman filter forward pass + AD backward pass) and optax Adam parameter update; for natural gradient, the `jit(valueAndGrad(loss))` call is reused for both the gradient and finite-difference Hessian evaluations. The `jit()` compilation happens on the first iteration; subsequent iterations run from compiled code.
 
-**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iterations (~<!-- timing:mle-bench:nile-order1:elapsed -->42 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:nile-order1:elapsed -->24 ms<!-- /timing -->) with the natural gradient optimizer.
+**Performance**: on the `wasm` backend, one Nile MLE run (100 observations, m = 2) converges in <!-- timing:mle-bench:nile-order1:iterations -->190<!-- /timing --> iterations (\~<!-- timing:mle-bench:nile-order1:elapsed -->42 ms<!-- /timing -->) with Adam (b2=0.9), or <!-- timing:nat-mle-bench:nile-order1:iterations -->15<!-- /timing --> iterations (\~<!-- timing:nat-mle-bench:nile-order1:elapsed -->24 ms<!-- /timing -->) with the natural gradient optimizer.
 
 **Two loss paths:** `dlmMLE` dispatches between two loss functions based on the `dtype` and backend:
 
-- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->19<!-- /timing --> iters, ~<!-- timing:energy-mle:elapsed -->0.3 s<!-- /timing --> on WASM).
+- **CPU/WASM (any dtype):** `makeKalmanLoss` — sequential `lax.scan` forward filter (O(n) depth per iteration). For the energy demo (n=120, <!-- timing:energy-mle:iterations -->19<!-- /timing --> iters, \~<!-- timing:energy-mle:elapsed -->0.3 s<!-- /timing --> on WASM).
 - **WebGPU + Float32:** `makeKalmanLossAssoc` — `lax.associativeScan` forward filter (O(log n) depth per iteration). Details below.
 
 Both paths are wrapped in `jit(valueAndGrad(lossFn))`. The final refit after convergence calls `dlmFit` (which itself uses the parallel path on WebGPU).
@@ -791,7 +791,7 @@ $$\theta_{t+1} = \theta_t - \alpha \, \hat{m}_t / (\sqrt{\hat{v}_t} + \epsilon)$
 
 This is a diagonal approximation to natural gradient — $\hat{v}_t$ estimates per-parameter curvature, but ignores cross-parameter correlations.
 
-**dlm-js defaults:** `b1=0.9`, `b2=0.9`, `eps=1e-8`, `lr=0.05`, `maxIter=200`. The non-standard `b2=0.9` was selected empirically — it converges ~3× faster than the canonical 0.999 on DLM log-likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks). The entire Adam step (forward filter + AD backward pass + Adam state update) is wrapped in a single `jit()` call.
+**dlm-js defaults:** `b1=0.9`, `b2=0.9`, `eps=1e-8`, `lr=0.05`, `maxIter=200`. The non-standard `b2=0.9` was selected empirically — it converges \~3× faster than the canonical 0.999 on DLM log-likelihoods (measured across Nile, Kaisaniemi, ozone benchmarks). The entire Adam step (forward filter + AD backward pass + Adam state update) is wrapped in a single `jit()` call.
 
 ```js
 const mle = await dlmMLE(y, {
@@ -820,9 +820,9 @@ where $g = \nabla_\theta \ell$ is the gradient, $H$ is the Hessian of the log-li
 
      $$H_{\cdot,j} \approx \frac{g(\theta + h\, e_j) - g(\theta - h\, e_j)}{2h}, \quad h = 10^{-5}$$
 
-     Cost: $2p$ gradient evaluations reusing the same JIT-compiled `gradFn` — no extra tracing. For $p \leq 7$ (typical DLM), this is ~200–700 ms on WASM. Result is symmetrized: $H \leftarrow (H + H^\top) / 2$.
+     Cost: $2p$ gradient evaluations reusing the same JIT-compiled `gradFn` — no extra tracing. For $p \leq 7$ (typical DLM), this is \~200–700 ms on WASM. Result is symmetrized: $H \leftarrow (H + H^\top) / 2$.
 
-   - `hessian: 'exact'`: `jit(hessian(lossFn))` via AD. Exact but expensive — the first call incurs ~20 s of JIT tracing (jax-js v0.7.8); subsequent calls are fast.
+   - `hessian: 'exact'`: `jit(hessian(lossFn))` via AD. Exact but expensive — the first call incurs \~20 s of JIT tracing (jax-js v0.7.8); subsequent calls are fast.
 
 3. **Marquardt initialization** (first iteration only): $\lambda_0 = \tau \cdot \max_i |H_{ii}|$, with $\tau = 0.1$ (default). This starts with moderate damping to avoid overshooting into wrong basins.
 
@@ -839,7 +839,7 @@ where $g = \nabla_\theta \ell$ is the gradient, $H$ is the Hessian of the log-li
 
 **Why this is effective for DLM MLE:** The log-likelihood $\ell(\theta) = -2 \log L(\theta)$ of a DLM is smooth and close to quadratic near the optimum (it is a sum-of-squares-like prediction-error decomposition). The Hessian captures cross-parameter curvature — e.g. the coupling between observation noise $s$ and state noise $w$ — that diagonal methods like Adam miss. Convergence is typically quadratic near the optimum: 3–15 iterations vs 100–300 for Adam.
 
-**Cost trade-off:** Each natural gradient iteration is more expensive ($1 + 2p$ gradient evaluations for FD Hessian) but far fewer iterations are needed. For $p \leq 5$ and $n \leq 200$, natural gradient is ~1.2–2× faster in wall-clock time; for larger $p$ the FD cost grows and Adam becomes competitive.
+**Cost trade-off:** Each natural gradient iteration is more expensive ($1 + 2p$ gradient evaluations for FD Hessian) but far fewer iterations are needed. For $p \leq 5$ and $n \leq 200$, natural gradient is \~1.2–2× faster in wall-clock time; for larger $p$ the FD cost grows and Adam becomes competitive.
 
 ```js
 const mle = await dlmMLE(y, {
@@ -927,9 +927,9 @@ Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w 
 
 **Key observations:**
 - **Nile (n=100, m=2):** Octave `fminsearch` is <!-- computed:static("octave-nile-order1-elapsed-ms") < slot("mle-bench:nile-order1:elapsed") ? "faster" : "slower" -->slower<!-- /computed --> (see table). dlm-js includes one-time JIT compilation overhead in the reported time.
-- **Likelihood values:** All optimizers converge to very similar $-2\log L$ values on Nile (Adam vs Octave difference ~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
+- **Likelihood values:** All optimizers converge to very similar $-2\log L$ values on Nile (Adam vs Octave difference \~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
 - **Natural gradient:** Uses second-order curvature (FD Hessian + Levenberg-Marquardt damping) and converges in fewer iterations (≤50 vs 300 for Adam), but each iteration is more expensive due to per-parameter finite-difference Hessian evaluations.
-- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->0.1 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->20<!-- /timing --> iterations (~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->0.1 s<!-- /timing -->).
+- **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (\~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->0.1 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->20<!-- /timing --> iterations (\~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->0.1 s<!-- /timing -->).
 - **Joint $s+w$ fitting:** dlm-js can fit both $s$ and $w$ jointly, or fix $s$ via `obsStdFixed` (matching MATLAB DLM's `fitv=0`).
 
 ##### Gradient checkpointing
