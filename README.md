@@ -533,15 +533,15 @@ After the loop, $\alpha_{\text{final}} = C_p^{(t)}$ (innovation covariance) and 
 2. Form the augmented matrix $B = G \, U_t^+$ and its companion $L = L_W$, with weight vectors $D_t^+$ and $D_W$.
 3. MWGS: for $j = 0, \ldots, m{-}1$:
 
-$$d_j^* = \sum_k {D_t^+}_k \, B_{j,k}^2 + \sum_k {D_W}_k \, L_{j,k}^2$$
+$$d_j^∗ = \sum_k {D_t^+}_k \, B_{j,k}^2 + \sum_k {D_W}_k \, L_{j,k}^2$$
 
-$$U_{i,j}^* = \left(\sum_k {D_t^+}_k \, B_{i,k} \, B_{j,k} + \sum_k {D_W}_k \, L_{i,k} \, L_{j,k}\right) / d_j^* \quad (i > j)$$
+$$U_{i,j}^∗ = \left(\sum_k {D_t^+}_k \, B_{i,k} \, B_{j,k} + \sum_k {D_W}_k \, L_{i,k} \, L_{j,k}\right) / d_j^∗ \quad (i > j)$$
 
-$$B_{i,k} \leftarrow B_{i,k} - U_{i,j}^* \, B_{j,k}, \qquad L_{i,k} \leftarrow L_{i,k} - U_{i,j}^* \, L_{j,k} \quad (i > j)$$
+$$B_{i,k} \leftarrow B_{i,k} - U_{i,j}^∗ \, B_{j,k}, \qquad L_{i,k} \leftarrow L_{i,k} - U_{i,j}^∗ \, L_{j,k} \quad (i > j)$$
 
-The output $U^*, D^*$ satisfies $U^* \, \text{diag}(D^*) \, (U^*)^\top = G \, C_{t|t} \, G^\top + W_t = C_{t+1|t}$.
+The output $U^∗, D^∗$ satisfies $U^∗ \, \text{diag}(D^∗) \, (U^∗)^\top = G \, C_{t|t} \, G^\top + W_t = C_{t+1|t}$.
 
-**6. Carry and outputs.** The updated carry is $(x_{t+1|t}, U^*, D^*)$. For the backward smoother:
+**6. Carry and outputs.** The updated carry is $(x_{t+1|t}, U^∗, D^∗)$. For the backward smoother:
 
 $$\mathtt{x\_pred} = x_{t|t-1}, \quad \mathtt{C\_pred} = U \, D \, U^\top, \quad \mathtt{K} = G \, K_{\text{Bierman}}, \quad \mathtt{v} = v_t, \quad \mathtt{Cp} = \alpha_{\text{final}}$$
 
@@ -770,7 +770,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 Both optimizers can be understood as instances of **steepest descent under a norm** (Bernstein & Newhouse 2024). Given a loss $\ell(\theta)$ with gradient $g = \nabla_\theta \ell$ and a norm $\|\cdot\|$ on the parameter space, the optimal update minimizing a quadratic model is:
 
-$$\Delta\theta^* = \mathop{\mathrm{arg\,min}}_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
+$$\Delta\theta^∗ = \mathop{\mathrm{arg\,min}}_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
 
 where $\|g\|^\dagger$ is the dual norm and $\mathcal{D}_{\|\cdot\|}$ is the *duality map* — it converts the gradient (a member of the dual space) into a primal-space update direction. The choice of norm determines the geometry:
 
