@@ -770,7 +770,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 Both optimizers can be understood as instances of **steepest descent under a norm** (Bernstein & Newhouse 2024). Given a loss $\ell(\theta)$ with gradient $g = \nabla_\theta \ell$ and a norm $\|\cdot\|$ on the parameter space, the optimal update minimizing a quadratic model is:
 
-$$\Delta\theta^* = \argmin_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
+$$\Delta\theta^* = \mathop{\mathrm{arg\,min}}_{\Delta\theta} \left[ g^\top \Delta\theta + \frac{\lambda}{2} \|\Delta\theta\|^2 \right] = -\frac{\|g\|^\dagger}{\lambda} \cdot \mathcal{D}_{\|\cdot\|}\, g$$
 
 where $\|g\|^\dagger$ is the dual norm and $\mathcal{D}_{\|\cdot\|}$ is the *duality map* — it converts the gradient (a member of the dual space) into a primal-space update direction. The choice of norm determines the geometry:
 
