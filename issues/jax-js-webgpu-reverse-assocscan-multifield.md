@@ -1,11 +1,13 @@
 # WebGPU reverse associativeScan corruption with multi-field compose — regression from 66670f4
 
-**Status:** � Mitigated — `df765e9` fixed the main `outOffset` corruption; residual stub-block corruption remains for certain N values
+**Status:** 🔴 OPEN — residual stub-block corruption persists through v0.8.3 (`b478a38`)
 **Affected version:** `66670f46157e7815bdd4e3e5f26f3aaefa3fd6d6` (post-v0.8.1)
+**Still affected in:** v0.8.2 (`e6891a3`), v0.8.3 (`b478a38`) — verified 2026-03-12
 **Partially fixed in:** `df765e910685c5a026e3c29056ba9dbd1be63b66` (outOffset flat gidx for Phase 4)
 **Severity:** Medium — residual corruption limited to first few timesteps when N mod blockSize is small
 **Previously fixed in:** `8501de9` (bodyHasReductions guard → mapOverBlocks fallback)
 **Regression introduced by:** `66670f4` (per-element reduction codegen, removed bodyHasReductions guard)
+**Blocks:** dlm-js v0.8.3 upgrade — artifact regeneration halted until fix lands
 
 ## Summary
 
