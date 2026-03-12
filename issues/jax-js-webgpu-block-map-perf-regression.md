@@ -1,6 +1,6 @@
 # WebGPU `associativeScan` dispatch count — performance target for block-map fusion
 
-🟡 **Mitigated** — `4fd9f8d` (Phase 4 block_map fusion). Warm median ~71ms at N=100, cold N-scaling near-flat (542ms at N=25,600 cold). GPU/WASM ratio ~13× warm at N=100. Still above ≤2× target — remaining overhead is JIT compilation + per-round dispatch.
+🟡 **Mitigated** — v0.8.4 (`cc53907`): command tape O8a + bind group cache O9b + analytical Cholesky n≤4 + subgroupShuffleUp/InclusiveAdd P8 + Dot vmap batch fix. Warm median **~35ms** at N=100, GPU/WASM ratio **~6×** (was ~71ms / ~13× in v0.8.2). Still above ≤2× target — remaining overhead is per-round dispatch latency.
 
 ## Summary
 
