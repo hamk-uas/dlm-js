@@ -339,7 +339,8 @@ describe('sqrt-assoc gapped data vs Octave', async () => {
 
 describe('sqrt-assoc wasm/f32 dlmFit (smoke: all outputs finite)', async () => {
   const configs = await getTestConfigs();
-  // wasm/f32 only — f32 sqrt-assoc is not tested on cpu (NaN for m>1) or webgpu
+  // wasm/f32 only — f32 sqrt-assoc is not tested on cpu (NaN for m>1).
+  // WebGPU sqrt-assoc is tested via webgpu-scan.test.ts (Chromium/Playwright).
   const f32Configs = configs.filter(c => c.label.includes('wasm') && c.label.includes('f32'));
 
   // All models now supported: QR-based tria() works for all state dimensions

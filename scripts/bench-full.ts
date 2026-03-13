@@ -159,7 +159,7 @@ function buildCombos(): Combo[] {
       }
     }
   }
-  for (const algorithm of ['scan', 'assoc', 'ud'] as const) {
+  for (const algorithm of ['scan', 'assoc', 'sqrt-assoc', 'ud'] as const) {
     combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm });
   }
   combos.push({ backend: 'webgpu', dlmDtype: 'f32', algorithm: 'scan', stabilization: { cTriuSym: true }, stabLabel: 'joseph+triu' });

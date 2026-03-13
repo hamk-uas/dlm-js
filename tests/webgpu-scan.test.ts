@@ -199,3 +199,26 @@ describe('WebGPU lax.scan accuracy — ud algorithm', () => {
     });
   }
 });
+
+// ── sqrt-assoc on WebGPU (QR available since jax-js v0.9.1) ───────────────
+// sqrt-assoc uses lax.associativeScan in Cholesky factor space with QR-based
+// tria(). Thresholds use the wasm/f32 bench-full values with 5× headroom.
+// Known issue: O8c command tape DUS CopyBufferToBuffer size mismatch corrupts
+// m≤2 models (see issues/jax-js-webgpu-o8c-dus-sqrt-assoc.md).
+const SQRT_ASSOC_SKIP = new Set([
+  'Nile, order=0 (m=1)',        // m=1: O8c DUS buffer corruption
+  'Nile, order=1 (m=2)',        // m=2: O8c DUS buffer corruption
+  'Gapped, order=1 (m=2)',      // m=2: O8c DUS buffer corruption
+]);
+
+describe('WebGPU accuracy — sqrt-assoc algorithm', () => {
+  for (const mc of modelCases) {
+    const fn = SQRT_ASSOC_SKIP.has(mc.name) ? it.skip : it;
+    fn(mc.name, async () => {
+      const configs = await getTestConfigs();
+      const gpuConfig = configs.find(c => c.label.includes('webgpu'));
+      expect(gpuConfig).toBeDefined();
+      await runWebGPUScanTest(gpuConfig!, mc, 'sqrt-assoc');
+    });
+  }
+});
