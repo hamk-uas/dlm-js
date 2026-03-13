@@ -24,7 +24,7 @@ pnpm run bench:full  # run in Chromium via Playwright; observe stderr for CopyBu
 
 Or use the standalone repro script:
 ```
-DISPLAY=:1 pnpm vitest run tests/webgpu-scan.test.ts -c tests/vitest.nvidia.config.ts
+pnpm vitest run tests/webgpu-scan.test.ts -c tests/vitest.nvidia.config.ts
 ```
 
 See `issues/repro-o8c-dus-sqrt-assoc.ts` for a minimal repro (requires WebGPU; runs in Chromium via Playwright).

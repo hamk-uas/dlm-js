@@ -5,8 +5,8 @@
  * Writes timing data to assets/timings/bench-backends.json and patches .md
  * timing markers via update:timings.
  *
- * WebGPU is benchmarked separately via `pnpm run bench:gpu` (requires Deno
- * with --unstable-webgpu). See scripts/bench-gpu.ts.
+ * WebGPU is benchmarked separately via `pnpm run bench:gpu` (runs in
+ * Chromium via Playwright). See scripts/bench-gpu.ts.
  *
  * Usage:  pnpm run bench:backends
  * Output: assets/timings/bench-backends.json

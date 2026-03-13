@@ -15,25 +15,39 @@ import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
 /**
- * Detect the correct DISPLAY. Falls back to $DISPLAY, then probes
- * /tmp/.X11-unix/ for the highest-numbered socket.
+ * Auto-detect DISPLAY by scanning /tmp/.X11-unix/ for X server sockets.
+ * If process.env.DISPLAY is set, validate that its socket exists before
+ * trusting it — stale DISPLAY values (e.g. `:0` when X server is at `:1`)
+ * cause silent WebGPU adapter failures.
+ * Falls back to ":0" if detection fails or no sockets are found.
  */
 function detectDisplay(): string {
-  const envDisplay = process.env.DISPLAY;
-  // Quick sanity check: does the X socket exist for the env DISPLAY?
-  if (envDisplay) {
-    const num = envDisplay.replace(/^:/, "");
-    if (fs.existsSync(`/tmp/.X11-unix/X${num}`)) return envDisplay;
+  if (process.env.DISPLAY) {
+    // Validate that the socket for this DISPLAY actually exists.
+    const m = process.env.DISPLAY.match(/^:(\d+)/);
+    if (m) {
+      try {
+        fs.accessSync(`/tmp/.X11-unix/X${m[1]}`);
+        return process.env.DISPLAY;
+      } catch {
+        // Socket doesn't exist — fall through to auto-detect.
+      }
+    } else {
+      // Non-local DISPLAY (e.g. host:0) — trust it.
+      return process.env.DISPLAY;
+    }
   }
-  // Probe for the highest-numbered X socket
   try {
-    const sockets = fs.readdirSync("/tmp/.X11-unix")
-      .filter(f => /^X\d+$/.test(f))
-      .map(f => parseInt(f.slice(1), 10))
-      .sort((a, b) => b - a);
-    if (sockets.length > 0) return `:${sockets[0]}`;
-  } catch { /* no X11 sockets */ }
-  return envDisplay ?? ":0";
+    const entries = fs.readdirSync("/tmp/.X11-unix");
+    // Entries look like "X0", "X1", etc. Pick the first one.
+    for (const e of entries) {
+      const m = e.match(/^X(\d+)$/);
+      if (m) return `:${m[1]}`;
+    }
+  } catch {
+    // /tmp/.X11-unix doesn't exist or isn't readable
+  }
+  return ":0";
 }
 
 /** Chromium args shared by all GPU configs. */
@@ -49,11 +63,11 @@ const COMMON_ARGS = [
 /** Per-GPU overrides: extra Chromium args and env vars. */
 const GPU_PROFILES = {
   nvidia: {
-    args: ["--enable-dawn-features=allow_unsafe_apis,vulkan_enable_f16_on_nvidia"],
+    args: ["--enable-dawn-features=vulkan_enable_f16_on_nvidia"],
     env: {},
   },
   intel: {
-    args: ["--enable-dawn-features=allow_unsafe_apis", "--use-vulkan=native", "--force-gpu-mem-available-mb=4096"],
+    args: ["--use-vulkan=native", "--force-gpu-mem-available-mb=4096"],
     env: {
       // Force Vulkan loader to only load the Intel mesa driver.
       VK_DRIVER_FILES: "/usr/share/vulkan/icd.d/intel_icd.json",

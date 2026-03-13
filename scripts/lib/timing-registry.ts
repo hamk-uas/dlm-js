@@ -592,14 +592,14 @@ export const timingRegistry: Record<string, TimingSlot> = {
   "bb:trigar:wasm-f32": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f32__warm",  format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, wasm/f32" },
   "bb:trigar:wasm-f64": { script: "scripts/bench-backends.ts", sidecar: "bench-backends", field: "trigar__wasm_f64__warm",  format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, wasm/f64" },
 
-  // ── WebGPU dlmFit benchmark (bench-gpu.ts, Deno) ─────────────────────────
+  // ── WebGPU dlmFit benchmark (bench-gpu.ts, Chromium) ───────────────────────
 
   "bb:nile-o0:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o0__webgpu_f32__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=0, webgpu/f32" },
   "bb:nile-o1:webgpu-f32":    { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "nile_o1__webgpu_f32__warm",      format: "ms0", warmth: "warm", description: "dlmFit warm — Nile order=1, webgpu/f32" },
   "bb:kaisaniemi:webgpu-f32": { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "kaisaniemi__webgpu_f32__warm",   format: "ms0", warmth: "warm", description: "dlmFit warm — Kaisaniemi trig, webgpu/f32" },
   "bb:trigar:webgpu-f32":     { script: "scripts/bench-gpu.ts", sidecar: "bench-gpu", field: "trigar__webgpu_f32__warm",       format: "ms0", warmth: "warm", description: "dlmFit warm — Energy trig+AR, webgpu/f32" },
 
-  // ── Backend scaling benchmark (bench-scaling.ts, Deno) ──────────────────
+  // ── Backend scaling benchmark (bench-scaling.ts, Chromium) ────────────────
   // WASM/f64: warm (JIT polymorphic in N, compiled once). Runs=4, median.
   // WebGPU/f32: cold (JIT recompiles per N). Single first call.
   // Data: Nile order=1 (m=2) tiled to each N.

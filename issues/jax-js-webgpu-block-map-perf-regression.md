@@ -53,10 +53,10 @@ The warm-run table shows that even with JIT already compiled, WebGPU is 11–32�
 
 ## Reproduction
 
-Run with Deno (requires WebGPU):
+Run with Chromium via Playwright (requires WebGPU):
 
 ```bash
-deno run --allow-read --allow-env --allow-net --allow-ffi --allow-sys --unstable-webgpu issues/repro-webgpu-block-map-perf.ts
+GPU=nvidia bash scripts/gpu-test.sh run issues/repro-webgpu-block-map-perf.ts
 ```
 
 ## What fusion should target
@@ -198,4 +198,4 @@ The specific binding-limit blocker is resolved — the 5-tuple forward compose n
 
 - GPU: NVIDIA RTX 4070 (eGPU, Thunderbolt 4)
 - OS: Linux (Ubuntu)
-- Deno: v2.7.1
+- Chromium: headless via @vitest/browser-playwright
