@@ -177,6 +177,7 @@ describe('bench-full', () => {
     const nileIn       = await readJSON("tests/niledemo-in.json");
     const kaisaniemiIn = await readJSON("tests/kaisaniemi-in.json");
     const trigarIn     = await readJSON("tests/trigar-in.json");
+    const energyIn     = await readJSON("tests/energy-in.json");
     const order0In     = await readJSON("tests/order0-in.json");
     const gappedIn     = await readJSON("tests/gapped-in.json");
     const gappedY: number[] = (gappedIn.y as (number | null)[]).map((v: number | null) => v === null ? NaN : v);
@@ -187,6 +188,7 @@ describe('bench-full', () => {
       "Nile, order=1":    { ref: await readJSON("tests/niledemo-out-m.json"),   m: 2, n: 100 },
       "Kaisaniemi, trig": { ref: await readJSON("tests/kaisaniemi-out-m.json"), m: 4, n: 117 },
       "Energy, trig+AR":  { ref: await readJSON("tests/trigar-out-m.json"),     m: 5, n: 120 },
+      "Energy demand":    { ref: await readJSON("tests/energy-out-m.json"),     m: 5, n: 120 },
       "Gapped, order=1":  { ref: await readJSON("tests/gapped-out-m.json"),     m: 2, n: 100 },
     };
 
@@ -196,6 +198,7 @@ describe('bench-full', () => {
       { label: "Nile, order=1",   y: nileIn.y,   s: nileIn.s,   w: toW(nileIn.w),   options: { order: 1 }, n: 100, m: 2 },
       { label: "Kaisaniemi, trig", y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: toW(kaisaniemiIn.w), options: { order: 1, harmonics: 1 }, n: 117, m: 4 },
       { label: "Energy, trig+AR", y: trigarIn.y, s: trigarIn.s, w: toW(trigarIn.w), options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.7] }, n: 120, m: 5 },
+      { label: "Energy demand", y: energyIn.y, s: energyIn.s, w: toW(energyIn.w), options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.85] }, n: 120, m: 5 },
       { label: "Gapped, order=1", y: gappedY, s: gappedIn.s, w: toW(gappedIn.w), options: gappedIn.options, n: 100, m: 2 },
     ];
 
