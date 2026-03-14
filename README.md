@@ -163,7 +163,7 @@ console.log(result.ystd);                    // smoothed observation std devs [n
 
 // innovations and standardizedResiduals: NaN at missing positions (consistent with MATLAB dlmsmo)
 console.log(result.innovations);             // innovations [n] — NaN at missing timesteps
-console.log(result.standardizedResiduals);   // squared normalised residuals [n] — NaN at missing timesteps
+console.log(result.standardizedResiduals);   // standardized residuals (innovation / √innovationVar) [n] — NaN at missing timesteps
 
 // deviance is the log-likelihood summed only over observed timesteps
 console.log(result.deviance);
@@ -1009,7 +1009,7 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 ├── package.json         # Node.js package information
 ├── README.md            # This readme
 ├── tsconfig.json        # Configuration file of the TypeScript project
-├── typedoc.json         # TypeDoc API documentation configuration
+├── typedoc.config.mjs   # TypeDoc API documentation configuration
 └── vite.config.ts       # Configuration file of the Vite project
 ```
 
@@ -1074,7 +1074,7 @@ or
 pnpm run test:node
 ```
 
-This runs 14 test suites (318 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, `ud.test.ts`, and `options.test.ts` — against all available device × dtype combinations. Vitest compiles TypeScript on the fly.
+This runs 14 test suites (318 tests) — `niledemo.test.ts`, `gensys.test.ts`, `synthetic.test.ts`, `mle.test.ts`, `covariate.test.ts`, `ozone.test.ts`, `forecast.test.ts`, `gapped.test.ts`, `assocscan.test.ts`, `timestamps.test.ts`, `sqrtassoc.test.ts`, `multivariate.test.ts`, `ud.test.ts`, and `options.test.ts`. Most suites run against all available device × dtype combinations; `mle.test.ts` is pinned to WASM/Float64, `timestamps.test.ts` to Float64, and `covariate.test.ts` to CPU. Vitest compiles TypeScript on the fly.
 
 To run the full CI-local check (lint + Octave reference generation + tests):
 
