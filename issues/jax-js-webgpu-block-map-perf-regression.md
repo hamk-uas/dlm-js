@@ -1,6 +1,6 @@
 # WebGPU `associativeScan` dispatch count — performance target for block-map fusion
 
-🟡 **Mitigated** — v0.8.4 (`cc53907`): command tape O8a + bind group cache O9b + analytical Cholesky n≤4 + subgroupShuffleUp/InclusiveAdd P8 + Dot vmap batch fix. Warm median **~35ms** at N=100, GPU/WASM ratio **~6×** (was ~71ms / ~13× in v0.8.2). Still above ≤2× target — remaining overhead is per-round dispatch latency.
+🟡 **Mitigated** — v0.9.2 (`d174a18d`): unchanged from v0.8.4. Warm median **~36ms** at N=100, GPU/WASM ratio **~6×**. Cold JIT compilation regressed (~1300ms vs ~500ms at N=100) due to arena allocator + leaf packing overhead in v0.9.x. Still above ≤2× target — remaining overhead is per-round dispatch latency.
 
 ## Summary
 
@@ -193,6 +193,38 @@ The specific binding-limit blocker is resolved — the 5-tuple forward compose n
 3. **Block-map B=256** means the local scan phase handles up to 256 elements in one dispatch, but global merge rounds still add dispatches proportional to ⌈log₂(N/B)⌉.
 
 **Status: 🟡 Mitigated** — 5-tuple binding limit resolved, ~21% warm speedup at N=100. The core dispatch-count architecture issue persists for the full pipeline.
+
+## Observation: v0.9.2 (`d174a18d`) — leaf packing, flushBatch, arena allocator (2026-06-24)
+
+Versions since last measurement (v0.8.4):
+- **v0.9.0** (`56286d0`): Colored multi-slab arena allocator (O9a-v2), constants slab + conflict-graph coloring (O9c), deterministic GPU teardown.
+- **v0.9.1** (`44b31d3`): O8c command tape DUS/scatter_add/reverse, scatter_add alignment fix.
+- **v0.9.2** (`d174a18d`): Leaf packing for 6+ tuple associative scan (packs all leaves into 2 flat storage buffers), flushBatch mid-batch submit, 16-byte malloc floor, command-tape simplified uniform buffer teardown.
+
+### Warm timings (Nile order=1, m=2, N=100, RTX 4070 eGPU)
+
+| Metric | v0.8.4 | v0.9.2 | Change |
+|--------|--------|--------|--------|
+| WebGPU warm (median, 5 runs) | ~35 ms | 35.7 ms | unchanged |
+| WASM/f64 warm (median) | ~6 ms | 5.6 ms | unchanged |
+| warm ratio | ~6× | 6.3× | unchanged |
+
+### Cold scaling (WebGPU/f32 cold vs WASM/f64 warm)
+
+| N | WASM/f64 (warm) | WebGPU/f32 (cold) | ratio | v0.8.4 cold |
+|---|-----------------|-------------------|-------|-------------|
+| 100 | 7 ms | 1,306 ms | 178× | ~500 ms |
+| 3,200 | 9 ms | 1,825 ms | 212× | ~1,700 ms |
+| 12,800 | 16 ms | 2,023 ms | 128× | ~5,300 ms |
+| 25,600 | 30 ms | 2,095 ms | 70× | ~10,600 ms |
+
+### Assessment
+
+**Warm performance unchanged** — the v0.9.x changes (arena allocator, leaf packing, flushBatch) had no measurable effect on warm dispatch overhead. The ~6× ratio persists and is dominated by per-round GPU dispatch latency.
+
+**Cold JIT compilation regressed at small N** (N=100: ~500ms → ~1,300ms) — the arena allocator and leaf packing add one-time setup cost. However, **cold scaling improved dramatically at large N** (N=25,600: ~10,600ms → ~2,095ms, 5× faster) — leaf packing reduces the number of storage buffer bindings, and the command tape eliminates redundant GPU state transitions. The cold cost is now much flatter across N values (~1.3–2.1s vs ~0.5–10.6s previously).
+
+**Status: 🟡 Mitigated** — no change in warm performance. Cold scaling significantly improved at large N but regressed at small N. The core dispatch-count architecture issue persists.
 
 ## Hardware
 
