@@ -325,6 +325,8 @@ describe('ud f32 dlmFit (smoke: all outputs finite)', async () => {
 
   // UD (Bierman/Thornton) does not apply Joseph form + cEps stabilization,
   // so f32 + large m may diverge.  Skip known-NaN combos.
+  // Note: Chromium V8 WASM does NOT diverge here (bench-full reports 0.13%
+  // error); only Node.js V8 WASM produces 119/120 NaN for Energy m=5.
   const SKIP_F32: Record<string, string[]> = {
     'wasm/f32': ['synthetic energy demand (trend + seasonal + strong AR)'],
   };

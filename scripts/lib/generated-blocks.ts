@@ -189,6 +189,8 @@ function generateBenchFullTable(): string {
       } else if (r.warmMs == null) {
         // Timed out (firstMs > TIMEOUT_MS, no warm run completed)
         modelCells.push(b(">10 s"), b("—"));
+      } else if (!r.stable) {
+        modelCells.push(b(fmtMs(r.warmMs)), b("NaN"));
       } else {
         modelCells.push(b(fmtMs(r.warmMs)), b(fmtRelErr(r.maxPctErr)));
       }

@@ -236,6 +236,7 @@ describe('bench-full', () => {
       if (warmMs > TIMEOUT_MS) { r2[Symbol.dispose]?.(); return { firstMs, warmMs: Infinity, stable, maxAbsErr: NaN, maxPctErr: NaN }; }
 
       const gotVals = flattenResult(r2, m, n);
+      if (!isAllFinite(gotVals)) stable = false;
       const { maxAbsErr, maxPctErr } = computeErrors(gotVals, trimRef(refVals, gotVals.length));
       r2[Symbol.dispose]?.();
       return { firstMs, warmMs, stable, maxAbsErr, maxPctErr };
