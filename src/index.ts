@@ -625,19 +625,21 @@ const dlmSmo = async (
 
       // λ_j = -f_j / α_old
       using lambda_j = np.divide(np.negative(f_j), alpha_old);      // scalar
-      alpha_old.dispose();
 
-      // D_new[j] = D_bar[j] · α_old / α_new  (= D_bar[j] · (α_new - f_j·g_j) / α_new)
+      // D_new[j] = D_bar[j] · α_old / α_new
+      // Use α_old / α directly — the previous code computed (α - f·g)/α which
+      // suffers catastrophic cancellation when f·g >> α_old (e.g. E.demand on
+      // WASM/f32 with 125× dynamic range in process noise).
       {
         using D_j = np.sum(np.multiply(D_bar, ud_oneHot[j]));
-        using alpha_minus = np.subtract(alpha, np.multiply(f_j, g_j));
-        using D_j_new = np.multiply(D_j, np.divide(alpha_minus, alpha));
+        using D_j_new = np.multiply(D_j, np.divide(alpha_old, alpha));
         using delta_j = np.subtract(D_j_new, D_j);
         // jax-js-lint: allow-non-using — accumulator-swap: D_bar updated
         const D_new = np.add(D_bar, np.multiply(delta_j, ud_oneHot[j]));
         D_bar.dispose();
         D_bar = D_new;
       }
+      alpha_old.dispose();
 
       // Extract old column j of U_bar: [m,1]
       using u_col_old = np.matmul(U_bar, ud_oneHotCol[j]);          // [m,1]

@@ -614,7 +614,7 @@ Models: Nile order=0 (n=100, m=1) · Nile order=1 (n=100, m=2) · Kaisaniemi tri
 
 Each cell shows warm timing and max relative error vs Octave. Errors are per-model, per output variable (yhat, ystd, smoothed, smoothedStd); the Octave reference value is the denominator. Percentages >1% in `assoc` and `sqrt-assoc` rows come from small smoothedStd values (not from yhat/ystd). The `sqrt-assoc` path uses QR-based `tria()` and `lax.linalg.triangularSolve` — covariances are stored as Cholesky factors, ensuring PSD by construction. On cpu, sqrt-assoc has large errors for m > 1 due to the JS interpreter's numerical behaviour; use wasm.
 
-**Note:** The "Energy" column uses `trigar-in.json` (AR(1), coeff=0.7, m=5). The "E.demand" column uses `energy-in.json` (AR(1), coeff=0.85, m=5) — a numerically harder model with tighter obs noise (s=1.5 vs 5) and larger AR process noise (w₅=2.5 vs 1). E.demand diverges to NaN with UD + Float32 on WASM and WebGPU (119/120 NaN); CPU f32 UD stays stable (rel err ~9e-3). The WASM/WebGPU divergence is skipped in `ud.test.ts`.
+**Note:** The "Energy" column uses `trigar-in.json` (AR(1), coeff=0.7, m=5). The "E.demand" column uses `energy-in.json` (AR(1), coeff=0.85, m=5) — a numerically harder model with tighter obs noise (s=1.5 vs 5) and larger AR process noise (w₅=2.5 vs 1, 15 625× dynamic range in W diagonal). Previously, E.demand diverged to NaN with UD + Float32 on WASM/WebGPU — fixed by using `α_old/α` directly in the Bierman D update instead of `(α − f·g)/α`, which suffered catastrophic cancellation when `f·g ≫ α_old`.
 
 **Key findings** (see table above for exact numbers):
 - **WASM is \~30–90× faster than CPU** for these small models. The JS interpreter has significant per-operation overhead.

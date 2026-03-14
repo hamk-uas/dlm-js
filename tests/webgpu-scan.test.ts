@@ -186,8 +186,7 @@ describe('WebGPU lax.scan accuracy — scan algorithm', () => {
   }
 });
 
-// Known skip: Energy m=5 produces NaN in UD algorithm on f32 (same as Node skip)
-const UD_SKIP = new Set(['Energy, trig+AR (m=5)']);
+const UD_SKIP = new Set<string>();
 
 describe('WebGPU lax.scan accuracy — ud algorithm', () => {
   for (const mc of modelCases) {
