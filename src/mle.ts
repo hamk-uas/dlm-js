@@ -86,22 +86,12 @@ export const toMatlabMle = (result: DlmMleResult): DlmMleResultMatlab => ({
  * @internal
  */
 const buildDiagW = (
-  expTheta: np.Array, m: number, dtype: DType, nTheta: number,
+  expTheta: np.Array, m: number, dtype: DType, _nTheta: number,
   /** Index in theta where the w entries start (0 when s is fixed, 1 otherwise). */
   wOffset: number = 1,
 ): np.Array => {
-  // Vectorized: [m, nTheta] mask matrix extracts w entries via matmul, then np.diag(w²)
-  using wEntries = np.array(
-    Array.from({ length: m }, (_, i) => {
-      const mask = new Array(nTheta).fill(0);
-      mask[wOffset + i] = 1;
-      return mask;
-    }),
-    { dtype },
-  );  // [m, nTheta]
-  using _expTheta_col = np.reshape(expTheta, [-1, 1]);
-  using wVec = np.matmul(wEntries, _expTheta_col);  // [m, 1]
-  using wFlat = np.squeeze(wVec, [-1]);  // [m]
+  // Extract contiguous w entries via structural slice, then diag(w²)
+  using wFlat = lax.sliceInDim(expTheta, wOffset, wOffset + m, 0);  // [m]
   using w2 = np.square(wFlat);
   return np.diag(w2);
 };
@@ -118,38 +108,27 @@ const buildDiagW = (
  */
 const buildG = (
   G_base: np.Array, theta: np.Array,
-  arInds: number[], m: number, nSwParams: number, nTheta: number,
-  dtype: DType,
+  arInds: number[], m: number, nSwParams: number, _nTheta: number,
+  _dtype: DType,
 ): np.Array => {
   const arCol = arInds[0];
   const nar = arInds.length;
 
-  // Build AR contribution as a sum of rank-1 updates
-  let arContrib = np.zeros([m, m], { dtype });
+  // Start from G_base (AR column zeroed) and set each AR coefficient entry
+  // directly via ND dynamicUpdateSlice — no one-hot algebra needed.
+  // jax-js-lint: allow-non-using — accumulator-swap: G updated in loop
+  let G = np.add(G_base, np.zerosLike(G_base));  // clone
   for (let i = 0; i < nar; i++) {
-    // Extract arphi[i] from theta (NOT exp-transformed) via mask
-    const maskData = new Array(nTheta).fill(0);
-    maskData[nSwParams + i] = 1;
-    using mask = np.array(maskData, { dtype });
-    using phi_i = np.dot(theta, mask);
-
-    // Rank-1 update at G[arInds[i], arCol]
-    const eiData = Array.from({ length: m }, (_, j) => j === arInds[i] ? [1] : [0]);
-    const ejData = Array.from({ length: m }, (_, j) => [j === arCol ? 1 : 0]);
-    using ei = np.array(eiData, { dtype });     // [m, 1]
-    using _ej = np.array(ejData, { dtype });
-    using ejt = np.transpose(_ej); // [1, m]
-    using outer = np.matmul(ei, ejt);            // [m, m]
-    using _phi_11 = np.reshape(phi_i, [1, 1]);
-    using scaled = np.multiply(_phi_11, outer);
-    // jax-js-lint: allow-non-using
-    const newContrib = np.add(arContrib, scaled);
-    arContrib.dispose();
-    arContrib = newContrib;
+    // Extract arphi[i] from theta (NOT exp-transformed) via structural index
+    using phi_i = lax.dynamicIndexInDim(theta, nSwParams + i, 0);  // scalar
+    using phi_11 = np.reshape(phi_i, [1, 1]);
+    // Set G[arInds[i], arCol] = phi_i (base was zeroed, so set = add)
+    // jax-js-lint: allow-non-using — accumulator-swap
+    const G_new = lax.dynamicUpdateSlice(G, phi_11, [arInds[i], arCol]);
+    G.dispose();
+    G = G_new;
   }
 
-  // G = G_base + arContrib
-  const G = np.add(G_base, arContrib);
   return G;
 };
 
@@ -161,7 +140,7 @@ const buildG = (
  * The forward filter uses `lax.scan`, which supports autodiff in
  * jax-js-nonconsuming with the following AD-compatibility constraints:
  *
- * - Use `np.dot(vector, mask)` for element extraction from theta.
+ * - Use `lax.dynamicIndexInDim` / `lax.sliceInDim` for element extraction from theta.
  * - Use matmul chains where each individual matmul has at least one operand
  *   with exactly 1 column (inner dims can be any size).
  *
@@ -245,8 +224,7 @@ const makeKalmanLoss = (
       V2_arr = fixedV2_arr!;
     } else {
       // s = exp(theta[0]) via dot mask
-      using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
-      using sVal = np.dot(expTheta, mask_s);
+      using sVal = lax.dynamicIndexInDim(expTheta, 0, 0);  // scalar: s = exp(θ₀)
       using _sVal2 = np.square(sVal);
       using V2 = np.reshape(_sVal2, [1, 1]);
       using _V2_ones = np.ones([n, 1, 1], { dtype });
@@ -389,8 +367,7 @@ const makeKalmanLossAssoc = (
     // V2 scalar [1, 1] for estimated-s case
     let V2: np.Array | undefined;
     if (!fixS) {
-      using mask_s = np.array([1, ...new Array(nTheta - 1).fill(0)], { dtype });
-      using sVal = np.dot(expTheta, mask_s);
+      using sVal = lax.dynamicIndexInDim(expTheta, 0, 0);  // scalar: s = exp(θ₀)
       using _sVal2 = np.square(sVal);
       V2 = np.reshape(_sVal2, [1, 1]);
     }

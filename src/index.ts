@@ -518,19 +518,12 @@ const dlmSmo = async (
   // Estimation", Ch. 6; Grewal & Andrews (2001), Algorithm 6.1.
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Precomputed one-hot vectors and column masks for the Bierman inner loop.
+  // Precomputed column masks for the Bierman/Thornton inner loops.
+  // gtMask[j][i] = (i > j ? 1 : 0) — selects sub-diagonal entries.
   // Created unconditionally (cheap) to avoid conditional `using` complexity.
-  const ud_oneHot: np.Array[] = [];        // [m] one-hot vectors: e_j
-  const ud_oneHotCol: np.Array[] = [];     // [m,1] column one-hot: e_j reshaped
-  const ud_oneHotRow: np.Array[] = [];     // [1,m] row one-hot: e_j reshaped
   const ud_gtMask: np.Array[] = [];        // [m] masks: gtMask[j][i] = (i > j ? 1 : 0)
   if (useUdScan) {
     for (let j = 0; j < stateSize; j++) {
-      const hot = new Array(stateSize).fill(0);
-      hot[j] = 1;
-      ud_oneHot.push(np.array(hot, { dtype }));
-      ud_oneHotCol.push(np.reshape(ud_oneHot[j], [stateSize, 1]));
-      ud_oneHotRow.push(np.reshape(ud_oneHot[j], [1, stateSize]));
       const gt = new Array(stateSize).fill(0);
       for (let i = j + 1; i < stateSize; i++) gt[i] = 1;
       ud_gtMask.push(np.array(gt, { dtype }));
@@ -596,18 +589,18 @@ const dlmSmo = async (
 
     // Process column m-1 first (no inner-loop entries: no rows i > m-1)
     // α₀ = R + f_{m-1}·g_{m-1}
-    using f_last = np.sum(np.multiply(f_vec, ud_oneHot[m - 1]));    // scalar
-    using g_last = np.sum(np.multiply(g_vec, ud_oneHot[m - 1]));    // scalar
+    using f_last = lax.dynamicIndexInDim(f_vec, m - 1, 0);          // scalar
+    using g_last = lax.dynamicIndexInDim(g_vec, m - 1, 0);          // scalar
     // jax-js-lint: allow-non-using — alpha mutated in column loop below
     let alpha = np.add(R_scalar, np.multiply(f_last, g_last));       // scalar
 
     // D_new[m-1] = D_bar[m-1] · R / α
     {
-      using D_last = np.sum(np.multiply(D_bar, ud_oneHot[m - 1]));  // scalar
+      using D_last = lax.dynamicIndexInDim(D_bar, m - 1, 0);        // scalar
       using D_last_new = np.multiply(D_last, np.divide(R_scalar, alpha));
-      using delta_last = np.subtract(D_last_new, D_last);
+      using _D_last_1d = np.reshape(D_last_new, [1]);
       // jax-js-lint: allow-non-using — accumulator-swap: D_bar updated
-      const D_new = np.add(D_bar, np.multiply(delta_last, ud_oneHot[m - 1]));
+      const D_new = lax.dynamicUpdateSlice(D_bar, _D_last_1d, m - 1, 0);
       D_bar.dispose();
       D_bar = D_new;
     }
@@ -615,8 +608,8 @@ const dlmSmo = async (
     // Column loop j = m-2 down to 0: update D[j], U[:,j], g
     for (let j = m - 2; j >= 0; j--) {
       // Extract scalar values for column j
-      using f_j = np.sum(np.multiply(f_vec, ud_oneHot[j]));         // scalar
-      using g_j = np.sum(np.multiply(g_vec, ud_oneHot[j]));         // scalar
+      using f_j = lax.dynamicIndexInDim(f_vec, j, 0);               // scalar
+      using g_j = lax.dynamicIndexInDim(g_vec, j, 0);               // scalar
 
       // α_new = α_old + f_j · g_j
       // jax-js-lint: allow-non-using — accumulator-swap for alpha
@@ -631,27 +624,27 @@ const dlmSmo = async (
       // suffers catastrophic cancellation when f·g >> α_old (e.g. E.demand on
       // WASM/f32 with 125× dynamic range in process noise).
       {
-        using D_j = np.sum(np.multiply(D_bar, ud_oneHot[j]));
+        using D_j = lax.dynamicIndexInDim(D_bar, j, 0);             // scalar
         using D_j_new = np.multiply(D_j, np.divide(alpha_old, alpha));
-        using delta_j = np.subtract(D_j_new, D_j);
+        using _D_j_1d = np.reshape(D_j_new, [1]);
         // jax-js-lint: allow-non-using — accumulator-swap: D_bar updated
-        const D_new = np.add(D_bar, np.multiply(delta_j, ud_oneHot[j]));
+        const D_new = lax.dynamicUpdateSlice(D_bar, _D_j_1d, j, 0);
         D_bar.dispose();
         D_bar = D_new;
       }
       alpha_old.dispose();
 
       // Extract old column j of U_bar: [m,1]
-      using u_col_old = np.matmul(U_bar, ud_oneHotCol[j]);          // [m,1]
+      using u_col_old = lax.dynamicIndexInDim(U_bar, j, 1, true);   // [m,1]
 
       // U_bar[:,j] += λ_j · g   (only rows i > j, masked by gtMask)
       using delta_u = np.multiply(
         lambda_j,
         np.multiply(np.reshape(g_vec, [m, 1]), np.reshape(ud_gtMask[j], [m, 1]))
       );                                                             // [m,1]
-      using rank1_u = np.matmul(delta_u, ud_oneHotRow[j]);          // [m,m]
+      using new_col_u = np.add(u_col_old, delta_u);                 // [m,1]
       // jax-js-lint: allow-non-using — accumulator-swap: U_bar updated
-      const U_new = np.add(U_bar, rank1_u);
+      const U_new = lax.dynamicUpdateSlice(U_bar, new_col_u, [0, j]);
       U_bar.dispose();
       U_bar = U_new;
 
@@ -722,8 +715,8 @@ const dlmSmo = async (
 
     for (let j = 0; j < m; j++) {
       // Extract row j from B_work and L_work: [m]
-      using b_j = np.einsum('ij,i->j', B_work, ud_oneHot[j]);      // [m]
-      using l_j = np.einsum('ij,i->j', L_work, ud_oneHot[j]);      // [m]
+      using b_j = lax.dynamicIndexInDim(B_work, j, 0);              // [m]
+      using l_j = lax.dynamicIndexInDim(L_work, j, 0);              // [m]
 
       // D_next[j] = Σ_k D_filt[k]·b_j[k]² + Σ_k D_W[k]·l_j[k]²
       using b_sq = np.multiply(b_j, b_j);
@@ -732,12 +725,11 @@ const dlmSmo = async (
       using term_L = np.sum(np.multiply(D_W, l_sq));                // scalar
       using d_j_val = np.add(term_B, term_L);                       // scalar
 
-      // Scatter d_j into D_next at position j
+      // Set D_next[j] = d_j_val
       {
-        using d_old = np.sum(np.multiply(D_next, ud_oneHot[j]));    // scalar
-        using delta_d = np.subtract(d_j_val, d_old);
+        using _d_j_1d = np.reshape(d_j_val, [1]);
         // jax-js-lint: allow-non-using — accumulator-swap: D_next updated
-        const D_new = np.add(D_next, np.multiply(delta_d, ud_oneHot[j]));
+        const D_new = lax.dynamicUpdateSlice(D_next, _d_j_1d, j, 0);
         D_next.dispose();
         D_next = D_new;
       }
@@ -757,9 +749,10 @@ const dlmSmo = async (
       );                                                             // [m,1]
 
       // Set U_next column j (sub-diagonal entries)
-      using u_rank1 = np.matmul(u_col, ud_oneHotRow[j]);            // [m,m]
+      using old_col_u = lax.dynamicIndexInDim(U_next, j, 1, true);  // [m,1]
+      using new_col_u_th = np.add(old_col_u, u_col);                // [m,1]
       // jax-js-lint: allow-non-using — accumulator-swap: U_next updated
-      const U_next_new = np.add(U_next, u_rank1);
+      const U_next_new = lax.dynamicUpdateSlice(U_next, new_col_u_th, [0, j]);
       U_next.dispose();
       U_next = U_next_new;
 
@@ -1949,9 +1942,6 @@ const dlmSmo = async (
   const coreResult = await jit(core)(x0, C0, y_arr, V2_arr, FF_scan, G_scan, W_scan, r0, N0);
 
   // Dispose UD precomputed arrays (no-op if empty)
-  for (const a of ud_oneHot) a.dispose();
-  for (const a of ud_oneHotCol) a.dispose();
-  for (const a of ud_oneHotRow) a.dispose();
   for (const a of ud_gtMask) a.dispose();
 
   return tree.makeDisposable({
