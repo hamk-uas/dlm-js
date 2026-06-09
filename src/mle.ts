@@ -1,3 +1,4 @@
+/* eslint-disable jax-js/no-nested-array-leak */
 import { DType, numpy as np, lax, jit, valueAndGrad, hessian as adHessian, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
 import type { DlmFitResult, FloatArray, DlmMleOptions } from "./types";

@@ -1,3 +1,4 @@
+/* eslint-disable jax-js/no-nested-array-leak */
 import { DType, numpy as np, lax, jit, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmSmoResult, FloatArray } from "./types";
 import {
@@ -2442,7 +2443,9 @@ export const dlmForecast = async (
     const lastFitTimestamp = baseTimeline[n - 1];
     const timeline = [lastFitTimestamp, ...forecastTimestamps];
     const tv = dlmGenSysTV(fit.modelSpec, timeline, fit.processStd);
+    // jax-js-lint: allow-non-using — plain JS arrays from dlmGenSysTV, not np.Array temporaries
     const G_head = tv.G.slice(0, h);
+    // jax-js-lint: allow-non-using — plain JS arrays from dlmGenSysTV, not np.Array temporaries
     const W_head = tv.W.slice(0, h);
 
     if (q > 0) {
