@@ -11,7 +11,7 @@
  */
 import { defaultDevice, numpy as np } from '@hamk-uas/jax-js-nonconsuming';
 import { describe, it, expect } from 'vitest';
-import { dlmMLE, dlmGenSys, findArInds, dlmPrior } from '../src/index';
+import { dlmMLE, dlmGenSys, findArInds, dlmPrior, stuffIntegerTimestamps } from '../src/index';
 import type { DlmLossFn } from '../src/index';
 
 // ─── Deterministic PRNG (same as synthetic.test.ts) ─────────────────────────
@@ -181,6 +181,102 @@ describe('dlmMLE', async () => {
     // fit outputs should be fully interpolated (finite everywhere)
     expect(Array.from(result.fit.yhat).every(Number.isFinite)).toBe(true);
     expect(Array.from(result.fit.smoothed.series(0)).every(Number.isFinite)).toBe(true);
+  });
+
+  it('stuffIntegerTimestamps matches explicit NaN-stuffed MLE input', async () => {
+    const s_true = 6;
+    const w_true = [2.5];
+    const options = { order: 0 };
+    const sys = dlmGenSys(options);
+    const yClean = generateData(sys.G, sys.F, s_true, w_true, 14, 101);
+
+    const missing = new Set([3, 4, 9]);
+    const yStuffed = yClean.map((v, i) => (missing.has(i) ? NaN : v));
+    const yObs = yClean.filter((_v, i) => !missing.has(i));
+    const tsObs = yClean
+      .map((_v, i) => i)
+      .filter((_t, i) => !missing.has(i));
+
+    const stuffedResult = await dlmMLE(yStuffed, {
+      ...options,
+      init: { obsStd: s_true, processStd: w_true },
+      maxIter: 30,
+      tol: 1e-6,
+      dtype: 'f64',
+      optimizer: 'natural',
+    });
+    const stuffed = stuffIntegerTimestamps(yObs, tsObs, undefined, undefined);
+    const tsResult = await dlmMLE(stuffed.y, {
+      ...options,
+      init: { obsStd: s_true, processStd: w_true },
+      maxIter: 30,
+      tol: 1e-6,
+      dtype: 'f64',
+      optimizer: 'natural',
+    });
+
+    expect(tsResult.obsStd).toBeCloseTo(stuffedResult.obsStd, 8);
+    expect(tsResult.processStd[0]).toBeCloseTo(stuffedResult.processStd[0], 8);
+    expect(tsResult.deviance).toBeCloseTo(stuffedResult.deviance, 8);
+    expect(Array.from(tsResult.fit.yhat)).toEqual(Array.from(stuffedResult.fit.yhat));
+    for (let k = 0; k < stuffed.y.length; k++) {
+      expect(tsResult.fit.smoothed.get(k, 0)).toBeCloseTo(stuffedResult.fit.smoothed.get(k, 0), 8);
+    }
+  });
+
+  it('stuffIntegerTimestamps rejects fractional steps', async () => {
+    const options = { order: 0 };
+    const yObs = [4, 4.5, 5.1, 6.0];
+    const tsObs = [0, 1 / 12, 2 / 12, 5 / 12];
+
+    expect(() => stuffIntegerTimestamps(yObs, tsObs, undefined, undefined)).toThrow(/positive integers relative to the initial timestamp/);
+  });
+
+  it('stuffIntegerTimestamps + obsStdFixed match explicit NaN-stuffed MLE input', async () => {
+    const options = { order: 0 };
+    const yClean = [4, 4.5, 5.2, 5.1, 6.0, 6.3, 6.1, 7.0];
+    const missing = new Set([2, 5]);
+    const yStuffed = yClean.map((v, i) => (missing.has(i) ? NaN : v));
+    const sFixedStuffed = yClean.map((_v, i) => (missing.has(i) ? 1.0 : 0.5 + i * 0.05));
+    const yObs = yClean.filter((_v, i) => !missing.has(i));
+    const sFixedObs = sFixedStuffed.filter((_v, i) => !missing.has(i));
+    const tsObs = yClean
+      .map((_v, i) => i)
+      .filter((_t, i) => !missing.has(i));
+
+    const stuffedResult = await dlmMLE(yStuffed, {
+      ...options,
+      obsStdFixed: sFixedStuffed,
+      init: { processStd: [0.3] },
+      maxIter: 20,
+      tol: 1e-6,
+      dtype: 'f64',
+      optimizer: 'natural',
+    });
+    const stuffed = stuffIntegerTimestamps(yObs, tsObs, undefined, sFixedObs);
+    const tsResult = await dlmMLE(stuffed.y, {
+      ...options,
+      obsStdFixed: stuffed.obsStdFixed,
+      init: { processStd: [0.3] },
+      maxIter: 20,
+      tol: 1e-6,
+      dtype: 'f64',
+      optimizer: 'natural',
+    });
+
+    expect(tsResult.obsStd).toBeNaN();
+    expect(tsResult.processStd[0]).toBeCloseTo(stuffedResult.processStd[0], 8);
+    expect(tsResult.deviance).toBeCloseTo(stuffedResult.deviance, 8);
+  });
+
+  it('dlmMLE rejects timestamps directly', async () => {
+    await expect(dlmMLE([1, 2, 3], {
+      order: 0,
+      timestamps: [0, 1, 2],
+      maxIter: 5,
+      dtype: 'f64',
+      optimizer: 'natural',
+    } as any)).rejects.toThrow(/unknown option 'timestamps'/);
   });
 
   // ─── Natural gradient (Fisher dualization) optimizer ──────────────────────

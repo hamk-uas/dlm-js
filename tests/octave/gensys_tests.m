@@ -78,6 +78,20 @@ out_trig = dlmfit(y_seas, s_seas, w_seas, [], [], [], options_trig);
 save_json(out_trig, "tests/trig-out-m.json");
 disp('  done');
 
+%% Test 4b: order=1 with spline mode on Nile data
+% Local linear trend with integrated random walk process covariance.
+% Uses the canonical Nile input so the only difference vs the standard
+% order=1 fixture is the spline-adjusted W block.
+
+disp('Test 4b: order=1, spline=1 (Nile spline mode)');
+inputs_spline = struct("y", nile_in.y, "s", nile_in.s, "w", nile_in.w);
+save_json(inputs_spline, "tests/spline-in.json");
+
+options_spline = struct("order", 1, "spline", 1);
+out_spline = dlmfit(nile_in.y, nile_in.s, nile_in.w, [], [], [], options_spline);
+save_json(out_spline, "tests/spline-out-m.json");
+disp('  done');
+
 %% Test 5: order=0 local level only (simplest possible model)
 % This tests m=1 specifically — good edge case
 disp('Test 5: order=0 minimal (m=1)');

@@ -35,6 +35,14 @@ const mle = await dlmMLE(y, { order: 1 }, undefined, 300, 0.05, 1e-6, { dtype: D
 
 // After
 const mle = await dlmMLE(y, { order: 1, maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64' });
+
+// With irregular timestamps: expand first, then pass the stuffed series to dlmMLE
+const stuffed = stuffIntegerTimestamps(yObs, tsObs, undefined, undefined);
+const mleTs = await dlmMLE(stuffed.y, {
+  order: 1,
+  maxIter: 300,
+  dtype: 'f64',
+});
 ```
 
 ### `dlmForecast`
@@ -82,6 +90,20 @@ const sys = dlmGenSys({ order: 1, harmonics: 2, seasonLength: 12, arCoefficients
 | `result.x0` | `result.initialState` | `number[]` |
 | `result.C0` | `result.initialCov` | `number[][]` |
 | `result.XX` | `result.covariates` | `number[][]` |
+
+Additive metadata fields preserved on the fit result:
+
+```ts
+// New additive fields (no rename required)
+result.processStd   // original process std dev vector passed to dlmFit
+result.modelSpec    // structural model options: order/harmonics/AR/spline/...
+result.timestamps   // fit timeline; implicit [0,1,...,n-1] when omitted in dlmFit
+result.transitionMatrices      // optional [n,m,m] per-step G(Δt_k) used during fitting
+result.transitionCovariances   // optional [n,m,m] per-step W(Δt_k) used during fitting
+```
+
+These fields are used by timestamp-aware `dlmForecast(..., { timestamps })` to
+reconstruct per-step `G(Δt)` / `W(Δt)` from the fitted model.
 
 ### `DlmMleResult`
 

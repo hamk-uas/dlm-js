@@ -365,18 +365,28 @@ export interface DlmFitResult {
 
   // ── Model matrices (standard notation) ──
 
-  /** State transition matrix G (m × m) */
+  /** State transition matrix G (m × m). For timestamped fits this is the base/unit-step matrix, not the per-step scan tensor. */
   G: number[][];
   /** Observation matrix F. p=1: [m] row vector (backward compat). p>1: [p, m]. */
   F: number[] | number[][];
-  /** State noise covariance W (m × m) */
+  /** State noise covariance W (m × m). For timestamped fits this is the base/unit-step matrix, not the per-step scan tensor. */
   W: number[][];
+  /** Per-step transition matrices [n, m, m] used during fitting. Present when timestamps were provided. */
+  transitionMatrices?: number[][][];
+  /** Per-step state noise covariances [n, m, m] used during fitting. Present when timestamps were provided. */
+  transitionCovariances?: number[][][];
+  /** Process noise std devs used to build W. Preserved so forecast can reconstruct time-varying W(Δt). */
+  processStd: number[];
+  /** Structural model specification used for this fit (order, harmonics, AR, spline, ...). */
+  modelSpec: DlmModelSpec;
   /** Initial state mean (after first smoother pass). In MATLAB DLM, this is `x0`. */
   initialState: number[];
   /** Initial state covariance (scaled). In MATLAB DLM, this is `C0`. */
   initialCov: number[][];
   /** Observations */
   y: FloatArray;
+  /** Observation timeline. Defaults to implicit unit steps [0, 1, ..., n-1] when no timestamps were provided to dlmFit. */
+  timestamps: FloatArray;
   /** Observation noise standard deviations. In MATLAB DLM, this is `V`. */
   obsNoise: FloatArray;
   /** Covariate matrix X [n × q] (empty array when no covariates). In MATLAB DLM, this is `XX`. */

@@ -140,6 +140,28 @@ For a more neutral assumption in practice, center covariates before fitting so t
 
 For decision use, prefer scenario forecasting: provide multiple plausible `X_forecast` paths (e.g. low/base/high) and compare resulting forecast bands.
 
+With irregular future steps, pass absolute forecast timestamps. dlm-js then reconstructs per-step $G(\Delta t)$ and $W(\Delta t)$ from the fitted model and uses
+
+$$
+\Delta t_0 = t_{\mathrm{forecast},0} - t_{\mathrm{fit},\mathrm{last}}, \qquad
+\Delta t_k = t_{\mathrm{forecast},k} - t_{\mathrm{forecast},k-1}.
+$$
+
+```js
+const fit = await dlmFit(y, {
+  obsStd: 1.0,
+  processStd: [0.2, 0.05],
+  order: 1,
+  timestamps: [0, 1, 2, 5, 6, 10],
+  dtype: 'f64',
+});
+
+const fc = await dlmForecast(fit, 3, {
+  timestamps: [11, 14, 20],
+  dtype: 'f64',
+});
+```
+
 ### Missing data (NaN observations)
 
 Place `NaN` in the observation vector `y` wherever a measurement is absent. `dlmFit` automatically skips those timesteps in the Kalman gain and residual calculations (K and v are zeroed), so the smoother interpolates through the gaps without any extra configuration:
@@ -190,9 +212,13 @@ const result = await dlmFit(y, {
 
 console.log(result.yhat);      // smoothed predictions at each timestamp
 console.log(result.ystd);      // observation std devs — wider after gaps
+console.log(result.transitionMatrices);      // optional [n,m,m] per-step G(Δt_k)
+console.log(result.transitionCovariances);   // optional [n,m,m] per-step W(Δt_k)
 ```
 
-**Supported components:** polynomial trend (order 0, 1, 2), trigonometric harmonics, and AR components (integer-spaced timestamps only). `fullSeasonal` throws because it is a purely discrete-time construct with no natural continuous-time extension. AR components are supported when every $\Delta t$ is a positive integer: the companion matrix is raised to the $d$-th power via binary exponentiation ($G_{AR}^d$) and the noise is accumulated as $W_{AR}(d) = \sum_{k=0}^{d-1} C^k \, W_1 \, (C^k)^\top$. Non-integer $\Delta t$ with AR still throws.
+For timestamped fits, `result.G` and `result.W` remain the backward-compatible base/unit-step matrices. The actual per-step tensors used during fitting are exposed separately as `transitionMatrices` and `transitionCovariances`.
+
+**Supported components:** polynomial trend (order 0, 1, 2), order=1 `spline: true`, trigonometric harmonics, and AR components (integer-spaced timestamps only). In spline mode the order=1 trend block uses the integrated-random-walk covariance $w_1^2 \begin{bmatrix} \Delta t^3/3 & \Delta t^2/2 \\ \Delta t^2/2 & \Delta t \end{bmatrix}$, matching MATLAB `dlmfit` spline mode at unit spacing. `fullSeasonal` throws because it is a purely discrete-time construct with no natural continuous-time extension. AR components are supported when every $\Delta t$ is a positive integer: the companion matrix is raised to the $d$-th power via binary exponentiation ($G_{AR}^d$) and the noise is accumulated as $W_{AR}(d) = \sum_{k=0}^{d-1} C^k \, W_1 \, (C^k)^\top$. Non-integer $\Delta t$ with AR still throws.
 
 **Tip — non-integer base step with AR:** If your data's natural step is non-integer (e.g. months as fractions of a year: $\Delta t = 1/12$), scale `timestamps` so the base step becomes 1. This makes all gaps integer multiples and satisfies the AR requirement:
 
@@ -277,6 +303,25 @@ const mle = await dlmMLE(y, { order: 1, maxIter: 200, lr: 0.05 });
 // mle.deviance is the log-likelihood summed only over observed timesteps
 // mle.fit.nobs reports the count of non-NaN observations used
 ```
+
+`dlmMLE` does not accept `timestamps` directly. Instead, use `stuffIntegerTimestamps(...)` to expand integer-step timestamped data to a NaN-stuffed unit grid, then pass the stuffed arrays to `dlmMLE`.
+
+```js
+import { dlmMLE, stuffIntegerTimestamps } from "dlm-js";
+
+const yObs = [1120, 1160, 1210, 1160, 969];
+const tsObs = [0, 1, 3, 4, 8];
+
+const stuffed = stuffIntegerTimestamps(yObs, tsObs, undefined, undefined);
+
+const mle = await dlmMLE(stuffed.y, {
+  order: 1,
+  maxIter: 50,
+  dtype: 'f64',
+});
+```
+
+`stuffIntegerTimestamps(...)` requires timestamp steps to be positive integers relative to the initial timestamp. For non-integer natural units such as months expressed in years, rescale timestamps so one base step becomes 1 first. For example monthly data in year units should be mapped from `[0, 1/12, 2/12, 5/12]` to `[0, 1, 2, 5]`.
 
 ### MAP estimation (custom loss / priors)
 
@@ -975,7 +1020,7 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 | Convergence diagnostics | ⚠️ Limited (`devianceHistory`, no posterior chain) | ✅ (`chain`, `sschain` in MCMC mode) |
 | Runs in browser | ✅ | ❌ |
 | MEX/WASM acceleration | ✅ (`wasm` backend; see [benchmark](#benchmark-same-machine-same-data)) | ✅ (`dlmmex` optional) |
-| Irregular timestamps | ✅ (`timestamps` in `dlmFit`; see [irregular timestamps](#irregular-timestamps)) | ❌ (unit spacing only) |
+| Irregular timestamps | ✅ (`timestamps` in `dlmFit`; for MLE use `stuffIntegerTimestamps(...)` first) | ❌ (unit spacing only) |
 
 #### What dlm-js does differently
 
@@ -1121,4 +1166,4 @@ Models tested: local level (m=1) at moderate/high/low SNR, local linear trend (m
 ### License
 This project is MIT licensed (see [`LICENSE`](LICENSE)).
 
-The included original DLM and mcmcstat MATLAB subset in [`tests/octave/dlm/`](tests/octave/dlm/) is covered by its own license text in [`tests/octave/dlm/LICENSE.txt`](tests/octave/dlm/LICENSE.txt).
+The included original DLM and mcmcstat MATLAB subset in `tests/octave/dlm/` is covered by its own license text in [`tests/octave/dlm/LICENSE.txt`](tests/octave/dlm/LICENSE.txt).

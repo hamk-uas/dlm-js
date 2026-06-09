@@ -86,6 +86,22 @@ describe('timestamps', () => {
       expect(tv.m).toBe(2);
     });
 
+    it('unit-spaced timestamps reproduce spline covariance (order=1)', () => {
+      const opts = { order: 1 as const, spline: true };
+      const sys = dlmGenSys(opts);
+      const ts = Array.from({ length: 4 }, (_, i) => i);
+      const w = [1.0, 0.5];
+      const tv = dlmGenSysTV(opts, ts, w);
+
+      for (let k = 0; k < ts.length; k++) {
+        expect(tv.G[k]).toEqual(sys.G);
+        expect(tv.W[k][0][0]).toBeCloseTo((w[1] ** 2) / 3, 10);
+        expect(tv.W[k][0][1]).toBeCloseTo((w[1] ** 2) / 2, 10);
+        expect(tv.W[k][1][0]).toBeCloseTo((w[1] ** 2) / 2, 10);
+        expect(tv.W[k][1][1]).toBeCloseTo(w[1] ** 2, 10);
+      }
+    });
+
     it('Δt=2 gives G with correct off-diagonal (order=1)', () => {
       const opts = { order: 1 as const };
       // timestamps: [0, 2] → departing dt = [2, 1]
@@ -113,6 +129,25 @@ describe('timestamps', () => {
       expect(tv.W[1][0][0]).toBeCloseTo(1.0, 10);
       expect(tv.W[1][0][1]).toBeCloseTo(0.0, 10);
       expect(tv.W[1][1][1]).toBeCloseTo(1.0, 10);
+    });
+
+    it('Δt=2 spline gives integrated-random-walk covariance (order=1)', () => {
+      const opts = { order: 1 as const, spline: true };
+      const ts = [0, 2];
+      const w = [1.0, 0.5];
+      const tv = dlmGenSysTV(opts, ts, w);
+
+      const q = w[1] ** 2;
+      expect(tv.G[0][0][1]).toBeCloseTo(2.0, 10);
+      expect(tv.W[0][0][0]).toBeCloseTo(q * 8 / 3, 10);
+      expect(tv.W[0][0][1]).toBeCloseTo(q * 2, 10);
+      expect(tv.W[0][1][0]).toBeCloseTo(q * 2, 10);
+      expect(tv.W[0][1][1]).toBeCloseTo(q * 2, 10);
+
+      expect(tv.W[1][0][0]).toBeCloseTo(q / 3, 10);
+      expect(tv.W[1][0][1]).toBeCloseTo(q / 2, 10);
+      expect(tv.W[1][1][0]).toBeCloseTo(q / 2, 10);
+      expect(tv.W[1][1][1]).toBeCloseTo(q, 10);
     });
 
     it('throws on fullSeasonal', () => {
@@ -273,6 +308,67 @@ describe('timestamps', () => {
       );
       expect(cmp.equal).toBe(true);
     });
+
+    it('order=1 spline matches standard result at unit spacing', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+      const n = LEVEL_DATA.length;
+      const timestamps = Array.from({ length: n }, (_, i) => i);
+
+      const ref = await dlmFit(LEVEL_DATA, {
+        obsStd: 1.0, processStd: [0.5, 0.25],
+        order: 1, spline: true, dtype: dlmDtype,
+      });
+      const refM = toMatlab(ref);
+
+      const res = await dlmFit(LEVEL_DATA, {
+        obsStd: 1.0, processStd: [0.5, 0.25],
+        order: 1, spline: true, timestamps, dtype: dlmDtype,
+      });
+      const resM = toMatlab(res);
+
+      const cmp = deepAlmostEqual(
+        { x: resM.x, xstd: resM.xstd, yhat: resM.yhat, ystd: resM.ystd, lik: resM.lik },
+        { x: refM.x, xstd: refM.xstd, yhat: refM.yhat, ystd: refM.ystd, lik: refM.lik },
+        1e-10,
+        '',
+        1e-12,
+      );
+      expect(cmp.equal).toBe(true);
+    });
+  });
+
+  describe('fit result metadata for timestamped fits', () => {
+    it('exposes the per-step G/W matrices used during fitting', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+
+      const timestamps = [0, 2, 3, 6, 7];
+      const processStd = [0.5, 0.2];
+      const fit = await dlmFit([10, 10.5, 11.1, 12.3, 12.8], {
+        obsStd: 1.0,
+        processStd,
+        order: 1,
+        timestamps,
+        dtype: dlmDtype,
+      });
+      const tv = dlmGenSysTV({ order: 1 }, timestamps, processStd);
+
+      expect(fit.transitionMatrices).toBeDefined();
+      expect(fit.transitionCovariances).toBeDefined();
+      expect(fit.transitionMatrices).toEqual(tv.G);
+      expect(fit.transitionCovariances).toEqual(tv.W);
+
+      // Existing fields remain the base/unit-step system for backward compatibility.
+      expect(fit.G).toEqual(dlmGenSys({ order: 1 }).G);
+      expect(fit.W).toEqual([[processStd[0] ** 2, 0], [0, processStd[1] ** 2]]);
+    });
   });
 
   // ── Order=0 with gap: timestamps vs Nan-stuffed uniform ────────────────
@@ -405,6 +501,118 @@ describe('timestamps', () => {
           `level mismatch at k=${k}, origIdx=${origI}: NaN=${nanLev}, ts=${tsLev}, diff=${ld}`);
         expect(xd).toBeLessThan(Math.max(absTol, relTol * Math.abs(nanXstd[origI])),
           `xstd mismatch at k=${k}, origIdx=${origI}: NaN=${nanXstd[origI]}, ts=${tsXstd[k]}, diff=${xd}`);
+      }
+    });
+
+    it('spline mode matches after filtering out NaN steps', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+
+      // Start from a smooth trend-like signal, then remove a few interior points.
+      const yWithNaNs = TREND_DATA.slice(0, 18);
+      const missingIdx = new Set([4, 5, 11, 15]);
+      const yNan = yWithNaNs.map((v, i) => missingIdx.has(i) ? NaN : v);
+      const fullTimestamps = Array.from({ length: yNan.length }, (_, i) => i);
+
+      const yObs: number[] = [];
+      const tsObs: number[] = [];
+      const obsIdx: number[] = [];
+      for (let i = 0; i < yNan.length; i++) {
+        if (!Number.isNaN(yNan[i])) {
+          yObs.push(yNan[i]);
+          tsObs.push(fullTimestamps[i]);
+          obsIdx.push(i);
+        }
+      }
+
+      const nanFit = await dlmFit(yNan, {
+        obsStd: 2.0,
+        processStd: [0.5, 0.1],
+        order: 1,
+        spline: true,
+        dtype: dlmDtype,
+      });
+      const nanM = toMatlab(nanFit);
+
+      const tsFit = await dlmFit(yObs, {
+        obsStd: 2.0,
+        processStd: [0.5, 0.1],
+        order: 1,
+        spline: true,
+        timestamps: tsObs,
+        dtype: dlmDtype,
+      });
+      const tsM = toMatlab(tsFit);
+
+      const pickObserved = <T>(arr: T[]): T[] => obsIdx.map(i => arr[i]);
+      const pickObservedStateRows = (rows: number[][]): number[][] =>
+        rows.map(row => obsIdx.map(i => row[i]));
+      const pickObservedTimeRows = (rows: number[][]): number[][] =>
+        obsIdx.map(i => Array.from(rows[i]));
+
+      const filteredNan = {
+        x: pickObservedStateRows((nanM.x as number[][]).map(row => Array.from(row))),
+        xstd: pickObservedTimeRows((nanM.xstd as number[][]).map(row => Array.from(row))),
+        yhat: pickObserved(Array.from(nanM.yhat as number[])),
+        ystd: pickObserved(Array.from(nanM.ystd as number[])),
+      };
+      const timestampsOnly = {
+        x: (tsM.x as number[][]).map(row => Array.from(row)),
+        xstd: (tsM.xstd as number[][]).map(row => Array.from(row)),
+        yhat: Array.from(tsM.yhat as number[]),
+        ystd: Array.from(tsM.ystd as number[]),
+      };
+
+      const cmp = deepAlmostEqual(
+        timestampsOnly,
+        filteredNan,
+        2e-5,
+        '',
+        2e-6,
+      );
+      expect(cmp.equal).toBe(true);
+    });
+
+    it('fractional base-step timestamps match NaN-stuffed equivalence', async () => {
+      const configs = await f64Configs();
+      if (configs.length === 0) return;
+      const config = configs[0];
+      applyConfig(config);
+      const dlmDtype = getDlmDtype(config);
+
+      const yFull = [10, 10.2, 10.3, 10.6, 10.9, 11.2, 11.4, 11.6, 11.9, 12.1];
+      const yNan = [...yFull];
+      yNan[2] = NaN;
+      yNan[3] = NaN;
+      const timestamps = Array.from({ length: yFull.length }, (_, i) => i / 12);
+      const yObs = yNan.filter(v => !Number.isNaN(v));
+      const tsObs = timestamps.filter((_, i) => !Number.isNaN(yNan[i]));
+      const obsIdx = yNan.map((v, i) => Number.isNaN(v) ? -1 : i).filter(i => i >= 0);
+
+      const nanFit = await dlmFit(yNan, {
+        obsStd: 0.5,
+        processStd: [0.1],
+        order: 0,
+        seasonLength: 12,
+        timestamps,
+        dtype: dlmDtype,
+      });
+      const tsFit = await dlmFit(yObs, {
+        obsStd: 0.5,
+        processStd: [0.1],
+        order: 0,
+        seasonLength: 12,
+        timestamps: tsObs,
+        dtype: dlmDtype,
+      });
+
+      for (let k = 0; k < obsIdx.length; k++) {
+        const i = obsIdx[k];
+        expect(tsFit.smoothed.get(k, 0)).toBeCloseTo(nanFit.smoothed.get(i, 0), 8);
+        expect(tsFit.smoothedStd.get(k, 0)).toBeCloseTo(nanFit.smoothedStd.get(i, 0), 8);
       }
     });
   });

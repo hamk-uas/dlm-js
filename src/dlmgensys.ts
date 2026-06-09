@@ -325,8 +325,6 @@ function writeBlock(target: number[][], block: number[][], r: number, c: number)
  *   set to 1.0, matching the uniform-timestep convention).
  * @param processStd - Process noise std devs (diagonal of √Q_c per unit time).
  *   Length determines which states have noise (same as DlmFitOptions.processStd).
- * @param spline - If true and order=1, use integrated random walk W(Δt) instead of
- *   diagonal W.
  * @returns Time-varying system matrices { G[n,m,m], W[n,m,m], F[m], m }
  */
 export function dlmGenSysTV(
@@ -336,6 +334,7 @@ export function dlmGenSysTV(
 ): DlmSystemTV {
   checkUnknownKeys(options as unknown as Record<string, unknown>, DLM_GENSYS_KEYS, 'dlmGenSysTV');
   const order = options.order ?? 1;
+  const spline = options.spline ?? false;
   const harmonics = options.harmonics ?? 0;
   const seasonLength = options.seasonLength ?? 12;
   const arCoefficients = options.arCoefficients ?? [];
@@ -478,13 +477,23 @@ export function dlmGenSysTV(
     } else if (order === 1) {
       const w0sq = w.length > 0 ? w[0] ** 2 : 0;
       const w1sq = w.length > 1 ? w[1] ** 2 : 0;
-      // Faulhaber sums
-      const S1 = d * (d - 1) / 2;
-      const S2 = d * (d - 1) * (2 * d - 1) / 6;
-      W_k[0][0] = d * w0sq + w1sq * S2;
-      W_k[0][1] = w1sq * S1;
-      W_k[1][0] = w1sq * S1;
-      W_k[1][1] = d * w1sq;
+      if (spline) {
+        // MATLAB dlmfit spline mode replaces the order=1 trend noise with the
+        // integrated-random-walk covariance q * [[d^3/3, d^2/2], [d^2/2, d]],
+        // where q = w1^2. This ignores w0, matching the static spline branch.
+        W_k[0][0] = w1sq * d * d * d / 3;
+        W_k[0][1] = w1sq * d * d / 2;
+        W_k[1][0] = W_k[0][1];
+        W_k[1][1] = w1sq * d;
+      } else {
+        // Faulhaber sums
+        const S1 = d * (d - 1) / 2;
+        const S2 = d * (d - 1) * (2 * d - 1) / 6;
+        W_k[0][0] = d * w0sq + w1sq * S2;
+        W_k[0][1] = w1sq * S1;
+        W_k[1][0] = w1sq * S1;
+        W_k[1][1] = d * w1sq;
+      }
     } else if (order === 2) {
       const w0sq = w.length > 0 ? w[0] ** 2 : 0;
       const w1sq = w.length > 1 ? w[1] ** 2 : 0;

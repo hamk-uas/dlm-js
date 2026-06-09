@@ -7,6 +7,94 @@ import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
 
 /**
+ * Result of converting integer-step timestamped observations to a NaN-stuffed unit grid.
+ *
+ * `y` is expanded to the full unit grid, missing steps are filled with `NaN`, and
+ * optional `X` / `obsStdFixed` inputs are expanded to matching arrays.
+ */
+export interface StuffedMleInput {
+  y: number[];
+  timestamps: number[];
+  X?: number[][];
+  obsStdFixed?: number[];
+}
+
+/**
+ * Expand integer-step timestamped observations to a NaN-stuffed unit grid.
+ *
+ * This is intended for workflows such as MLE that operate on the same objective
+ * as a NaN-stuffed `dlmFit` run. Timestamp offsets must be positive integers
+ * relative to the initial timestamp.
+ *
+ * @param y - Observed values on the compressed timestamp grid.
+ * @param timestamps - Integer-step timestamps aligned with `y`.
+ * @param X - Optional covariate rows aligned with `y`.
+ * @param obsStdFixed - Optional per-observation fixed std devs aligned with `y`.
+ * @returns Expanded arrays on the unit grid, with missing steps filled in.
+ */
+export function stuffIntegerTimestamps(
+  y: ArrayLike<number>,
+  timestamps: number[],
+  X: ArrayLike<number>[] | undefined,
+  obsStdFixed: ArrayLike<number> | undefined,
+): StuffedMleInput {
+  const n = y.length;
+  if (timestamps.length !== n) {
+    throw new Error(`stuffIntegerTimestamps: timestamps must have length ${n}, got ${timestamps.length}`);
+  }
+  if (X && X.length !== n) {
+    throw new Error(`stuffIntegerTimestamps: X must have ${n} rows when timestamps are provided, got ${X.length}`);
+  }
+  if (obsStdFixed && obsStdFixed.length !== n) {
+    throw new Error(`stuffIntegerTimestamps: obsStdFixed must have length ${n} when timestamps are provided, got ${obsStdFixed.length}`);
+  }
+  if (n === 0) return { y: [], timestamps: [] };
+
+  const idx = new Array(n);
+  const t0 = timestamps[0];
+  idx[0] = 0;
+  for (let i = 1; i < n; i++) {
+    const dt = timestamps[i] - timestamps[i - 1];
+    if (dt <= 0) throw new Error('stuffIntegerTimestamps: timestamps must be strictly increasing');
+    const raw = timestamps[i] - t0;
+    const rounded = Math.round(raw);
+    if (Math.abs(raw - rounded) > 1e-8 * Math.max(1, Math.abs(raw))) {
+      throw new Error(
+        'stuffIntegerTimestamps: timestamp steps must be positive integers relative to the initial timestamp.'
+      );
+    }
+    idx[i] = rounded;
+  }
+
+  const stuffedLength = idx[n - 1] + 1;
+  const stuffedY = new Array(stuffedLength).fill(NaN);
+  let stuffedX: number[][] | undefined;
+  let stuffedObsStd: number[] | undefined;
+
+  if (X) {
+    const q = X[0]?.length ?? 0;
+    stuffedX = Array.from({ length: stuffedLength }, () => new Array(q).fill(0));
+  }
+  if (obsStdFixed) {
+    stuffedObsStd = new Array(stuffedLength).fill(1.0);
+  }
+
+  for (let i = 0; i < n; i++) {
+    const j = idx[i];
+    stuffedY[j] = Number(y[i]);
+    if (stuffedX && X) stuffedX[j] = Array.from(X[i], Number);
+    if (stuffedObsStd && obsStdFixed) stuffedObsStd[j] = Number(obsStdFixed[i]);
+  }
+
+  return {
+    y: stuffedY,
+    timestamps: idx,
+    ...(stuffedX ? { X: stuffedX } : {}),
+    ...(stuffedObsStd ? { obsStdFixed: stuffedObsStd } : {}),
+  };
+}
+
+/**
  * Result from MLE estimation with JS-idiomatic names.
  */
 export interface DlmMleResult {
@@ -775,9 +863,11 @@ export const dlmMLE = async (
   const forceAssocScan = algorithm === 'assoc' ? true : undefined;
   const options: DlmOptions = { order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr };
   const t0 = performance.now();
-  const n = y.length;
   const FA = getFloatArrayType(dtype);
-  const yArr = y instanceof FA ? y as FloatArray : FA.from(y);
+  const yOrig = y instanceof FA ? y as FloatArray : FA.from(y);
+  const mleSFixed = sFixed;
+  const yArr = FA.from(Array.from(yOrig));
+  const n = yArr.length;
 
   // Generate system matrices
   const sys = dlmGenSys(options);
@@ -847,7 +937,7 @@ export const dlmMLE = async (
   let fixedV2_arr: np.Array | undefined;
   if (fixS) {
     // V2_t = sFixed[t]² — shape [n, 1, 1]
-    const v2data = Array.from(sFixed!).map(si => [[si * si]]);
+    const v2data = Array.from(mleSFixed!).map(si => [[si * si]]);
     fixedV2_arr = np.array(v2data, { dtype });
   }
 
@@ -1069,7 +1159,7 @@ export const dlmMLE = async (
 
     const { fitAr: _fa1, ...fitOpts1 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
     const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
-    const fit = await dlmFit(yArr, {
+    const fit = await dlmFit(yOrig, {
       obsStd: sForFit, processStd: w_opt, ...fitOpts1,
       X, dtype: opts?.dtype, algorithm: opts?.algorithm,
     });
@@ -1223,7 +1313,7 @@ export const dlmMLE = async (
   const { fitAr: _fa2, ...fitOpts2 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
   // When s was fixed, pass the original sFixed array to dlmFit; otherwise use scalar s_opt
   const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
-  const fit = await dlmFit(yArr, {
+  const fit = await dlmFit(yOrig, {
     obsStd: sForFit,
     processStd: w_opt,
     ...fitOpts2,

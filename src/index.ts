@@ -24,8 +24,8 @@ export type {
 export { StateMatrix, CovMatrix } from "./types";
 export type { DlmOptions, DlmSystem, DlmSystemTV } from "./dlmgensys";
 export { dlmGenSys, dlmGenSysTV, findArInds } from "./dlmgensys";
-export { dlmMLE, toMatlabMle } from "./mle";
-export type { DlmMleResult, DlmMleResultMatlab } from "./mle";
+export { dlmMLE, toMatlabMle, stuffIntegerTimestamps } from "./mle";
+export type { DlmMleResult, DlmMleResultMatlab, StuffedMleInput } from "./mle";
 export type { DlmMleOptions } from "./types";
 export { dlmPrior } from "./priors";
 export type { InverseGammaPrior, NormalPrior, DlmPriorSpec } from "./priors";
@@ -2098,6 +2098,8 @@ export const dlmFit = async (
   const timestamps = opts.timestamps;
   let G_scan: np.Array;
   let W_scan: np.Array;
+  let transitionMatrices: number[][][] | undefined;
+  let transitionCovariances: number[][][] | undefined;
   if (timestamps) {
     const tv = dlmGenSysTV(genSysOpts, timestamps, w);
     // tv.G and tv.W are [n, m_base, m_base] as JS arrays.
@@ -2119,6 +2121,8 @@ export const dlmFit = async (
       G_tv_data = tv.G;
       W_tv_data = tv.W;
     }
+    transitionMatrices = G_tv_data;
+    transitionCovariances = W_tv_data;
     G_scan = np.array(G_tv_data, { dtype });
     W_scan = np.array(W_tv_data, { dtype });
   } else {
@@ -2211,11 +2215,30 @@ export const dlmFit = async (
   // ─────────────────────────────────────────────────────────────────────────
   const ns = seasonLength ?? 12;
   let initSum = 0, initCount = 0;
-  const count = Math.min(ns, n);
-  for (let i = 0; i < count; i++) {
-    // For p>1, use mean of first component; for p=1, use scalar
-    const v = obsP === 1 ? Number(yArr![i]) : Number(yMat![i][0]);
-    if (!isNaN(v)) { initSum += v; initCount++; }
+  if (timestamps) {
+    // Match the NaN-stuffed unit-step behavior: seasonLength counts base
+    // timesteps, not raw timestamp units. Infer the base step from the
+    // smallest observed gap so monthly data expressed in years (1/12) still
+    // uses the first 12 months rather than the first 12 years.
+    let baseStep = Infinity;
+    for (let i = 1; i < n; i++) {
+      baseStep = Math.min(baseStep, timestamps[i] - timestamps[i - 1]);
+    }
+    if (!Number.isFinite(baseStep)) baseStep = 1;
+    const initLimit = timestamps[0] + ns * baseStep;
+    for (let i = 0; i < n; i++) {
+      if (timestamps[i] >= initLimit) break;
+      // For p>1, use mean of first component; for p=1, use scalar.
+      const v = obsP === 1 ? Number(yArr![i]) : Number(yMat![i][0]);
+      if (!isNaN(v)) { initSum += v; initCount++; }
+    }
+  } else {
+    const count = Math.min(ns, n);
+    for (let i = 0; i < count; i++) {
+      // For p>1, use mean of first component; for p=1, use scalar
+      const v = obsP === 1 ? Number(yArr![i]) : Number(yMat![i][0]);
+      if (!isNaN(v)) { initSum += v; initCount++; }
+    }
   }
   // NaN-safe mean: use available observations; fall back to 0 if all missing
   const mean_y = initCount > 0 ? initSum / initCount : 0;
@@ -2311,10 +2334,23 @@ export const dlmFit = async (
     G: G_data,
     F: F_out,
     W: W_data,
+    transitionMatrices,
+    transitionCovariances,
+    processStd: [...w],
+    modelSpec: { order, harmonics, seasonLength, fullSeasonal, arCoefficients, spline },
     // Input data
     y: yArr!, obsNoise: obsP === 1
       ? (() => { const a = new FA(n); if (typeof s === 'number') a.fill(s); else for (let i = 0; i < n; i++) a[i] = (s as ArrayLike<number>)[i]; return a; })()
       : new FA(0), // placeholder for p>1 (obsNoise is per-component; full V2 captured in out2)
+    timestamps: (() => {
+      const a = new FA(n);
+      if (timestamps) {
+        for (let i = 0; i < n; i++) a[i] = timestamps[i];
+      } else {
+        for (let i = 0; i < n; i++) a[i] = i;
+      }
+      return a;
+    })(),
     // Initial state (after Pass 1 refinement)
     initialState: x0_updated.map(row => row[0]),
     initialCov: C0_scaled,
@@ -2394,9 +2430,48 @@ export const dlmForecast = async (
   const n = fit.n;
   const FA = getFloatArrayType(dtype);
 
-  // ── Build constant np.Arrays for G and W (captured by jit core) ──────────
+  const forecastTimestamps = opts?.timestamps;
+  if (forecastTimestamps && forecastTimestamps.length !== h) {
+    throw new Error(`timestamps must have length h=${h}, got ${forecastTimestamps.length}`);
+  }
+
+  let G_forecast_data: number[][][] | undefined;
+  let W_forecast_data: number[][][] | undefined;
+  if (forecastTimestamps) {
+    const baseTimeline = Array.from(fit.timestamps as ArrayLike<number>, Number);
+    const lastFitTimestamp = baseTimeline[n - 1];
+    const timeline = [lastFitTimestamp, ...forecastTimestamps];
+    const tv = dlmGenSysTV(fit.modelSpec, timeline, fit.processStd);
+    const G_head = tv.G.slice(0, h);
+    const W_head = tv.W.slice(0, h);
+
+    if (q > 0) {
+      const mBase = tv.m;
+      G_forecast_data = G_head.map(Gk => [
+        ...Gk.map(row => [...row, ...new Array(q).fill(0)]),
+        ...Array.from({ length: q }, (_, qi) =>
+          [...new Array(mBase).fill(0), ...Array.from({ length: q }, (_, qj) => qj === qi ? 1 : 0)]
+        ),
+      ]);
+      W_forecast_data = W_head.map(Wk => [
+        ...Wk.map(row => [...row, ...new Array(q).fill(0)]),
+        ...Array.from({ length: q }, () => new Array(mBase + q).fill(0)),
+      ]);
+    } else {
+      G_forecast_data = G_head;
+      W_forecast_data = W_head;
+    }
+  }
+
+  // ── Build constant/scan np.Arrays for G and W ────────────────────────────
   using G_np = np.array(G_data, { dtype });
   using W_np = np.array(W_data, { dtype });
+  let G_scan_forecast: np.Array | undefined;
+  let W_scan_forecast: np.Array | undefined;
+  if (G_forecast_data && W_forecast_data) {
+    G_scan_forecast = np.array(G_forecast_data, { dtype });
+    W_scan_forecast = np.array(W_forecast_data, { dtype });
+  }
 
   // ── Initial state: last smoothed timestep ─────────────────────────────────
   const x0_data: number[][] = Array.from({ length: m }, (_, i) => [fit.smoothed.get(n - 1, i)]);
@@ -2429,17 +2504,21 @@ export const dlmForecast = async (
   type PredInp   = { FF: np.Array };
   type PredOut   = { x: np.Array; C: np.Array; yhat: np.Array; ystd: np.Array };
 
-  const predStep = (carry: PredCarry, inp: PredInp): [PredCarry, PredOut] => {
+  type PredInpTimed = { FF: np.Array; Gt: np.Array; Wt: np.Array };
+
+  const predStep = (carry: PredCarry, inp: PredInp | PredInpTimed): [PredCarry, PredOut] => {
     const { x: xi, C: Ci } = carry;
     const { FF: FFi } = inp;
+    const G_t = 'Gt' in inp ? inp.Gt : G_np;
+    const W_t = 'Wt' in inp ? inp.Wt : W_np;
 
     // x_new = G · x  [m,1]
-    const x_new = np.matmul(G_np, xi);
+    const x_new = np.matmul(G_t, xi);
 
     // C_new = G · C · G' + W  [m,m]
     const C_new = np.add(
-      np.einsum('ij,jk,lk->il', G_np, Ci, G_np),
-      W_np
+      np.einsum('ij,jk,lk->il', G_t, Ci, G_t),
+      W_t
     );
 
     // yhat = FF · x_new  [1,1]
@@ -2453,17 +2532,21 @@ export const dlmForecast = async (
   };
 
   // ── Jittable core: scan over h steps ─────────────────────────────────────
-  const core = (x0: np.Array, C0: np.Array, FF_scan: np.Array) => {
-    const [finalCarry, outputs] = lax.scan(
-      predStep,
-      { x: x0, C: C0 },
-      { FF: FF_scan }
-    );
+  const coreStatic = (x0: np.Array, C0: np.Array, FF_scan: np.Array) => {
+    const [finalCarry, outputs] = lax.scan(predStep, { x: x0, C: C0 }, { FF: FF_scan });
     tree.dispose(finalCarry);
-    return outputs;  // { x: [h,m,1], C: [h,m,m], yhat: [h,1,1], ystd: [h,1,1] }
+    return outputs;
   };
 
-  const out = await jit(core)(x0, C0, FF_scan);
+  const coreTimed = (x0: np.Array, C0: np.Array, FF_scan: np.Array, G_scan: np.Array, W_scan: np.Array) => {
+    const [finalCarry, outputs] = lax.scan(predStep, { x: x0, C: C0 }, { FF: FF_scan, Gt: G_scan, Wt: W_scan });
+    tree.dispose(finalCarry);
+    return outputs;
+  };
+
+  const out = G_scan_forecast && W_scan_forecast
+    ? await jit(coreTimed)(x0, C0, FF_scan, G_scan_forecast, W_scan_forecast)
+    : await jit(coreStatic)(x0, C0, FF_scan);
 
   // ── Extract results — parallel GPU readback via tree.consumeData ──────────
   const d = await tree.consumeData(out);
@@ -2490,6 +2573,9 @@ export const dlmForecast = async (
     }
   }
   const predictedStd = new StateMatrix(stdData, h, m);
+
+  G_scan_forecast?.dispose();
+  W_scan_forecast?.dispose();
 
   return { yhat: yhat_out, ystd: ystd_out, predicted, predictedCov, predictedStd, h, m };
 };

@@ -110,6 +110,87 @@ describe('dlmForecast', () => {
     expect(Math.abs((fc.yhat[h - 1] as number) - (fc.yhat[0] as number))).toBeGreaterThan(0.05);
   });
 
+  it('forecast timestamps match NaN-extended dlmFit | cpu/f64', async () => {
+    const cfg = configs.find(c => c.device === 'cpu' && c.dtype === DType.Float64);
+    if (!cfg) return;
+    applyConfig(cfg);
+
+    const randn = gaussianRng(mulberry32(21));
+    const n = 40, h = 6, s = 0.8, qW = 0.15;
+    const obs = new Float64Array(n);
+    let mu = 10;
+    for (let t = 0; t < n; t++) { mu += qW * randn(); obs[t] = mu + s * randn(); }
+
+    const futureTs = [40, 42, 45, 46, 50, 55];
+    const fit = await dlmFit(obs, { obsStd: s, processStd: [qW * qW], dtype: 'f64', order: 0 });
+    const fc = await dlmForecast(fit, h, { timestamps: futureTs, dtype: 'f64' });
+
+    const extY = Array.from(obs).concat(new Array(h).fill(NaN));
+    const extTs = Array.from({ length: n }, (_, i) => i).concat(futureTs);
+    const extFit = await dlmFit(extY, {
+      obsStd: s,
+      processStd: [qW * qW],
+      dtype: 'f64',
+      order: 0,
+      timestamps: extTs,
+    });
+
+    for (let k = 0; k < h; k++) {
+      const extIdx = n + k;
+      expect(fc.yhat[k]).toBeCloseTo(extFit.yhat[extIdx], 8);
+      expect(fc.ystd[k]).toBeCloseTo(extFit.ystd[extIdx], 8);
+      expect(fc.predicted.get(k, 0)).toBeCloseTo(extFit.smoothed.get(extIdx, 0), 8);
+    }
+  });
+
+  it('spline forecast timestamps match NaN-extended dlmFit | cpu/f64', async () => {
+    const cfg = configs.find(c => c.device === 'cpu' && c.dtype === DType.Float64);
+    if (!cfg) return;
+    applyConfig(cfg);
+
+    const randn = gaussianRng(mulberry32(22));
+    const n = 50, h = 5, s = 0.6;
+    const obs = new Float64Array(n);
+    let level = 100;
+    let slope = 1.5;
+    for (let t = 0; t < n; t++) {
+      slope += 0.02 * randn();
+      level += slope + 0.1 * randn();
+      obs[t] = level + s * randn();
+    }
+
+    const trainTs = Array.from({ length: n }, (_, i) => (i < 20 ? i : 20 + (i - 20) * 2));
+    const futureTs = [trainTs[n - 1] + 1, trainTs[n - 1] + 4, trainTs[n - 1] + 6, trainTs[n - 1] + 10, trainTs[n - 1] + 11];
+    const fit = await dlmFit(obs, {
+      obsStd: s,
+      processStd: [0.2, 0.08],
+      dtype: 'f64',
+      order: 1,
+      spline: true,
+      timestamps: trainTs,
+    });
+    const fc = await dlmForecast(fit, h, { timestamps: futureTs, dtype: 'f64' });
+
+    const extY = Array.from(obs).concat(new Array(h).fill(NaN));
+    const extTs = trainTs.concat(futureTs);
+    const extFit = await dlmFit(extY, {
+      obsStd: s,
+      processStd: [0.2, 0.08],
+      dtype: 'f64',
+      order: 1,
+      spline: true,
+      timestamps: extTs,
+    });
+
+    for (let k = 0; k < h; k++) {
+      const extIdx = n + k;
+      expect(fc.yhat[k]).toBeCloseTo(extFit.yhat[extIdx], 7);
+      expect(fc.ystd[k]).toBeCloseTo(extFit.ystd[extIdx], 7);
+      expect(fc.predicted.get(k, 0)).toBeCloseTo(extFit.smoothed.get(extIdx, 0), 7);
+      expect(fc.predicted.get(k, 1)).toBeCloseTo(extFit.smoothed.get(extIdx, 1), 7);
+    }
+  });
+
   // ── 3. Trigonometric seasonal ──────────────────────────────────────────────
 
   it('trig seasonal: cyclic yhat + ystd monotone | cpu/f64', async () => {

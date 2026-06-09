@@ -149,6 +149,7 @@ interface ModelCase {
   inputFile: string;
   referenceFile: string;
   options: DlmOptions;
+  absoluteToleranceOverride?: number;
 }
 
 const modelCases: ModelCase[] = [
@@ -181,6 +182,15 @@ const modelCases: ModelCase[] = [
     inputFile: 'trig-in.json',
     referenceFile: 'trig-out-m.json',
     options: { order: 1, harmonics: 2, seasonLength: 12 },
+  },
+  {
+    name: 'order=1 spline mode (integrated random walk on Nile data)',
+    inputFile: 'spline-in.json',
+    referenceFile: 'spline-out-m.json',
+    options: { order: 1, spline: true },
+    // Correlated W from spline mode produces tiny near-zero covariance drift
+    // relative to Octave while matching the large-scale state trajectory exactly.
+    absoluteToleranceOverride: 1e-3,
   },
   {
     name: 'Kaisaniemi seasonal demo (order=1, harmonics=1)',
@@ -278,7 +288,7 @@ describe('dlmGenSys integration tests', async () => {
             filteredRef,
             tol.relativeTolerance,
             '',
-            tol.absoluteTolerance,
+            mc.absoluteToleranceOverride ?? tol.absoluteTolerance,
           );
           if (!cmp.equal) {
             throw new Error(
