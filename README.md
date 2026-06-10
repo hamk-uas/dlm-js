@@ -42,6 +42,8 @@ dlm-js works in **both Node.js and the browser** — the library has no platform
 
 Naming convention: exported JS/TS APIs use camelCase (for example `dlmFit`, `dlmGenSys`), while original MATLAB functions are lowercase (for example `dlmfit`, `dlmsmo`, `dlmgensys`).
 
+If you are migrating older dlm-js code or comparing against MATLAB DLM output, see `MIGRATION.md`. The current API exposes JS-idiomatic result shapes by default, and `toMatlab()` / `toMatlabMle()` restore the MATLAB-style field names and layouts when needed.
+
 ### ESM (Node.js / browser bundler)
 
 ```js
