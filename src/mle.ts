@@ -20,6 +20,19 @@ export interface StuffedMleInput {
   obsStdFixed?: number[];
 }
 
+function normalizeObsStdFixed(
+  obsStdFixed: number | ArrayLike<number> | undefined,
+  n: number,
+  context: string,
+): number[] | undefined {
+  if (obsStdFixed === undefined) return undefined;
+  if (typeof obsStdFixed === 'number') return new Array(n).fill(obsStdFixed);
+  if (obsStdFixed.length !== n) {
+    throw new Error(`${context}: obsStdFixed must be a scalar or have length ${n}, got ${obsStdFixed.length}`);
+  }
+  return Array.from(obsStdFixed, Number);
+}
+
 /**
  * Expand integer-step timestamped observations to a NaN-stuffed unit grid.
  *
@@ -37,17 +50,15 @@ export function stuffIntegerTimestamps(
   y: ArrayLike<number>,
   timestamps: number[],
   X: ArrayLike<number>[] | undefined,
-  obsStdFixed: ArrayLike<number> | undefined,
+  obsStdFixed: number | ArrayLike<number> | undefined,
 ): StuffedMleInput {
   const n = y.length;
+  const obsStdFixedArr = normalizeObsStdFixed(obsStdFixed, n, 'stuffIntegerTimestamps');
   if (timestamps.length !== n) {
     throw new Error(`stuffIntegerTimestamps: timestamps must have length ${n}, got ${timestamps.length}`);
   }
   if (X && X.length !== n) {
     throw new Error(`stuffIntegerTimestamps: X must have ${n} rows when timestamps are provided, got ${X.length}`);
-  }
-  if (obsStdFixed && obsStdFixed.length !== n) {
-    throw new Error(`stuffIntegerTimestamps: obsStdFixed must have length ${n} when timestamps are provided, got ${obsStdFixed.length}`);
   }
   if (n === 0) return { y: [], timestamps: [] };
 
@@ -76,7 +87,7 @@ export function stuffIntegerTimestamps(
     const q = X[0]?.length ?? 0;
     stuffedX = Array.from({ length: stuffedLength }, () => new Array(q).fill(0));
   }
-  if (obsStdFixed) {
+  if (obsStdFixedArr) {
     stuffedObsStd = new Array(stuffedLength).fill(1.0);
   }
 
@@ -84,7 +95,7 @@ export function stuffIntegerTimestamps(
     const j = idx[i];
     stuffedY[j] = Number(y[i]);
     if (stuffedX && X) stuffedX[j] = Array.from(X[i], Number);
-    if (stuffedObsStd && obsStdFixed) stuffedObsStd[j] = Number(obsStdFixed[i]);
+    if (stuffedObsStd && obsStdFixedArr) stuffedObsStd[j] = obsStdFixedArr[i];
   }
 
   return {
@@ -866,9 +877,9 @@ export const dlmMLE = async (
   const t0 = performance.now();
   const FA = getFloatArrayType(dtype);
   const yOrig = y instanceof FA ? y as FloatArray : FA.from(y);
-  const mleSFixed = sFixed;
   const yArr = FA.from(Array.from(yOrig));
   const n = yArr.length;
+  const mleSFixed = normalizeObsStdFixed(sFixed, n, 'dlmMLE');
 
   // Generate system matrices
   const sys = dlmGenSys(options);
@@ -934,7 +945,7 @@ export const dlmMLE = async (
   const arphi_init = init?.arCoefficients ?? arphi_orig;
 
   // Build fixed V2_arr when sFixed is provided
-  const fixS = sFixed !== undefined;
+  const fixS = mleSFixed !== undefined;
   let fixedV2_arr: np.Array | undefined;
   if (fixS) {
     // V2_t = sFixed[t]² — shape [n, 1, 1]
@@ -1313,7 +1324,7 @@ export const dlmMLE = async (
   // Run full dlmFit with optimized parameters (including fitted arCoefficients if applicable)
   const { fitAr: _fa2, ...fitOpts2 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
   // When s was fixed, pass the original sFixed array to dlmFit; otherwise use scalar s_opt
-  const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
+  const sForFit: number | ArrayLike<number> = fixS ? mleSFixed! : s_opt;
   const fit = await dlmFit(yOrig, {
     obsStd: sForFit,
     processStd: w_opt,

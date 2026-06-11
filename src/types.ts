@@ -791,7 +791,8 @@ export interface DlmMleOptions extends DlmModelSpec {
   /** Convergence tolerance on relative deviance change. Default: 1e-6. */
   tol?: number;
   /** Per-observation σ array (length n). When provided, obsStd is fixed and not estimated. In MATLAB DLM, this is `sFixed`. */
-  obsStdFixed?: ArrayLike<number>;
+  /** Fixed observation σ, either a scalar or per-observation array (length n). When provided, obsStd is fixed and not estimated. In MATLAB DLM, this is `sFixed`. */
+  obsStdFixed?: number | ArrayLike<number>;
   /** Callbacks for monitoring optimization progress. */
   callbacks?: {
     /** Called before iteration 0 with the initial theta. */
