@@ -1,4 +1,3 @@
-/* eslint-disable jax-js/no-nested-array-leak */
 import { DType, numpy as np, lax, jit, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import type { DlmSmoResult, FloatArray } from "./types";
 import {

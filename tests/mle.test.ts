@@ -305,6 +305,24 @@ describe('dlmMLE', async () => {
     expect(tsResult.deviance).toBeCloseTo(stuffedResult.deviance, 8);
   });
 
+  it('params.obsStd.fixed accepts a scalar', async () => {
+    const options = { order: 0 };
+    const y = [4, 4.5, 5.2, 5.1, 6.0, 6.3, 6.1, 7.0];
+
+    const result = await dlmMLE(y, {
+      ...options,
+      ...mleParams({ obsStdFixed: 0.5, processStdInit: [0.3] }),
+      maxIter: 20,
+      tol: 1e-6,
+      dtype: 'f64',
+      optimizer: 'natural',
+    });
+
+    expect(result.obsStd).toBeNaN();
+    expect(Array.from(result.fit.obsNoise)).toEqual(new Array(y.length).fill(0.5));
+    expect(result.processStd[0]).toBeGreaterThanOrEqual(0);
+  });
+
   it('params.processStd respects fixed zeros and tied groups', async () => {
     const options = { order: 1, harmonics: 1, seasonLength: 12 };
     const sys = dlmGenSys(options);
@@ -328,6 +346,67 @@ describe('dlmMLE', async () => {
     });
 
     expect(thetaLengths).toEqual([3]);
+    expect(result.processStd[0]).toBe(0);
+    expect(result.processStd[2]).toBeCloseTo(result.processStd[3], 12);
+  });
+
+  it('params.arCoefficients.fixed overrides the model AR value without exposing fitted coefficients', async () => {
+    const phi_model = 0.8;
+    const phi_fixed = 0.2;
+    const s_true = 3;
+    const w_true = [5, 4];
+    const options = { order: 0, arCoefficients: [phi_model] };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, s_true, w_true, 80, 52);
+
+    const result = await dlmMLE(y, {
+      ...options,
+      ...mleParams({
+        obsStdInit: s_true,
+        processStdInit: w_true,
+        fitAr: true,
+        arFixed: [phi_fixed],
+      }),
+      maxIter: 20,
+      lr: 0.02,
+      tol: 1e-6,
+      dtype: 'f64',
+    });
+
+    expect(result.arCoefficients).toBeUndefined();
+    expect(result.fit.modelSpec.arCoefficients).toEqual([phi_fixed]);
+  });
+
+  it('custom loss sees expanded physical params under grouped and fixed processStd controls', async () => {
+    const options = { order: 1, harmonics: 1, seasonLength: 12 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, 2, [0, 0.1, 0.4, 0.4], 36, 23);
+    let seenMeta: { nObs: number; nProcess: number; nAr: number } | undefined;
+
+    const loss: DlmLossFn = (deviance, params, meta) => {
+      seenMeta = { nObs: meta.nObs, nProcess: meta.nProcess, nAr: meta.nAr };
+      const target = np.array([1, 0, 0.1, 0.2, 0.2]);
+      const diff = np.subtract(params, target);
+      const penalty = np.multiply(np.array(0.01), np.sum(np.square(diff)));
+      return np.add(deviance, penalty);
+    };
+
+    const result = await dlmMLE(y, {
+      ...options,
+      ...mleParams({
+        obsStdInit: 1,
+        processStdInit: [0.2, 0.1, 0.4, 0.6],
+        processStdFixed: { 0: 0 },
+        processStdGroups: [0, 1, 2, 2],
+      }),
+      maxIter: 1,
+      tol: 1e-6,
+      dtype: 'f64',
+      loss,
+    });
+
+    expect(seenMeta).toEqual({ nObs: 1, nProcess: 4, nAr: 0 });
+    expect(result.priorPenalty).toBeDefined();
     expect(result.processStd[0]).toBe(0);
     expect(result.processStd[2]).toBeCloseTo(result.processStd[3], 12);
   });

@@ -99,6 +99,42 @@ describe('unknown option validation', () => {
     })).rejects.toThrow(/unknown option 'observation'/i);
   });
 
+  it('dlmMLE rejects wrong params.processStd.init length', async () => {
+    await expect(dlmMLE([1, 2, 3], {
+      order: 1,
+      params: { processStd: { init: [0.2] } },
+    })).rejects.toThrow(/params\.processStd\.init must have length 2, got 1/i);
+  });
+
+  it('dlmMLE rejects wrong params.processStd.groups length', async () => {
+    await expect(dlmMLE([1, 2, 3], {
+      order: 1,
+      harmonics: 1,
+      params: { processStd: { groups: [0, 1, 2] } },
+    })).rejects.toThrow(/groups must have length 4, got 3/i);
+  });
+
+  it('dlmMLE rejects conflicting fixed values within one processStd group', async () => {
+    await expect(dlmMLE([1, 2, 3], {
+      order: 1,
+      harmonics: 1,
+      params: {
+        processStd: {
+          groups: [0, 1, 2, 2],
+          fixed: [undefined, undefined, 0.1, 0.2],
+        },
+      },
+    })).rejects.toThrow(/group '2' has conflicting fixed values 0\.1 and 0\.2/i);
+  });
+
+  it('dlmMLE rejects wrong params.arCoefficients.init length', async () => {
+    await expect(dlmMLE([1, 2, 3], {
+      order: 0,
+      arCoefficients: [0.5],
+      params: { arCoefficients: { fit: true, init: [0.4, 0.3] } },
+    })).rejects.toThrow(/params\.arCoefficients\.init must have length 1, got 2/i);
+  });
+
   it('dlmMLE rejects unknown callbacks key', async () => {
     await expect(dlmMLE([1, 2, 3], {
       callbacks: { onStep: () => {} } as never,
