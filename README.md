@@ -291,9 +291,31 @@ console.log(mle.fit);         // full DlmFitResult with optimized parameters
 // With AR fitting: estimate obsStd, processStd, and AR coefficients jointly
 const mleAR = await dlmMLE(
   y,
-  { order: 0, arCoefficients: [0.5], fitAr: true, maxIter: 300, lr: 0.02, tol: 1e-6, dtype: 'f64' },
+  {
+    order: 0,
+    arCoefficients: [0.5],
+    params: { arCoefficients: { fit: true } },
+    maxIter: 300,
+    lr: 0.02,
+    tol: 1e-6,
+    dtype: 'f64',
+  },
 );
 console.log(mleAR.arCoefficients);  // estimated AR coefficients (e.g. [0.81])
+
+// Parameter controls live under params: init, fixed values, and tied process-noise groups
+const constrained = await dlmMLE(y, {
+  order: 1,
+  harmonics: 2,
+  params: {
+    obsStd: { fixed: 0.8 },
+    processStd: {
+      init: [0.2, 0.05, 0.4, 0.4, 0.4, 0.4],
+      groups: [0, 1, 2, 2, 3, 3],
+      fixed: { 0: 0 },
+    },
+  },
+});
 ```
 
 `dlmMLE` uses Adam with automatic differentiation (autodiff) to optimize the Kalman filter log-likelihood. The entire optimization step — forward filter + AD backward pass + Adam update — is compiled via `jit()` for speed. See [How MLE works](#how-mle-works) for technical details and [Parameter estimation: MATLAB DLM vs dlm-js](#parameter-estimation-mle--map-matlab-dlm-vs-dlm-js) for a detailed comparison.
@@ -354,7 +376,7 @@ console.log(result.priorPenalty);   // MAP_objective − pure_deviance (≥ 0)
 Available prior specs:
 - `obsVar: { shape, rate }` — Inverse-Gamma on observation variance s².
 - `processVar: { shape, rate }` — IG on process variance(s) wᵢ² (single spec recycled for all components, or array for per-component priors).
-- `arCoef: { mean, std }` — Normal on AR coefficients (requires `fitAr: true`).
+- `arCoef: { mean, std }` — Normal on AR coefficients (requires `params.arCoefficients.fit: true`).
 
 #### Custom loss callback
 
@@ -745,9 +767,9 @@ Three findings:
   <img alt="Energy MLE optimization (WebGPU)" src="assets/energy-mle-anim-webgpu.svg" width="100%" />
 </p>
 
-*Joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `fitAr: true`). WASM variants use natural gradient; WebGPU uses Adam (FD Hessian too noisy in f32 for 7 parameters). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85).*
+*Joint estimation of observation noise s, state variances w, and AR(1) coefficient φ via autodiff (`dlmMLE` with `params.arCoefficients.fit: true`). WASM variants use natural gradient; WebGPU uses Adam (FD Hessian too noisy in f32 for 7 parameters). Two sparklines track convergence: −2·log-likelihood (amber) and AR coefficient φ (green, 0.50 → 0.68, true: 0.85).*
 
-The Nile MLE demo estimates `obsStd` and `processStd` on the classic Nile dataset; the energy MLE demo jointly estimates `obsStd`, `processStd`, and AR coefficient `φ` on the synthetic energy model (`fitAr: true`). See [Parameter estimation (MLE & MAP): MATLAB DLM vs dlm-js](#parameter-estimation-mle--map-matlab-dlm-vs-dlm-js) for details.
+The Nile MLE demo estimates `obsStd` and `processStd` on the classic Nile dataset; the energy MLE demo jointly estimates `obsStd`, `processStd`, and AR coefficient `φ` on the synthetic energy model (`params.arCoefficients.fit: true`). See [Parameter estimation (MLE & MAP): MATLAB DLM vs dlm-js](#parameter-estimation-mle--map-matlab-dlm-vs-dlm-js) for details.
 
 ### How MLE works
 
@@ -770,7 +792,7 @@ The parallel MLE loss function replaces the sequential Kalman forward pass insid
 
 **Step-by-step derivation:**
 
-1. **Parameter extraction (traced):** $\theta \xrightarrow{\exp} (s, w_0 \ldots w_{m-1}, \phi_1 \ldots \phi_p)$. Observation variance $V^2 = s^2$ (scalar); state noise $W = \text{diag}(w_i^2)$; $G$ updated with AR coefficients if `fitAr: true`.
+1. **Parameter extraction (traced):** $\theta \xrightarrow{\exp} (s, w_0 \ldots w_{m-1}, \phi_1 \ldots \phi_p)$. Observation variance $V^2 = s^2$ (scalar, unless `params.obsStd.fixed` is used); state noise $W = \text{diag}(w_i^2)$ from the full expanded process-noise vector (after applying `params.processStd.groups` and `params.processStd.fixed`); $G$ is updated with AR coefficients when `params.arCoefficients.fit` is enabled.
 
 2. **Per-timestep 5-tuple elements (Lemma 1):** For each timestep $t = 1 \ldots n$:
 
@@ -979,7 +1001,7 @@ Octave timings are from Octave with `fminsearch`; Nile, Kaisaniemi, and Nile (w 
 - **Likelihood values:** All optimizers converge to very similar $-2\log L$ values on Nile (Adam vs Octave difference \~<!-- computed:Math.abs(slot("mle-bench:nile-order1:lik") - static("octave-nile-order1-lik")).toFixed(1) -->0.3<!-- /computed -->).
 - **Natural gradient:** Uses second-order curvature (FD Hessian + Levenberg-Marquardt damping) and converges in fewer iterations (≤50 vs 300 for Adam), but each iteration is more expensive due to per-parameter finite-difference Hessian evaluations.
 - **Kaisaniemi (m=4, 5 params):** Octave `fminsearch` (`maxfuneval=800`) failed with NaN/Inf; Adam converged in <!-- timing:mle-bench:kaisaniemi:iterations -->300<!-- /timing --> iterations (\~<!-- timing:mle-bench:kaisaniemi:elapsed-s -->0.1 s<!-- /timing -->), natural gradient in <!-- timing:nat-mle-bench:kaisaniemi:iterations -->20<!-- /timing --> iterations (\~<!-- timing:nat-mle-bench:kaisaniemi:elapsed-s -->0.1 s<!-- /timing -->).
-- **Joint $s+w$ fitting:** dlm-js can fit both $s$ and $w$ jointly, or fix $s$ via `obsStdFixed` (matching MATLAB DLM's `fitv=0`).
+- **Joint $s+w$ fitting:** dlm-js can fit both $s$ and $w$ jointly, or fix $s$ via `params.obsStd.fixed` (matching MATLAB DLM's `fitv=0`).
 
 ##### Gradient checkpointing
 
@@ -1009,10 +1031,10 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 | Gradient-based optimization | ✅ | ❌ |
 | Second-order optimizer | ✅ (`optimizer: 'natural'`; see [Optimizers](#optimizers)) | ❌ |
 | JIT compilation of optimizer | ✅ | ❌ |
-| Fit observation noise `obsStd` | ✅ (always) | ✅ (optional via `fitv`) |
+| Fit observation noise `obsStd` | ✅ (default; fix via `params.obsStd.fixed`) | ✅ (optional via `fitv`) |
 | Fit process noise `processStd` | ✅ | ✅ |
-| Fit AR coefficients `arCoefficients` | ✅ (`fitAr: true`) | ✅ |
-| Tie W parameters (`winds`) | ❌ (each W entry independent) | ✅ |
+| Fit AR coefficients `arCoefficients` | ✅ (`params.arCoefficients.fit: true`) | ✅ |
+| Tie W parameters (`winds`) | ✅ (`params.processStd.groups`) | ✅ |
 | MAP estimation (priors) | ✅ (`dlmPrior` factory: IG on variances, Normal on AR; or custom `loss` callback) | ⚠️ (priors used in MCMC, not in `fminsearch` MLE) |
 | Prior penalty decomposition | ✅ (`deviance` + `priorPenalty` in result) | ❌ |
 | Custom cost function | ✅ (`loss` option: custom callback or `dlmPrior` factory) | ✅ (`options.fitfun`) |
@@ -1030,14 +1052,13 @@ The MATLAB DLM toolbox supports MCMC via Adaptive Metropolis (`mcmcrun`): 5000 s
 2. **JIT-wrapped optimization step** — forward filter + AD + parameter update are traced together in one optimization step function. JIT overhead currently dominates for small datasets (n=100); the advantage grows with larger n or more complex models.
 3. **WASM backend** — runs in Node.js and the browser without native dependencies.
 4. **Potentially more robust as dimension grows** — gradient-based optimization can remain practical in settings where derivative-free simplex methods become expensive or unstable.
-5. **Joint AR coefficient estimation** — `fitAr: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
+5. **Joint AR coefficient estimation** — `params.arCoefficients.fit: true` jointly estimates observation noise, state variances, and AR coefficients in a single autodiff pass. The AR coefficients enter the G matrix via AD-safe rank-1 updates (`buildG`), keeping the entire optimization `jit()`-compilable.
 6. **Built-in MAP estimation** — `dlmPrior` factory provides MATLAB DLM-style Inverse-Gamma priors on variances and Normal priors on AR coefficients (matching `dlmGibbsDIG` conventions), compiled end-to-end in a single `jit()` call. Alternatively, a custom `loss` callback can implement arbitrary penalties. See [MAP estimation](#map-estimation-custom-loss--priors).
 
 #### What MATLAB DLM does that dlm-js doesn't (yet)
 
 1. **MCMC posterior sampling** — full posterior chain with credible intervals. dlm-js supports priors (via MAP), but returns a point estimate rather than a full Bayesian posterior.
-2. **Parameter tying** (`winds`) — reduces optimization dimension for structured models.
-3. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
+2. **V factor fitting** (`options.fitv`) — fits a multiplicative factor on V rather than V directly (useful when V is partially known from instrument specification).
 
 ## Project structure
 

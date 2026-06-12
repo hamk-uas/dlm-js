@@ -61,7 +61,7 @@ export interface NormalPrior {
 export interface DlmPriorSpec {
   /**
    * IG(shape, rate) prior on observation variance s².
-   * Ignored when `obsStdFixed` is set in dlmMLE options.
+    * Ignored when `params.obsStd.fixed` is set in dlmMLE options.
    */
   obsVar?: InverseGammaPrior;
   /**
@@ -73,7 +73,7 @@ export interface DlmPriorSpec {
   /**
    * Normal(mean, std) prior on AR coefficient(s) φⱼ.
    * Single spec → recycled for all p coefficients.
-   * Array → per-coefficient.  Only used when `fitAr: true`.
+    * Array → per-coefficient.  Only used when `params.arCoefficients.fit` is enabled.
    */
   arCoef?: NormalPrior | NormalPrior[];
 }

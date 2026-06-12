@@ -90,12 +90,12 @@ describe('unknown option validation', () => {
   it('dlmMLE rejects MATLAB name fitar with hint', async () => {
     await expect(dlmMLE([1, 2, 3], {
       fitar: true,
-    } as never)).rejects.toThrow(/use 'fitAr' instead/i);
+    } as never)).rejects.toThrow(/use 'params\.arCoefficients\.fit' instead/i);
   });
 
-  it('dlmMLE rejects unknown init key', async () => {
+  it('dlmMLE rejects unknown params.processStd key', async () => {
     await expect(dlmMLE([1, 2, 3], {
-      init: { observation: 1 } as never,
+      params: { processStd: { observation: 1 } as never },
     })).rejects.toThrow(/unknown option 'observation'/i);
   });
 

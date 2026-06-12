@@ -45,6 +45,45 @@ const mleTs = await dlmMLE(stuffed.y, {
 });
 ```
 
+### `dlmMLE` parameter controls
+
+```ts
+// Before
+const mle = await dlmMLE(y, {
+  order: 0,
+  arCoefficients: [0.5],
+  fitAr: true,
+  init: { obsStd: 3, processStd: [5, 4], arCoefficients: [0.4] },
+  obsStdFixed: knownObsStd,
+});
+
+// After
+const mle = await dlmMLE(y, {
+  order: 0,
+  arCoefficients: [0.5],
+  params: {
+    obsStd: { init: 3, fixed: knownObsStd },
+    processStd: { init: [5, 4] },
+    arCoefficients: { fit: true, init: [0.4] },
+  },
+});
+```
+
+```ts
+// New: tie or fix process-noise slots during MLE
+const mle = await dlmMLE(y, {
+  order: 1,
+  harmonics: 2,
+  params: {
+    processStd: {
+      init: [0.2, 0.05, 0.4, 0.4, 0.4, 0.4],
+      groups: [0, 1, 2, 2, 3, 3],
+      fixed: { 0: 0 },
+    },
+  },
+});
+```
+
 ### `dlmForecast`
 
 ```ts
@@ -131,8 +170,18 @@ reconstruct per-step `G(Δt)` / `W(Δt)` from the fitted model.
 | `trig` | `harmonics` |
 | `ns` | `seasonLength` |
 | `arphi` | `arCoefficients` |
-| `fitar` | `fitAr` |
+| `fitar` | `params.arCoefficients.fit` |
 | `fullseas` | `fullSeasonal` |
+
+### `dlmMLE` option remap
+
+| Old name | New name |
+|----------|----------|
+| `init.obsStd` | `params.obsStd.init` |
+| `init.processStd` | `params.processStd.init` |
+| `init.arCoefficients` | `params.arCoefficients.init` |
+| `obsStdFixed` | `params.obsStd.fixed` |
+| `fitAr` | `params.arCoefficients.fit` |
 
 ## Removed types and parameters
 
@@ -180,7 +229,7 @@ import { DType } from "@hamk-uas/jax-js-nonconsuming"  →  (delete line)
 trig:          →  harmonics:
 ns:            →  seasonLength:
 arphi:         →  arCoefficients:
-fitar:         →  fitAr:
+fitar:         →  params: { arCoefficients: { fit: true } }
 fullseas:      →  fullSeasonal:
 
 # DlmFitResult fields

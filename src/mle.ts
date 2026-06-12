@@ -1,8 +1,12 @@
 /* eslint-disable jax-js/no-nested-array-leak */
 import { DType, numpy as np, lax, jit, valueAndGrad, hessian as adHessian, tree, defaultDevice } from "@hamk-uas/jax-js-nonconsuming";
 import { adam, applyUpdates, type ScaleByAdamOptions } from "@hamk-uas/jax-js-nonconsuming/optax";
-import type { DlmFitResult, FloatArray, DlmMleOptions } from "./types";
-import { getFloatArrayType, parseDtype, checkUnknownKeys, DLM_MLE_KEYS, DLM_MLE_INIT_KEYS, DLM_MLE_CALLBACKS_KEYS, DLM_MLE_ADAM_KEYS, DLM_MLE_NATURAL_KEYS } from "./types";
+import type { DlmFitResult, FloatArray, DlmMleOptions, DlmMleArCoefficientSpec } from "./types";
+import {
+  getFloatArrayType, parseDtype, checkUnknownKeys,
+  DLM_MLE_KEYS, DLM_MLE_PARAMS_KEYS, DLM_MLE_OBS_STD_KEYS, DLM_MLE_PROCESS_STD_KEYS,
+  DLM_MLE_AR_KEYS, DLM_MLE_CALLBACKS_KEYS, DLM_MLE_ADAM_KEYS, DLM_MLE_NATURAL_KEYS,
+} from "./types";
 import { dlmGenSys, findArInds } from "./dlmgensys";
 import type { DlmOptions } from "./dlmgensys";
 import { dlmFit } from "./index";
@@ -20,6 +24,35 @@ export interface StuffedMleInput {
   obsStdFixed?: number[];
 }
 
+interface NormalizedProcessLayout {
+  fixedValues: Array<number | undefined>;
+  freeGroupIndexBySlot: number[];
+  freeGroupMembers: number[][];
+  freeInit: number[];
+}
+
+interface NormalizedArLayout {
+  baseValues: number[];
+  fixedValues: Array<number | undefined>;
+  freeIndexBySlot: number[];
+  freeInit: number[];
+  freeCount: number;
+  exposeInLoss: boolean;
+}
+
+const DEFAULT_FREE_STD_INIT = 0.01;
+
+function positiveInit(value: number, fallback: number = DEFAULT_FREE_STD_INIT): number {
+  const magnitude = Math.abs(value);
+  return magnitude > 0 ? magnitude : fallback;
+}
+
+function geometricMean(values: number[]): number {
+  if (values.length === 0) return DEFAULT_FREE_STD_INIT;
+  const logSum = values.reduce((sum, value) => sum + Math.log(positiveInit(value)), 0);
+  return Math.exp(logSum / values.length);
+}
+
 function normalizeObsStdFixed(
   obsStdFixed: number | ArrayLike<number> | undefined,
   n: number,
@@ -31,6 +64,219 @@ function normalizeObsStdFixed(
     throw new Error(`${context}: obsStdFixed must be a scalar or have length ${n}, got ${obsStdFixed.length}`);
   }
   return Array.from(obsStdFixed, Number);
+}
+
+function normalizeIndexedFixedValues(
+  fixed: number | ArrayLike<number | null | undefined> | Partial<Record<number, number>> | undefined,
+  n: number,
+  context: string,
+): Array<number | undefined> {
+  const out = new Array<number | undefined>(n).fill(undefined);
+  if (fixed === undefined) return out;
+  if (typeof fixed === 'number') return new Array(n).fill(fixed);
+
+  if (typeof (fixed as ArrayLike<unknown>).length === 'number') {
+    const fixedArr = fixed as ArrayLike<number | null | undefined>;
+    if (fixedArr.length !== n) {
+      throw new Error(`${context}: fixed must have length ${n}, got ${fixedArr.length}`);
+    }
+    for (let i = 0; i < n; i++) {
+      const value = fixedArr[i];
+      if (value !== null && value !== undefined) out[i] = Number(value);
+    }
+    return out;
+  }
+
+  for (const [rawIndex, rawValue] of Object.entries(fixed)) {
+    if (rawValue === null || rawValue === undefined) continue;
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index < 0 || index >= n) {
+      throw new Error(`${context}: fixed index '${rawIndex}' is out of range for length ${n}`);
+    }
+    out[index] = Number(rawValue);
+  }
+  return out;
+}
+
+function normalizeGroupKeys(
+  groups: ArrayLike<string | number> | undefined,
+  n: number,
+  context: string,
+): string[] | undefined {
+  if (groups === undefined) return undefined;
+  if (groups.length !== n) {
+    throw new Error(`${context}: groups must have length ${n}, got ${groups.length}`);
+  }
+  return Array.from({ length: n }, (_, i) => {
+    const group = groups[i];
+    if (group === undefined || group === null) {
+      throw new Error(`${context}: groups[${i}] must be defined`);
+    }
+    return String(group);
+  });
+}
+
+function normalizeProcessLayout(
+  m: number,
+  init: number[] | undefined,
+  groups: ArrayLike<string | number> | undefined,
+  fixed: number | ArrayLike<number | null | undefined> | Partial<Record<number, number>> | undefined,
+  defaultInit: number[],
+): NormalizedProcessLayout {
+  const initFull = init ?? defaultInit;
+  if (initFull.length !== m) {
+    throw new Error(`dlmMLE: params.processStd.init must have length ${m}, got ${initFull.length}`);
+  }
+
+  const fixedValues = normalizeIndexedFixedValues(fixed, m, 'dlmMLE params.processStd');
+  const groupKeys = normalizeGroupKeys(groups, m, 'dlmMLE params.processStd')
+    ?? Array.from({ length: m }, (_, i) => `__process_${i}`);
+
+  const groupMap = new Map<string, { members: number[]; fixedValue: number | undefined }>();
+  for (let i = 0; i < m; i++) {
+    const key = groupKeys[i];
+    const entry = groupMap.get(key) ?? { members: [], fixedValue: undefined };
+    entry.members.push(i);
+    const fixedValue = fixedValues[i];
+    if (fixedValue !== undefined) {
+      if (entry.fixedValue !== undefined && entry.fixedValue !== fixedValue) {
+        throw new Error(`dlmMLE params.processStd: group '${key}' has conflicting fixed values ${entry.fixedValue} and ${fixedValue}`);
+      }
+      entry.fixedValue = fixedValue;
+    }
+    groupMap.set(key, entry);
+  }
+
+  const freeGroupIndexBySlot = new Array(m).fill(-1);
+  const freeGroupMembers: number[][] = [];
+  const freeInit: number[] = [];
+
+  for (const entry of groupMap.values()) {
+    if (entry.fixedValue !== undefined) {
+      for (const slot of entry.members) fixedValues[slot] = entry.fixedValue;
+      continue;
+    }
+
+    const freeIndex = freeGroupMembers.length;
+    freeGroupMembers.push(entry.members);
+    freeInit.push(geometricMean(entry.members.map(slot => initFull[slot])));
+    for (const slot of entry.members) freeGroupIndexBySlot[slot] = freeIndex;
+  }
+
+  return { fixedValues, freeGroupIndexBySlot, freeGroupMembers, freeInit };
+}
+
+function normalizeArLayout(
+  arphiBase: number[],
+  spec: DlmMleArCoefficientSpec | undefined,
+): NormalizedArLayout {
+  const nar = arphiBase.length;
+  const baseValues = arphiBase.slice();
+  const fixedValues = normalizeIndexedFixedValues(spec?.fixed, nar, 'dlmMLE params.arCoefficients');
+  for (let i = 0; i < nar; i++) {
+    if (fixedValues[i] !== undefined) baseValues[i] = fixedValues[i]!;
+  }
+
+  const fit = spec?.fit ?? false;
+  const initFull = spec?.init ?? baseValues;
+  if (initFull.length !== nar) {
+    throw new Error(`dlmMLE: params.arCoefficients.init must have length ${nar}, got ${initFull.length}`);
+  }
+
+  const freeIndexBySlot = new Array(nar).fill(-1);
+  const freeInit: number[] = [];
+  if (!fit) {
+    for (let i = 0; i < nar; i++) fixedValues[i] = baseValues[i];
+    return { baseValues, fixedValues, freeIndexBySlot, freeInit, freeCount: 0, exposeInLoss: false };
+  }
+
+  for (let i = 0; i < nar; i++) {
+    if (fixedValues[i] !== undefined) continue;
+    freeIndexBySlot[i] = freeInit.length;
+    freeInit.push(initFull[i]);
+  }
+
+  return {
+    baseValues,
+    fixedValues,
+    freeIndexBySlot,
+    freeInit,
+    freeCount: freeInit.length,
+    exposeInLoss: freeInit.length > 0,
+  };
+}
+
+function concatOwned1D(parts: np.Array[]): np.Array {
+  if (parts.length === 1) return parts[0];
+  const out = np.concatenate(parts, 0);
+  for (const part of parts) part.dispose();
+  return out;
+}
+
+function expandProcessStd(
+  expTheta: np.Array,
+  layout: NormalizedProcessLayout,
+  thetaOffset: number,
+  dtype: DType,
+): np.Array {
+  const parts: np.Array[] = [];
+  for (let i = 0; i < layout.freeGroupIndexBySlot.length; i++) {
+    const fixedValue = layout.fixedValues[i];
+    if (fixedValue !== undefined) {
+      parts.push(np.array([fixedValue], { dtype }));
+      continue;
+    }
+    using value = lax.dynamicIndexInDim(expTheta, thetaOffset + layout.freeGroupIndexBySlot[i], 0);
+    parts.push(np.reshape(value, [1]));
+  }
+  return concatOwned1D(parts);
+}
+
+function expandProcessStdData(
+  thetaData: ArrayLike<number>,
+  layout: NormalizedProcessLayout,
+  thetaOffset: number,
+): number[] {
+  return Array.from({ length: layout.freeGroupIndexBySlot.length }, (_unused, i) => {
+    const fixedValue = layout.fixedValues[i];
+    return fixedValue !== undefined
+      ? fixedValue
+      : Math.exp(thetaData[thetaOffset + layout.freeGroupIndexBySlot[i]]);
+  });
+}
+
+function expandArValues(
+  theta: np.Array,
+  layout: NormalizedArLayout,
+  thetaOffset: number,
+  dtype: DType,
+): np.Array | undefined {
+  if (layout.baseValues.length === 0) return undefined;
+  const parts: np.Array[] = [];
+  for (let i = 0; i < layout.baseValues.length; i++) {
+    const fixedValue = layout.fixedValues[i];
+    if (fixedValue !== undefined) {
+      parts.push(np.array([fixedValue], { dtype }));
+      continue;
+    }
+    using value = lax.dynamicIndexInDim(theta, thetaOffset + layout.freeIndexBySlot[i], 0);
+    parts.push(np.reshape(value, [1]));
+  }
+  return concatOwned1D(parts);
+}
+
+function expandArValuesData(
+  thetaData: ArrayLike<number>,
+  layout: NormalizedArLayout,
+  thetaOffset: number,
+): number[] | undefined {
+  if (layout.baseValues.length === 0) return undefined;
+  return Array.from({ length: layout.baseValues.length }, (_unused, i) => {
+    const fixedValue = layout.fixedValues[i];
+    return fixedValue !== undefined
+      ? fixedValue
+      : thetaData[thetaOffset + layout.freeIndexBySlot[i]];
+  });
 }
 
 /**
@@ -114,7 +360,7 @@ export interface DlmMleResult {
   obsStd: number;
   /** Estimated state noise std devs (diagonal of √W). In MATLAB DLM, this is `w`. */
   processStd: number[];
-  /** Estimated AR coefficients (only when fitAr=true). In MATLAB DLM, this is `arphi`. */
+  /** Estimated AR coefficients (only when AR fitting is enabled). In MATLAB DLM, this is `arphi`. */
   arCoefficients?: number[];
   /** Deviance: -2 · log-likelihood at optimum. In MATLAB DLM, this is `lik`. */
   deviance: number;
@@ -176,40 +422,30 @@ export const toMatlabMle = (result: DlmMleResult): DlmMleResultMatlab => ({
 });
 
 /**
- * Build a diagonal matrix W = diag(w²) from the theta parameter vector
- * in an AD-compatible way using rank-1 updates:
- *   W = Σᵢ w[i]² · eᵢ · eᵢᵀ
- *
- * Each eᵢ is a constant unit vector, and w[i] is extracted from expTheta
- * via a dot-product mask (no np.slice/np.take needed).
+ * Build a diagonal matrix W = diag(w²) from the full physical process std
+ * vector.
  *
  * @internal
  */
-const buildDiagW = (
-  expTheta: np.Array, m: number, dtype: DType, _nTheta: number,
-  /** Index in theta where the w entries start (0 when s is fixed, 1 otherwise). */
-  wOffset: number = 1,
-): np.Array => {
-  // Extract contiguous w entries via structural slice, then diag(w²)
-  using wFlat = lax.sliceInDim(expTheta, wOffset, wOffset + m, 0);  // [m]
-  using w2 = np.square(wFlat);
+const buildDiagW = (processStd: np.Array): np.Array => {
+  using w2 = np.square(processStd);
   return np.diag(w2);
 };
 
 /**
- * Build G matrix with AR coefficients from the theta parameter vector.
+ * Build G matrix with the full physical AR coefficient vector.
  *
  * G_effective = G_base + \u03a3\u1d62 arphi[i] \u00b7 e_{arInds[i]} \u00b7 e_{arCol}\u1d40
  *
  * G_base has the AR column zeroed; this function adds the trainable
- * AR coefficients back using rank-1 updates (AD-compatible).
+ * and fixed AR coefficients back using ND dynamic updates (AD-compatible).
  *
  * @internal
  */
 const buildG = (
-  G_base: np.Array, theta: np.Array,
-  arInds: number[], m: number, nSwParams: number, _nTheta: number,
-  _dtype: DType,
+  G_base: np.Array,
+  arValues: np.Array,
+  arInds: number[],
 ): np.Array => {
   const arCol = arInds[0];
   const nar = arInds.length;
@@ -219,8 +455,7 @@ const buildG = (
   // jax-js-lint: allow-non-using — accumulator-swap: G updated in loop
   let G = np.add(G_base, np.zerosLike(G_base));  // clone
   for (let i = 0; i < nar; i++) {
-    // Extract arphi[i] from theta (NOT exp-transformed) via structural index
-    using phi_i = lax.dynamicIndexInDim(theta, nSwParams + i, 0);  // scalar
+    using phi_i = lax.dynamicIndexInDim(arValues, i, 0);  // scalar
     using phi_11 = np.reshape(phi_i, [1, 1]);
     // Set G[arInds[i], arCol] = phi_i (base was zeroed, so set = add)
     // jax-js-lint: allow-non-using — accumulator-swap
@@ -251,6 +486,8 @@ const makeKalmanLoss = (
   x0: np.Array, C0: np.Array,
   y_arr: np.Array,
   n: number, m: number, dtype: DType,
+  processLayout: NormalizedProcessLayout,
+  arLayout: NormalizedArLayout,
   arInds: number[] = [],
   /** When provided, V² is taken from this array and s is NOT in theta. */
   fixedV2_arr?: np.Array,
@@ -265,16 +502,20 @@ const makeKalmanLoss = (
    * y_arr must have NaN replaced with 0 before being passed when using this. */
   mask_arr?: np.Array,
 ) => {
-  const nar = arInds.length;
-  // When s is fixed, theta = [w₀…w_{m-1}, arphi…]  (no leading s slot)
   const fixS = fixedV2_arr !== undefined;
-  const nSwParams = (fixS ? 0 : 1) + m;
-  const nTheta = nSwParams + nar;
+  const processOffset = fixS ? 0 : 1;
+  const arOffset = processOffset + processLayout.freeInit.length;
 
   return (theta: np.Array): np.Array => {
+    using expTheta = np.exp(theta);
+    using processStd = expandProcessStd(expTheta, processLayout, processOffset, dtype);
+    const arValues = arLayout.freeCount > 0
+      ? expandArValues(theta, arLayout, arOffset, dtype)
+      : undefined;
+
     // Build effective G: constant if no AR fitting, theta-dependent if fitting
-    const G = nar > 0
-      ? buildG(G_base, theta, arInds, m, nSwParams, nTheta, dtype)
+    const G = arValues
+      ? buildG(G_base, arValues, arInds)
       : G_base;
 
     // Step function defined here so it captures the correct G
@@ -315,8 +556,6 @@ const makeKalmanLoss = (
       return [{ x: x_next, C: C_next }, np.multiply(mask_t, np.squeeze(lik_raw))];
     };
 
-    using expTheta = np.exp(theta);
-
     // V2_arr: either fixed (known per-timestep σ²) or estimated from theta[0]
     let V2_arr: np.Array;
     if (fixS) {
@@ -332,8 +571,8 @@ const makeKalmanLoss = (
       V2_arr = np.multiply(_V2_ones, _V2_1);
     }
 
-    // W = diag(w²) from theta[0..m-1] (fixS) or theta[1..m] (estimating s)
-    using W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
+    // W = diag(w²) from the full expanded physical process std vector
+    using W = buildDiagW(processStd);
 
     // Broadcast W to [n, ...] for scan
     using _W_ones = np.ones([n, 1, 1], { dtype });
@@ -352,6 +591,8 @@ const makeKalmanLoss = (
     );
     if (ownsMask) mask_for_scan.dispose();
     if (!fixS) V2_arr.dispose();
+    arValues?.dispose();
+    if (arLayout.freeCount > 0) G.dispose();
     tree.dispose(fc);
     const total = np.sum(likTerms);
     likTerms.dispose();
@@ -402,14 +643,15 @@ const makeKalmanLossAssoc = (
   n: number,
   m: number,
   dtype: DType,
+  processLayout: NormalizedProcessLayout,
+  arLayout: NormalizedArLayout,
   arInds: number[] = [],
   fixedV2_arr?: np.Array,  // [n, 1, 1] when s is fixed
   mask_arr?: np.Array,     // [n, 1, 1]: 1=observed, 0=NaN; undefined = all observed
 ) => {
-  const nar = arInds.length;
   const fixS = fixedV2_arr !== undefined;
-  const nSwParams = (fixS ? 0 : 1) + m;
-  const nTheta = nSwParams + nar;
+  const processOffset = fixS ? 0 : 1;
+  const arOffset = processOffset + processLayout.freeInit.length;
 
   type ForwardElem = { A: np.Array; b: np.Array; C: np.Array; eta: np.Array; J: np.Array };
 
@@ -458,10 +700,14 @@ const makeKalmanLossAssoc = (
 
     // ─── Parameter extraction (traced) ───
     using expTheta = np.exp(theta);
+    using processStd = expandProcessStd(expTheta, processLayout, processOffset, dtype);
+    const arValues = arLayout.freeCount > 0
+      ? expandArValues(theta, arLayout, arOffset, dtype)
+      : undefined;
 
     // Build effective G (traced when fitting AR coefficients)
-    const G = nar > 0
-      ? buildG(G_base, theta, arInds, m, nSwParams, nTheta, dtype)
+    const G = arValues
+      ? buildG(G_base, arValues, arInds)
       : G_base;
 
     // V2 scalar [1, 1] for estimated-s case
@@ -472,8 +718,8 @@ const makeKalmanLossAssoc = (
       V2 = np.reshape(_sVal2, [1, 1]);
     }
 
-    // W = diag(w²) [m, m] — traced
-    const W = buildDiagW(expTheta, m, dtype, nTheta, fixS ? 0 : 1);
+    // W = diag(w²) [m, m] — traced from the full expanded physical process std vector
+    const W = buildDiagW(processStd);
 
     // ─── Build per-timestep exact forward elements [n, ...] ───
     // Mask: use provided mask or create all-ones
@@ -690,8 +936,9 @@ const makeKalmanLossAssoc = (
     if (ownsMask) mask_n.dispose();
     if (ownsV2ps) V2_per_step.dispose();
     if (!fixS) V2!.dispose();
+    arValues?.dispose();
     W.dispose();
-    if (nar > 0) G.dispose();
+    if (arLayout.freeCount > 0) G.dispose();
 
     return np.sum(lik_masked);
   };
@@ -829,13 +1076,15 @@ const computeHessianFD = async (
  *
  * The parameterization maps unconstrained reals → positive values:
  *   obsStd = exp(θ_s),  processStd[i] = exp(θ_{w,i})
- * AR coefficients (when `fitAr = true`) are optimized directly
- * (unconstrained — not log-transformed, matching MATLAB DLM behavior).
+ * AR coefficients are optimized directly when enabled via
+ * `params.arCoefficients.fit` (unconstrained — not log-transformed,
+ * matching MATLAB DLM behavior).
  *
- * When `obsStdFixed` is supplied (a per-timestep σ array, e.g. known measurement
- * uncertainties), the observation noise is **not estimated** — it is treated as
- * a known constant.  Only processStd (and optionally arCoefficients) are optimized.
- * The returned `obsStd` field will be `NaN` in this case.
+ * When `params.obsStd.fixed` is supplied (a scalar or per-timestep σ array,
+ * e.g. known measurement uncertainties), the observation noise is **not
+ * estimated** — it is treated as a known constant. Only processStd (and
+ * optionally arCoefficients) are optimized. The returned `obsStd` field will
+ * be `NaN` in this case.
  *
  * @param y - Observations (n×1)
  * @param opts - MLE options: model specification, optimizer settings, runtime config
@@ -847,18 +1096,25 @@ export const dlmMLE = async (
 ): Promise<DlmMleResult> => {
   if (opts) {
     checkUnknownKeys(opts as unknown as Record<string, unknown>, DLM_MLE_KEYS, 'dlmMLE');
-    if (opts.init) checkUnknownKeys(opts.init as unknown as Record<string, unknown>, DLM_MLE_INIT_KEYS, 'dlmMLE (init)');
+    if (opts.params) {
+      checkUnknownKeys(opts.params as unknown as Record<string, unknown>, DLM_MLE_PARAMS_KEYS, 'dlmMLE (params)');
+      if (opts.params.obsStd) checkUnknownKeys(opts.params.obsStd as unknown as Record<string, unknown>, DLM_MLE_OBS_STD_KEYS, 'dlmMLE (params.obsStd)');
+      if (opts.params.processStd) checkUnknownKeys(opts.params.processStd as unknown as Record<string, unknown>, DLM_MLE_PROCESS_STD_KEYS, 'dlmMLE (params.processStd)');
+      if (opts.params.arCoefficients) checkUnknownKeys(opts.params.arCoefficients as unknown as Record<string, unknown>, DLM_MLE_AR_KEYS, 'dlmMLE (params.arCoefficients)');
+    }
     if (opts.callbacks) checkUnknownKeys(opts.callbacks as unknown as Record<string, unknown>, DLM_MLE_CALLBACKS_KEYS, 'dlmMLE (callbacks)');
     if (opts.adamOpts) checkUnknownKeys(opts.adamOpts as unknown as Record<string, unknown>, DLM_MLE_ADAM_KEYS, 'dlmMLE (adamOpts)');
     if (opts.naturalOpts) checkUnknownKeys(opts.naturalOpts as unknown as Record<string, unknown>, DLM_MLE_NATURAL_KEYS, 'dlmMLE (naturalOpts)');
   }
   const {
-    order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr,
-    X, init,
-    obsStdFixed: sFixed, callbacks, adamOpts,
+    order, harmonics, seasonLength, fullSeasonal, arCoefficients,
+    X, params, callbacks, adamOpts,
     algorithm, optimizer: optimizerChoice, naturalOpts,
     loss: lossOption, checkpoint: checkpointOpt,
   } = opts ?? {};
+  const obsStdSpec = params?.obsStd;
+  const processStdSpec = params?.processStd;
+  const arCoefficientSpec = params?.arCoefficients;
   const dtype = parseDtype(opts?.dtype);
   // Default optimizer: natural for f64 (fast second-order), Adam for f32 (FD Hessian too noisy)
   const useNatural = optimizerChoice === 'natural' ||
@@ -873,27 +1129,32 @@ export const dlmMLE = async (
   const maxIter = opts?.maxIter ?? (useNatural ? 50 : 200);
   const tol = opts?.tol ?? 1e-6;
   const forceAssocScan = algorithm === 'assoc' ? true : undefined;
-  const options: DlmOptions = { order, harmonics, seasonLength, fullSeasonal, arCoefficients, fitAr };
   const t0 = performance.now();
   const FA = getFloatArrayType(dtype);
   const yOrig = y instanceof FA ? y as FloatArray : FA.from(y);
   const yArr = FA.from(Array.from(yOrig));
   const n = yArr.length;
-  const mleSFixed = normalizeObsStdFixed(sFixed, n, 'dlmMLE');
+  const mleSFixed = normalizeObsStdFixed(obsStdSpec?.fixed, n, 'dlmMLE params.obsStd');
+
+  const arphi_orig = arCoefficients ?? [];
+  const arLayout = normalizeArLayout(arphi_orig, arCoefficientSpec);
+  const modelOptions: DlmOptions = {
+    order, harmonics, seasonLength, fullSeasonal,
+    arCoefficients: arLayout.baseValues,
+  };
 
   // Generate system matrices
-  const sys = dlmGenSys(options);
+  const sys = dlmGenSys(modelOptions);
   const m = sys.m;
 
   // AR fitting setup
-  const arphi_orig = arCoefficients ?? [];
-  const doFitAr = !!(fitAr && arphi_orig.length > 0);
-  const arInds = doFitAr ? findArInds(options) : [];
+  const doFitAr = arLayout.freeCount > 0;
+  const arInds = arLayout.baseValues.length > 0 ? findArInds(modelOptions) : [];
   const nar = arInds.length;
 
   // Build G: if fitting AR, zero the AR column (those values come from theta)
   let G_data = sys.G;
-  if (nar > 0) {
+  if (doFitAr) {
     G_data = sys.G.map(row => [...row]);
     const arCol = arInds[0];
     for (const idx of arInds) G_data[idx][arCol] = 0;
@@ -940,9 +1201,14 @@ export const dlmMLE = async (
   const nObs = yObs.length || 1;
   const variance = yObs.reduce((s, v) => s + v * v, 0) / nObs
     - (yObs.reduce((s, v) => s + v, 0) / nObs) ** 2;
-  const s_init = init?.obsStd ?? (Math.sqrt(Math.abs(variance)) || 1.0);
-  const w_init = init?.processStd ?? new Array(m).fill(s_init * 0.1);
-  const arphi_init = init?.arCoefficients ?? arphi_orig;
+  const s_init = obsStdSpec?.init ?? (Math.sqrt(Math.abs(variance)) || 1.0);
+  const processLayout = normalizeProcessLayout(
+    m,
+    processStdSpec?.init,
+    processStdSpec?.groups,
+    processStdSpec?.fixed,
+    new Array(m).fill(s_init * 0.1),
+  );
 
   // Build fixed V2_arr when sFixed is provided
   const fixS = mleSFixed !== undefined;
@@ -953,11 +1219,11 @@ export const dlmMLE = async (
     fixedV2_arr = np.array(v2data, { dtype });
   }
 
-  // theta = [log(s)?, log(w0).., log(w_{m-1}), arphi..]
+  // theta = [log(s)?, log(process free groups..), ar free values..]
   const theta_init = [
-    ...(fixS ? [] : [Math.log(s_init)]),
-    ...w_init.map(wi => Math.log(Math.abs(wi) || 0.01)),
-    ...(doFitAr ? arphi_init : []),  // unconstrained (not log-transformed); only when fitting AR
+    ...(fixS ? [] : [Math.log(positiveInit(s_init, 1.0))]),
+    ...processLayout.freeInit.map(wi => Math.log(positiveInit(wi))),
+    ...arLayout.freeInit,
   ];
 
   // Build loss & JIT the entire optimization step:
@@ -974,35 +1240,41 @@ export const dlmMLE = async (
   // Benchmarks show ~25–30% speedup over default √N checkpointing for typical
   // DLM dataset sizes (n ≲ few hundred), where carry memory is negligible.
   const kalmanLoss = useAssocScanLoss
-    ? makeKalmanLossAssoc(F, G, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, mleMaskArr)
-    : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, arInds, fixedV2_arr, checkpointOpt ?? false, mleMaskArr);
+    ? makeKalmanLossAssoc(F, G, x0, C0, y_arr, n, m, dtype, processLayout, arLayout, arInds, fixedV2_arr, mleMaskArr)
+    : makeKalmanLoss(F, G, Ft, x0, C0, y_arr, n, m, dtype, processLayout, arLayout, arInds, fixedV2_arr, checkpointOpt ?? false, mleMaskArr);
 
   // Custom loss wrapping (MAP / regularised objectives).
   // When a DlmLossFn is provided, it wraps the Kalman −2·logL so that
   //   objectiveFn(θ) = userLoss(deviance(θ), naturalParams(θ), meta)
   // Natural-scale params: exp(θ) for variance slots, raw θ for AR slots.
   const hasCustomLoss = typeof lossOption === 'function';
-  const wOffset = fixS ? 0 : 1;
-  const nSwParams = wOffset + m; // number of variance params (s? + w's)
+  const processOffset = fixS ? 0 : 1;
+  const arOffset = processOffset + processLayout.freeInit.length;
   let paramMeta: import('./types').DlmParamMeta | undefined;
   if (hasCustomLoss) {
-    paramMeta = { nObs: fixS ? 0 : 1, nProcess: m, nAr: nar };
+    paramMeta = { nObs: fixS ? 0 : 1, nProcess: m, nAr: arLayout.exposeInLoss ? nar : 0 };
   }
+  const buildNaturalParams = (theta: np.Array): np.Array => {
+    using expTheta = np.exp(theta);
+    const parts: np.Array[] = [];
+    if (!fixS) {
+      using sVal = lax.dynamicIndexInDim(expTheta, 0, 0);
+      parts.push(np.reshape(sVal, [1]));
+    }
+    parts.push(expandProcessStd(expTheta, processLayout, processOffset, dtype));
+    const arValues = arLayout.exposeInLoss
+      ? expandArValues(theta, arLayout, arOffset, dtype)
+      : undefined;
+    if (arValues) parts.push(arValues);
+    return concatOwned1D(parts);
+  };
   const lossFn = hasCustomLoss
     ? (theta: np.Array): np.Array => {
         using kl = kalmanLoss(theta);
-        // Compute natural-scale params: exp for variances, raw for AR
-        let params: np.Array;
-        if (nar > 0) {
-          const parts = np.split(theta, [nSwParams], 0);
-          using varPart = np.exp(parts[0]);
-          parts[0].dispose();
-          params = np.concatenate([varPart, parts[1]], 0);
-          parts[1].dispose();
-        } else {
-          params = np.exp(theta);
-        }
-        return (lossOption as import('./types').DlmLossFn)(kl, params, paramMeta!);
+        const params = buildNaturalParams(theta);
+        const result = (lossOption as import('./types').DlmLossFn)(kl, params, paramMeta!);
+        params.dispose();
+        return result;
       }
     : kalmanLoss;
 
@@ -1162,17 +1434,14 @@ export const dlmMLE = async (
     fixedV2_arr?.dispose();
     mleMaskArr?.dispose();
 
-    const wOff = fixS ? 0 : 1;
     const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
-    const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOff + i]));
-    const arphi_opt = nar > 0
-      ? Array.from({ length: nar }, (_, i) => thetaData[wOff + m + i])
-      : undefined;
-
-    const { fitAr: _fa1, ...fitOpts1 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
-    const sForFit: number | ArrayLike<number> = fixS ? sFixed! : s_opt;
+    const w_opt = expandProcessStdData(thetaData, processLayout, processOffset);
+    const arphi_full = expandArValuesData(thetaData, arLayout, arOffset);
+    const arphi_opt = arLayout.exposeInLoss ? arphi_full : undefined;
+    const fitModelOptions = arphi_full ? { ...modelOptions, arCoefficients: arphi_full } : modelOptions;
+    const sForFit: number | ArrayLike<number> = fixS ? mleSFixed! : s_opt;
     const fit = await dlmFit(yOrig, {
-      obsStd: sForFit, processStd: w_opt, ...fitOpts1,
+      obsStd: sForFit, processStd: w_opt, ...fitModelOptions,
       X, dtype: opts?.dtype, algorithm: opts?.algorithm,
     });
 
@@ -1314,21 +1583,19 @@ export const dlmMLE = async (
   mleMaskArr?.dispose();
   optimBlock.dispose();
 
-  const wOff = fixS ? 0 : 1;
   const s_opt = fixS ? NaN : Math.exp(thetaData[0]);
-  const w_opt = Array.from({ length: m }, (_, i) => Math.exp(thetaData[wOff + i]));
-  const arphi_opt = nar > 0
-    ? Array.from({ length: nar }, (_, i) => thetaData[wOff + m + i])
-    : undefined;
+  const w_opt = expandProcessStdData(thetaData, processLayout, processOffset);
+  const arphi_full = expandArValuesData(thetaData, arLayout, arOffset);
+  const arphi_opt = arLayout.exposeInLoss ? arphi_full : undefined;
 
   // Run full dlmFit with optimized parameters (including fitted arCoefficients if applicable)
-  const { fitAr: _fa2, ...fitOpts2 } = arphi_opt ? { ...options, arCoefficients: arphi_opt } : options;
+  const fitModelOptions = arphi_full ? { ...modelOptions, arCoefficients: arphi_full } : modelOptions;
   // When s was fixed, pass the original sFixed array to dlmFit; otherwise use scalar s_opt
   const sForFit: number | ArrayLike<number> = fixS ? mleSFixed! : s_opt;
   const fit = await dlmFit(yOrig, {
     obsStd: sForFit,
     processStd: w_opt,
-    ...fitOpts2,
+    ...fitModelOptions,
     X,
     dtype: opts?.dtype,
     algorithm: opts?.algorithm,

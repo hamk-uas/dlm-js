@@ -3,8 +3,8 @@
  *
  * Tests dlmMLE with:
  *   1. Basic s/w recovery (Nile-like order=0 model)
- *   2. AR coefficient fitting (order=0 + AR(1), fitar=true)
- *   3. fitar=false baseline (AR coefficients stay fixed)
+ *   2. AR coefficient fitting (order=0 + AR(1), params.arCoefficients.fit=true)
+ *   3. Fixed-AR baseline (AR coefficients stay fixed)
  *
  * Uses WASM backend + Float64 for all tests.
  * Synthetic data from a deterministic PRNG guarantees reproducibility.
@@ -63,6 +63,44 @@ function generateData(
   return y;
 }
 
+function mleParams(spec: {
+  obsStdInit?: number;
+  obsStdFixed?: number | ArrayLike<number>;
+  processStdInit?: number[];
+  processStdGroups?: ArrayLike<string | number>;
+  processStdFixed?: number | ArrayLike<number | null | undefined> | Partial<Record<number, number>>;
+  fitAr?: boolean;
+  arInit?: number[];
+  arFixed?: number | ArrayLike<number | null | undefined> | Partial<Record<number, number>>;
+} = {}) {
+  const params: Record<string, unknown> = {};
+
+  if (spec.obsStdInit !== undefined || spec.obsStdFixed !== undefined) {
+    params.obsStd = {
+      ...(spec.obsStdInit !== undefined ? { init: spec.obsStdInit } : {}),
+      ...(spec.obsStdFixed !== undefined ? { fixed: spec.obsStdFixed } : {}),
+    };
+  }
+
+  if (spec.processStdInit !== undefined || spec.processStdGroups !== undefined || spec.processStdFixed !== undefined) {
+    params.processStd = {
+      ...(spec.processStdInit !== undefined ? { init: spec.processStdInit } : {}),
+      ...(spec.processStdGroups !== undefined ? { groups: spec.processStdGroups } : {}),
+      ...(spec.processStdFixed !== undefined ? { fixed: spec.processStdFixed } : {}),
+    };
+  }
+
+  if (spec.fitAr !== undefined || spec.arInit !== undefined || spec.arFixed !== undefined) {
+    params.arCoefficients = {
+      ...(spec.fitAr !== undefined ? { fit: spec.fitAr } : {}),
+      ...(spec.arInit !== undefined ? { init: spec.arInit } : {}),
+      ...(spec.arFixed !== undefined ? { fixed: spec.arFixed } : {}),
+    };
+  }
+
+  return Object.keys(params).length > 0 ? { params } : {};
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('dlmMLE', async () => {
@@ -76,7 +114,7 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    const result = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' });
+    const result = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }), maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' });
 
     // MLE should converge
     expect(result.iterations).toBeLessThan(200);
@@ -93,12 +131,12 @@ describe('dlmMLE', async () => {
     expect(result.devianceHistory.length).toBeGreaterThan(0);
   });
 
-  it('recovers AR coefficient with fitar=true', async () => {
+  it('recovers AR coefficient with params.arCoefficients.fit=true', async () => {
     const phi_true = 0.8;
     const s_true = 3;
     const w_true = [5, 4]; // level noise, AR noise
 
-    const options = { order: 0, arCoefficients: [phi_true], fitAr: true };
+    const options = { order: 0, arCoefficients: [phi_true] };
     const sys = dlmGenSys(options);
     expect(sys.m).toBe(2);
 
@@ -110,7 +148,7 @@ describe('dlmMLE', async () => {
 
     const result = await dlmMLE(
       y, { ...options,
-      init: { obsStd: s_true, processStd: w_true, arCoefficients: [0.5] }, // init arCoefficients away from true
+      ...mleParams({ obsStdInit: s_true, processStdInit: w_true, fitAr: true, arInit: [0.5] }), // init arCoefficients away from true
       maxIter: 200, lr: 0.02, tol: 1e-6, dtype: 'f64' },
     );
 
@@ -131,12 +169,12 @@ describe('dlmMLE', async () => {
     expect(Number.isFinite(result.deviance)).toBe(true);
   });
 
-  it('fitar=false keeps AR coefficients fixed', async () => {
+  it('omitting params.arCoefficients.fit keeps AR coefficients fixed', async () => {
     const phi_fixed = 0.8;
     const s_true = 3;
     const w_true = [5, 4];
 
-    const options = { order: 0, arCoefficients: [phi_fixed] }; // fitAr defaults to false
+    const options = { order: 0, arCoefficients: [phi_fixed] };
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
@@ -199,7 +237,7 @@ describe('dlmMLE', async () => {
 
     const stuffedResult = await dlmMLE(yStuffed, {
       ...options,
-      init: { obsStd: s_true, processStd: w_true },
+      ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 30,
       tol: 1e-6,
       dtype: 'f64',
@@ -208,7 +246,7 @@ describe('dlmMLE', async () => {
     const stuffed = stuffIntegerTimestamps(yObs, tsObs, undefined, undefined);
     const tsResult = await dlmMLE(stuffed.y, {
       ...options,
-      init: { obsStd: s_true, processStd: w_true },
+      ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 30,
       tol: 1e-6,
       dtype: 'f64',
@@ -246,8 +284,7 @@ describe('dlmMLE', async () => {
 
     const stuffedResult = await dlmMLE(yStuffed, {
       ...options,
-      obsStdFixed: sFixedStuffed,
-      init: { processStd: [0.3] },
+      ...mleParams({ obsStdFixed: sFixedStuffed, processStdInit: [0.3] }),
       maxIter: 20,
       tol: 1e-6,
       dtype: 'f64',
@@ -256,8 +293,7 @@ describe('dlmMLE', async () => {
     const stuffed = stuffIntegerTimestamps(yObs, tsObs, undefined, sFixedObs);
     const tsResult = await dlmMLE(stuffed.y, {
       ...options,
-      obsStdFixed: stuffed.obsStdFixed,
-      init: { processStd: [0.3] },
+      ...mleParams({ obsStdFixed: stuffed.obsStdFixed, processStdInit: [0.3] }),
       maxIter: 20,
       tol: 1e-6,
       dtype: 'f64',
@@ -267,6 +303,33 @@ describe('dlmMLE', async () => {
     expect(tsResult.obsStd).toBeNaN();
     expect(tsResult.processStd[0]).toBeCloseTo(stuffedResult.processStd[0], 8);
     expect(tsResult.deviance).toBeCloseTo(stuffedResult.deviance, 8);
+  });
+
+  it('params.processStd respects fixed zeros and tied groups', async () => {
+    const options = { order: 1, harmonics: 1, seasonLength: 12 };
+    const sys = dlmGenSys(options);
+    const y = generateData(sys.G, sys.F, 2, [0, 0.1, 0.4, 0.4], 36, 17);
+    const thetaLengths: number[] = [];
+
+    const result = await dlmMLE(y, {
+      ...options,
+      ...mleParams({
+        obsStdInit: 2,
+        processStdInit: [0.2, 0.1, 0.4, 0.6],
+        processStdFixed: { 0: 0 },
+        processStdGroups: [0, 1, 2, 2],
+      }),
+      maxIter: 1,
+      tol: 1e-6,
+      dtype: 'f64',
+      callbacks: {
+        onInit(theta) { thetaLengths.push(theta.length); },
+      },
+    });
+
+    expect(thetaLengths).toEqual([3]);
+    expect(result.processStd[0]).toBe(0);
+    expect(result.processStd[2]).toBeCloseTo(result.processStd[3], 12);
   });
 
   it('dlmMLE rejects timestamps directly', async () => {
@@ -288,7 +351,7 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    const result = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, tol: 1e-6, dtype: 'f64', optimizer: 'natural' });
+    const result = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }), tol: 1e-6, dtype: 'f64', optimizer: 'natural' });
 
     // Natural gradient should converge in very few iterations (quadratic convergence)
     expect(result.iterations).toBeLessThan(20);
@@ -310,7 +373,7 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    const result = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, tol: 1e-6, dtype: 'f64', optimizer: 'natural' });
+    const result = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }), tol: 1e-6, dtype: 'f64', optimizer: 'natural' });
 
     expect(result.iterations).toBeLessThan(30);
     expect(result.obsStd).toBeGreaterThan(0);
@@ -320,18 +383,18 @@ describe('dlmMLE', async () => {
     expect(result.fit.y.length).toBe(200);
   });
 
-  it('natural: recovers AR coefficient with fitar=true', async () => {
+  it('natural: recovers AR coefficient with params.arCoefficients.fit=true', async () => {
     const phi_true = 0.8;
     const s_true = 3;
     const w_true = [5, 4];
 
-    const options = { order: 0, arCoefficients: [phi_true], fitAr: true };
+    const options = { order: 0, arCoefficients: [phi_true] };
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     const result = await dlmMLE(y, {
       ...options,
-      init: { obsStd: s_true, processStd: w_true, arCoefficients: [0.5] },
+      ...mleParams({ obsStdInit: s_true, processStdInit: w_true, fitAr: true, arInit: [0.5] }),
       tol: 1e-6, dtype: 'f64', optimizer: 'natural',
     });
 
@@ -370,7 +433,7 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    const result = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, tol: 1e-6, dtype: 'f64', optimizer: 'natural', algorithm: 'assoc' });
+    const result = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }), tol: 1e-6, dtype: 'f64', optimizer: 'natural', algorithm: 'assoc' });
 
     expect(result.iterations).toBeLessThan(20);
     expect(result.obsStd).toBeGreaterThan(s_true * 0.3);
@@ -387,7 +450,7 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    const result = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true }, tol: 1e-6, dtype: 'f64', optimizer: 'natural', algorithm: 'assoc' });
+    const result = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }), tol: 1e-6, dtype: 'f64', optimizer: 'natural', algorithm: 'assoc' });
 
     expect(result.iterations).toBeLessThan(30);
     expect(result.obsStd).toBeGreaterThan(0);
@@ -397,18 +460,18 @@ describe('dlmMLE', async () => {
     expect(result.fit.y.length).toBe(200);
   });
 
-  it('natural+assoc: recovers AR coefficient with fitar=true', async () => {
+  it('natural+assoc: recovers AR coefficient with params.arCoefficients.fit=true', async () => {
     const phi_true = 0.8;
     const s_true = 3;
     const w_true = [5, 4];
 
-    const options = { order: 0, arCoefficients: [phi_true], fitAr: true };
+    const options = { order: 0, arCoefficients: [phi_true] };
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     const result = await dlmMLE(y, {
       ...options,
-      init: { obsStd: s_true, processStd: w_true, arCoefficients: [0.5] },
+      ...mleParams({ obsStdInit: s_true, processStdInit: w_true, fitAr: true, arInit: [0.5] }),
       tol: 1e-6, dtype: 'f64', optimizer: 'natural', algorithm: 'assoc',
     });
 
@@ -462,14 +525,14 @@ describe('dlmMLE', async () => {
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     // MLE baseline
-    const mle = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const mle = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' });
     expect(mle.priorPenalty).toBeUndefined();
 
     // MAP: strong prior pulling natural-scale params toward 1 (i.e. s≈1, w≈1)
     // params layout: [s, w0] (natural scale, not log-transformed)
     const prior = makePrior([1, 1], 50);
-    const map = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const map = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior });
 
     // priorPenalty should exist and be positive (prior adds a non-negative term)
@@ -493,7 +556,7 @@ describe('dlmMLE', async () => {
 
     // MAP: strong prior pulling natural-scale params toward 1
     const prior = makePrior([1, 1], 50);
-    const map = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const map = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       tol: 1e-6, dtype: 'f64', optimizer: 'natural', loss: prior });
 
     expect(map.priorPenalty).toBeDefined();
@@ -511,9 +574,9 @@ describe('dlmMLE', async () => {
     const sys = dlmGenSys(options);
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
-    const mlDefault = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const mlDefault = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' });
-    const mlExplicit = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const mlExplicit = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: 'ml' });
 
     // Same deviance (both pure MLE)
@@ -530,7 +593,7 @@ describe('dlmMLE', async () => {
 
     // Identity loss: just return the Kalman deviance unchanged
     const identity: DlmLossFn = (deviance, _params, _meta) => deviance;
-    const result = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const result = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: identity });
 
     // priorPenalty should be ~0 (identity adds nothing)
@@ -553,14 +616,14 @@ describe('dlmMLE', async () => {
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     // MLE baseline
-    const mle = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const mle = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' });
 
     // Strong IG prior on obsVar pulling s toward low values
     // IG(shape=2, rate=0.5): mode = β/(α+1) = 0.5/3 ≈ 0.17 for variance
     // This should pull obsStd well below the MLE estimate
     const prior = dlmPrior({ obsVar: { shape: 2, rate: 0.5 } });
-    const map = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const map = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior });
 
     expect(map.priorPenalty).toBeDefined();
@@ -577,12 +640,12 @@ describe('dlmMLE', async () => {
     const y = generateData(sys.G, sys.F, s_true, w_true, 200, 42);
 
     // MLE baseline
-    const mle = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const mle = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 200, lr: 0.05, tol: 1e-6, dtype: 'f64' });
 
     // Strong IG prior on processVar pulling w toward low values
     const prior = dlmPrior({ processVar: { shape: 2, rate: 0.1 } });
-    const map = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const map = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior });
 
     expect(map.priorPenalty).toBeDefined();
@@ -602,7 +665,7 @@ describe('dlmMLE', async () => {
       obsVar:     { shape: 2, rate: 1 },
       processVar: { shape: 2, rate: 1 },
     });
-    const map = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const map = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       maxIter: 300, lr: 0.05, tol: 1e-6, dtype: 'f64', loss: prior });
 
     expect(map.priorPenalty).toBeDefined();
@@ -622,7 +685,7 @@ describe('dlmMLE', async () => {
       obsVar:     { shape: 2, rate: 1 },
       processVar: { shape: 2, rate: 1 },
     });
-    const map = await dlmMLE(y, { ...options, init: { obsStd: s_true, processStd: w_true },
+    const map = await dlmMLE(y, { ...options, ...mleParams({ obsStdInit: s_true, processStdInit: w_true }),
       tol: 1e-6, dtype: 'f64', optimizer: 'natural', loss: prior });
 
     expect(map.priorPenalty).toBeDefined();

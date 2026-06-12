@@ -19,16 +19,17 @@ export type DlmAlgorithm = 'scan' | 'assoc' | 'sqrt-assoc' | 'ud';
  * Describes the layout of the `params` vector passed to {@link DlmLossFn}.
  *
  * `params = [s?, w₀, …, w_{m-1}, φ₁, …, φ_p]`  (natural scale)
- * - Observation std `s` is present only when `nObs === 1` (absent when `obsStdFixed` is set).
- * - Process std devs `wᵢ` (`nProcess` elements).
- * - AR coefficients `φⱼ` (`nAr` elements, 0 when `fitAr` is off).
+ * - Observation std `s` is present only when `nObs === 1`.
+ * - Process std devs `wᵢ` are the full expanded physical state-noise vector
+ *   (`nProcess` elements), even when MLE ties or fixes some slots internally.
+ * - AR coefficients `φⱼ` (`nAr` elements) are present only when AR fitting is enabled.
  */
 export interface DlmParamMeta {
-  /** 1 if observation std (s) is estimated, 0 if fixed. */
+  /** 1 if observation std (s) is exposed in params, 0 if fixed. */
   nObs: number;
-  /** Number of process std dev parameters (= state dimension m). */
+  /** Number of process std dev entries in params (= full state dimension m). */
   nProcess: number;
-  /** Number of AR coefficients (0 unless `fitAr: true`). */
+  /** Number of AR coefficients exposed in params (0 unless AR fitting is enabled). */
   nAr: number;
 }
 
@@ -65,9 +66,9 @@ const MATLAB_HINTS: Record<string, string> = {
   ns: 'seasonLength',
   fullseas: 'fullSeasonal',
   arphi: 'arCoefficients',
-  fitar: 'fitAr',
-  sfixed: 'obsStdFixed',
-  sFixed: 'obsStdFixed',
+  fitar: 'params.arCoefficients.fit',
+  sfixed: 'params.obsStd.fixed',
+  sFixed: 'params.obsStd.fixed',
 };
 
 /**
@@ -113,15 +114,30 @@ export const DLM_STABILIZATION_PRESETS: ReadonlySet<string> = new Set([
 
 /** Valid keys for {@link DlmMleOptions}. */
 export const DLM_MLE_KEYS: ReadonlySet<string> = new Set([
-  'order', 'harmonics', 'seasonLength', 'fullSeasonal', 'arCoefficients', 'fitAr',
-  'X', 'init', 'maxIter', 'lr', 'tol', 'obsStdFixed', 'callbacks', 'adamOpts',
+  'order', 'harmonics', 'seasonLength', 'fullSeasonal', 'arCoefficients',
+  'X', 'params', 'maxIter', 'lr', 'tol', 'callbacks', 'adamOpts',
   'optimizer', 'naturalOpts', 'loss',
   'dtype', 'algorithm', 'checkpoint',
 ]);
 
-/** Valid keys for {@link DlmMleOptions.init}. */
-export const DLM_MLE_INIT_KEYS: ReadonlySet<string> = new Set([
+/** Valid keys for {@link DlmMleOptions.params}. */
+export const DLM_MLE_PARAMS_KEYS: ReadonlySet<string> = new Set([
   'obsStd', 'processStd', 'arCoefficients',
+]);
+
+/** Valid keys for {@link DlmMleObsStdSpec}. */
+export const DLM_MLE_OBS_STD_KEYS: ReadonlySet<string> = new Set([
+  'init', 'fixed',
+]);
+
+/** Valid keys for {@link DlmMleProcessStdSpec}. */
+export const DLM_MLE_PROCESS_STD_KEYS: ReadonlySet<string> = new Set([
+  'init', 'groups', 'fixed',
+]);
+
+/** Valid keys for {@link DlmMleArCoefficientSpec}. */
+export const DLM_MLE_AR_KEYS: ReadonlySet<string> = new Set([
+  'fit', 'init', 'fixed',
 ]);
 
 /** Valid keys for {@link DlmMleOptions.callbacks}. */
@@ -146,7 +162,7 @@ export const DLM_FORECAST_KEYS: ReadonlySet<string> = new Set([
 
 /** Valid keys for {@link DlmOptions} (dlmGenSys). */
 export const DLM_GENSYS_KEYS: ReadonlySet<string> = new Set([
-  'order', 'fullSeasonal', 'harmonics', 'seasonLength', 'arCoefficients', 'spline', 'fitAr',
+  'order', 'fullSeasonal', 'harmonics', 'seasonLength', 'arCoefficients', 'spline',
 ]);
 
 /** Valid keys for {@link DlmPriorSpec}. */
@@ -772,27 +788,28 @@ export interface DlmFitOptions extends DlmModelSpec {
 export interface DlmMleOptions extends DlmModelSpec {
   // ── Model specification (inherited from DlmModelSpec) ──
 
-  /** Estimate AR coefficients via MLE. In MATLAB DLM, this is `fitar`. */
-  fitAr?: boolean;
-
   // ── Covariates ──
 
   /** Covariate matrix: n rows × q columns. */
   X?: ArrayLike<number>[];
 
-  // ── Optimizer ──
+  /**
+   * MLE parameter controls.
+   *
+   * Top-level model fields (`order`, `harmonics`, `seasonLength`,
+   * `arCoefficients`, ...) define the model structure. `params` controls
+   * which parameters are fitted, fixed, grouped, or given explicit initial
+   * values during optimisation.
+   */
+  params?: DlmMleParamSpec;
 
-  /** Initial parameter guess. */
-  init?: { obsStd?: number; processStd?: number[]; arCoefficients?: number[] };
+  // ── Optimizer ──
   /** Maximum optimizer iterations. Default: 200. */
   maxIter?: number;
   /** Adam learning rate. Default: 0.05. */
   lr?: number;
   /** Convergence tolerance on relative deviance change. Default: 1e-6. */
   tol?: number;
-  /** Per-observation σ array (length n). When provided, obsStd is fixed and not estimated. In MATLAB DLM, this is `sFixed`. */
-  /** Fixed observation σ, either a scalar or per-observation array (length n). When provided, obsStd is fixed and not estimated. In MATLAB DLM, this is `sFixed`. */
-  obsStdFixed?: number | ArrayLike<number>;
   /** Callbacks for monitoring optimization progress. */
   callbacks?: {
     /** Called before iteration 0 with the initial theta. */
@@ -848,10 +865,11 @@ export interface DlmMleOptions extends DlmModelSpec {
    *   2. `params`   — natural-scale parameter vector (1-D `np.Array`).
    *   3. `meta`     — {@link DlmParamMeta} describing the params layout.
    *
-   * `params` layout: `[s?, w₀, …, w_{m-1}, φ₁, …, φ_p]`
-   *   - `s` and `wᵢ` are positive std devs (not log-transformed).
-   *   - AR coefficients (when `fitAr`) are unconstrained.
-   *   - When `obsStdFixed` is set, the leading `s` slot is absent.
+  * `params` layout: `[s?, w₀, …, w_{m-1}, φ₁, …, φ_p]`
+  *   - `s` and `wᵢ` are positive std devs (not log-transformed).
+  *   - `wᵢ` is always the full expanded physical state-noise vector.
+  *   - AR coefficients are unconstrained when AR fitting is enabled.
+  *   - When `params.obsStd.fixed` is set, the leading `s` slot is absent.
    *
    * The entire chain — Kalman scan + custom penalty + AD backward pass +
    * optimizer update — is wrapped in a single `jit()` call.
@@ -890,6 +908,66 @@ export interface DlmMleOptions extends DlmModelSpec {
    * Only affects the sequential scan loss path; ignored for assocScan.
    */
   checkpoint?: boolean | number;
+}
+
+/** Group identifier for tied process-noise parameters in {@link DlmMleProcessStdSpec}. */
+export type DlmMleGroupId = string | number;
+
+/** Observation-noise controls for {@link DlmMleOptions.params}. */
+export interface DlmMleObsStdSpec {
+  /** Initial guess for the scalar observation std when it is fitted. */
+  init?: number;
+  /**
+   * Fixed observation std.
+   * - `number`: same std for all timesteps.
+   * - `ArrayLike<number>` of length n: per-timestep observation std.
+   */
+  fixed?: number | ArrayLike<number>;
+}
+
+/** Process-noise controls for {@link DlmMleOptions.params}. */
+export interface DlmMleProcessStdSpec {
+  /** Full-length initial guess for the physical state-noise std vector. */
+  init?: number[];
+  /**
+   * Optional group id per process-noise slot (length m).
+   * Equal group ids are tied to one shared fitted parameter.
+   */
+  groups?: ArrayLike<DlmMleGroupId>;
+  /**
+   * Fixed process-noise std values.
+   * - `number`: fix every slot to the same value.
+   * - `ArrayLike<number | null | undefined>` of length m: per-slot fixing.
+   * - `Record<number, number>`: sparse per-index fixing.
+   *
+   * `0` is a valid fixed value.
+   */
+  fixed?: number | ArrayLike<number | null | undefined> | Partial<Record<number, number>>;
+}
+
+/** AR-coefficient controls for {@link DlmMleOptions.params}. */
+export interface DlmMleArCoefficientSpec {
+  /** Enable joint AR-coefficient fitting. Default: false. */
+  fit?: boolean;
+  /** Full-length initial guess for AR coefficients when fitting is enabled. */
+  init?: number[];
+  /**
+   * Fixed AR coefficients.
+   * - `number`: fix every AR coefficient to the same value.
+   * - `ArrayLike<number | null | undefined>`: per-slot fixing.
+   * - `Record<number, number>`: sparse per-index fixing.
+   */
+  fixed?: number | ArrayLike<number | null | undefined> | Partial<Record<number, number>>;
+}
+
+/** Unified MLE parameter controls for {@link DlmMleOptions}. */
+export interface DlmMleParamSpec {
+  /** Observation-noise controls. */
+  obsStd?: DlmMleObsStdSpec;
+  /** Process-noise controls. */
+  processStd?: DlmMleProcessStdSpec;
+  /** AR-coefficient controls. */
+  arCoefficients?: DlmMleArCoefficientSpec;
 }
 
 /**

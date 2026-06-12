@@ -14,10 +14,7 @@ import { checkUnknownKeys, DLM_GENSYS_KEYS } from "./types";
 import type { DlmModelSpec } from "./types";
 
 /** DLM model configuration options */
-export interface DlmOptions extends DlmModelSpec {
-  /** Fit AR coefficients via MLE optimization (default: false). In MATLAB DLM, this is `fitar`. */
-  fitAr?: boolean;
-}
+export interface DlmOptions extends DlmModelSpec {}
 
 /**
  * Find the indices of AR states in the full state vector.
