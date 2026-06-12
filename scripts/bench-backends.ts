@@ -36,17 +36,19 @@ interface Model {
   key: string;        // sidecar key prefix
   y: number[];
   s: number | number[];
-  w: number[];
+  w: number | number[];
   options: Record<string, unknown>;
   n: number;
   m: number;
 }
 
+const toW = (w: number | number[]): number[] => (Array.isArray(w) ? w : [w]);
+
 const models: Model[] = [
   {
     label: "Nile, order=0",
     key: "nile_o0",
-    y: order0In.y, s: order0In.s, w: order0In.w,
+    y: order0In.y, s: order0In.s, w: toW(order0In.w),
     options: { order: 0 },
     n: 100, m: 1,
   },

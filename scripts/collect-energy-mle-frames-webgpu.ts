@@ -43,7 +43,8 @@ describe('collect-energy-mle-frames-webgpu', () => {
     const n = y.length;
     const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
 
-    const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
+    const modelOptions = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5] };
+    const mleOptions = { ...modelOptions, params: { arCoefficients: { fit: true } } };
     const m = 5;
     const nSwParams = 1 + m;
     const maxIter = 300;
@@ -69,7 +70,7 @@ describe('collect-energy-mle-frames-webgpu', () => {
 
     const mleResult = await withTimeout(
       dlmMLE(y, {
-        ...options, maxIter, lr, tol, dtype: 'f32',
+        ...mleOptions, maxIter, lr, tol, dtype: 'f32',
         callbacks: {
           onInit: (theta) => { thetaHistory.push(Array.from(theta)); },
           onIteration: (_iter, theta, _lik) => { thetaHistory.push(Array.from(theta)); },
@@ -133,8 +134,7 @@ describe('collect-energy-mle-frames-webgpu', () => {
       const arphi = [td[nSwParams]];
       const lik = idx === 0 ? null : (likHistory[idx - 1] as number);
 
-      const { fitAr: _, ...modelOpts } = options;
-      const fitOpts = { ...modelOpts, arCoefficients: arphi };
+      const fitOpts = { ...modelOptions, arCoefficients: arphi };
       const fit = await dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f32', ...fitOpts });
 
       const combined = Array.from({ length: n }, (_, i) =>

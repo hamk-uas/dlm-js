@@ -27,7 +27,8 @@ const n = y.length;
 const t: number[] = Array.from({ length: n }, (_, i) => i + 1);
 
 // Model: trend + seasonal + AR(1), with AR coefficient estimation
-const options = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
+const modelOptions = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5] };
+const mleOptions = { ...modelOptions, params: { arCoefficients: { fit: true } } };
 const m = 5; // 2 (poly order=1) + 2 (trig k=1) + 1 (AR)
 const nSwParams = 1 + m; // theta[0]=log(s), theta[1..5]=log(w[i])
 const maxIter = 50;
@@ -64,7 +65,7 @@ async function collectVariant(variantName: string, forceAssocScan: boolean) {
 
   const mle = await withLeakCheck(() =>
     dlmMLE(y, {
-      ...options, maxIter, tol, dtype: 'f64', optimizer: 'natural' as const,
+      ...mleOptions, maxIter, tol, dtype: 'f64', optimizer: 'natural' as const,
       callbacks: {
         onInit: (theta) => {
           thetaHistory.push(Array.from(theta));
@@ -120,8 +121,7 @@ console.log(`  Final: s=${mle.obsStd.toFixed(4)}, arphi=${mle.arCoefficients?.[0
     const lik = idx === 0 ? null : likHistory[idx - 1];
 
     // Run dlmFit with the AR coefficient at this iteration
-    const { fitAr: _, ...modelOpts } = options;
-    const fitOpts = { ...modelOpts, arCoefficients: arphi };
+    const fitOpts = { ...modelOptions, arCoefficients: arphi };
     const fit = await withLeakCheck(() => dlmFit(yArr, { obsStd: s, processStd: w, dtype: 'f64', ...fitOpts }));
 
     // Combined signal: F·x = x[0] + x[2] + x[4]

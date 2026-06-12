@@ -276,7 +276,7 @@ push(`<text x="${legX + 24}" y="${legY + 30}" dominant-baseline="middle" fill="#
 push(`<text x="${legX + 24}" y="${legY + 46}" dominant-baseline="middle" fill="#666" font-size="10">Final \u22122\u00b7logL = ${finalLik.toFixed(1)}</text>`);
 
 // Model description
-push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#999" font-size="9">order=1, harmonics=1, seasonLength=12, fitAr=true</text>`);
+push(`<text x="${legX + 24}" y="${legY + 60}" dominant-baseline="middle" fill="#999" font-size="9">order=1, harmonics=1, seasonLength=12, AR(1) fitted</text>`);
 
 // ── Convergence miniplots (right half) ─────────────────────────────────────
 

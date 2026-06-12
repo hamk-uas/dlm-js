@@ -85,9 +85,9 @@ console.log(["Nile order=0 (s+w)", "100", "1",
   .map(s => s.padEnd(28)).join(" "));
 
 // Nile order=1 with observation noise fixed (MATLAB DLM fitv=0).
-// obsStdFixed = constant array of initial s from niledemo-in.json.
+// Fixed to the constant initial s from niledemo-in.json.
 const sFixed = new Array(nileIn.y.length).fill(nileIn.s);
-const nileWonly = await timedMle(nileIn.y, { order: 1, obsStdFixed: sFixed });
+const nileWonly = await timedMle(nileIn.y, { order: 1, params: { obsStd: { fixed: sFixed } } });
 console.log(["Nile order=1 (w only)", "100", "2",
   `${Math.round(nileWonly.elapsed)} ms`, String(nileWonly.iterations), nileWonly.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
@@ -142,7 +142,7 @@ console.log(["Nile order=0 (s+w)", "100", "1",
   `${Math.round(natNileOrder0.elapsed)} ms`, String(natNileOrder0.iterations), natNileOrder0.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
 
-const natNileWonly = await timedMleNatural(nileIn.y, { order: 1, obsStdFixed: sFixed });
+const natNileWonly = await timedMleNatural(nileIn.y, { order: 1, params: { obsStd: { fixed: sFixed } } });
 console.log(["Nile order=1 (w only)", "100", "2",
   `${Math.round(natNileWonly.elapsed)} ms`, String(natNileWonly.iterations), natNileWonly.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
@@ -152,7 +152,13 @@ console.log(["Kaisaniemi trig (s+w)", "117", "4",
   `${Math.round(natKaisaniemi.elapsed)} ms`, String(natKaisaniemi.iterations), natKaisaniemi.lik.toFixed(1)]
   .map(s => s.padEnd(28)).join(" "));
 
-const energyOpts = { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: [0.5], fitAr: true };
+const energyOpts = {
+  order: 1,
+  harmonics: 1,
+  seasonLength: 12,
+  arCoefficients: [0.5],
+  params: { arCoefficients: { fit: true } },
+};
 const natEnergy = await timedMleNatural(energyIn.y, energyOpts);
 console.log(["Energy trig+AR (s+w+φ)", "120", "5",
   `${Math.round(natEnergy.elapsed)} ms`, String(natEnergy.iterations), natEnergy.lik.toFixed(1)]

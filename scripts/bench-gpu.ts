@@ -28,11 +28,13 @@ interface Model {
   key: string;
   y: number[];
   s: number | number[];
-  w: number[];
+  w: number | number[];
   options: Record<string, unknown>;
   n: number;
   m: number;
 }
+
+const toW = (w: number | number[]): number[] => (Array.isArray(w) ? w : [w]);
 
 // ── Timing helper ──────────────────────────────────────────────────────────
 
@@ -65,7 +67,7 @@ describe('bench-gpu', () => {
     const order0In     = await readJSON("tests/order0-in.json");
 
     const models: Model[] = [
-      { label: "Nile, order=0", key: "nile_o0", y: order0In.y, s: order0In.s, w: order0In.w, options: { order: 0 }, n: 100, m: 1 },
+      { label: "Nile, order=0", key: "nile_o0", y: order0In.y, s: order0In.s, w: toW(order0In.w), options: { order: 0 }, n: 100, m: 1 },
       { label: "Nile, order=1", key: "nile_o1", y: nileIn.y, s: nileIn.s, w: nileIn.w, options: { order: 1 }, n: 100, m: 2 },
       { label: "Kaisaniemi, trig", key: "kaisaniemi", y: kaisaniemiIn.y, s: kaisaniemiIn.s, w: kaisaniemiIn.w, options: { order: 1, harmonics: 1, seasonLength: 12 }, n: 117, m: 4 },
       { label: "Energy, trig+AR", key: "trigar", y: trigarIn.y, s: trigarIn.s, w: trigarIn.w, options: { order: 1, harmonics: 1, seasonLength: 12, arCoefficients: trigarIn.arphi }, n: 120, m: 5 },
