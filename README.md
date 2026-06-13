@@ -930,7 +930,7 @@ const mle = await dlmMLE(y, {
 
 ### Parameter estimation (MLE & MAP): MATLAB DLM vs dlm-js
 
-This comparison focuses on the univariate estimation workflow ($p=1$). `dlmMLE` supports both pure MLE (default) and MAP estimation via the `loss` option — see [MAP estimation](#map-estimation-custom-loss--priors) for API details. For the original MATLAB DLM, see the [tutorial](https://mjlaine.github.io/dlm/dlmtut.html) and [source](https://github.com/mjlaine/dlm).
+This comparison focuses on the current **parameter-estimation** workflow for univariate observations ($p=1$): `dlmMLE` currently estimates scalar-observation models only, even though `dlmFit` elsewhere in the library also supports multivariate observations ($p>1$). `dlmMLE` supports both pure MLE (default) and MAP estimation via the `loss` option — see [MAP estimation](#map-estimation-custom-loss--priors) for API details. For the original MATLAB DLM, see the [tutorial](https://mjlaine.github.io/dlm/dlmtut.html) and [source](https://github.com/mjlaine/dlm).
 
 #### Objective function
 
@@ -949,9 +949,9 @@ In practice, exact numeric equality is not expected because initialization and o
 | Observation noise $s$ | Always fitted: $s = e^{\theta_s}$ | Optionally fitted as a multiplicative factor $V \cdot e^{\theta_v}$ (controlled by `options.fitv`) |
 | State noise $w$ | $W_{ii} = (e^{\theta_{w,i}})^2$ via `buildDiagW` | $W_{ii} = (e^{\theta_{w,i}})^2$ |
 | AR coefficients | Directly optimized (not log-transformed): $G(\text{arInds}) = \theta_\phi$ via `buildG` rank-1 update (AD-safe) | Directly optimized (not log-transformed): $G(\text{arInds}) = \theta_\phi$ |
-| Parameter grouping | Each $W_{ii}$ is an independent parameter | `options.winds` maps $\text{diag}(W)$ entries to shared parameters (e.g., `winds=[1,1,2,2]` ties states 1&2 and 3&4) |
+| Parameter grouping | `params.processStd.groups` ties entries of the expanded process-noise vector to shared fitted parameters (MATLAB `winds` equivalent) | `options.winds` maps $\text{diag}(W)$ entries to shared parameters (e.g., `winds=[1,1,2,2]` ties states 1&2 and 3&4) |
 
-Both use the same positivity enforcement: log-space for variance parameters, then $e^{(\cdot)}$ to map back. The MATLAB version has an extra feature — `winds` — that lets you **tie** $\text{diag}(W)$ entries to shared parameters, reducing the optimization dimension when multiple states should share the same noise variance.
+Both use the same positivity enforcement: log-space for variance parameters, then $e^{(\cdot)}$ to map back. Both toolchains also support tied process-noise parameters: MATLAB DLM via `options.winds`, and dlm-js via `params.processStd.groups`, which serves the same role for the expanded physical `processStd` vector.
 
 #### Optimizer
 
